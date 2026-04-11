@@ -14,29 +14,39 @@ import json
 
 from cold_eyes.engine import run
 from cold_eyes.doctor import run_doctor
-from cold_eyes.history import aggregate_overrides
+from cold_eyes.history import aggregate_overrides, compute_stats
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cold Eyes Reviewer engine")
-    parser.add_argument("command", choices=["run", "doctor", "aggregate-overrides"])
-    parser.add_argument("--mode", default="block")
-    parser.add_argument("--model", default="opus")
-    parser.add_argument("--max-tokens", type=int, default=12000)
-    parser.add_argument("--threshold", default="critical")
+    parser.add_argument("command", choices=["run", "doctor", "aggregate-overrides", "stats"])
+    parser.add_argument("--mode", default=None)
+    parser.add_argument("--model", default=None)
+    parser.add_argument("--max-tokens", type=int, default=None)
+    parser.add_argument("--threshold", default=None)
     parser.add_argument("--confidence", default=None)
     parser.add_argument("--language", default=None)
-    parser.add_argument("--scope", default="working",
+    parser.add_argument("--scope", default=None,
                         choices=["working", "staged", "head"])
     parser.add_argument("--override-reason", default=None)
+    parser.add_argument("--last", default=None,
+                        help="Time filter for stats (e.g. 7d, 24h, 2w)")
+    parser.add_argument("--by-reason", action="store_true",
+                        help="Include override reason breakdown in stats")
+    parser.add_argument("--by-path", action="store_true",
+                        help="Include per-path breakdown in stats")
     args = parser.parse_args()
 
     if args.command == "doctor":
         result = run_doctor()
     elif args.command == "aggregate-overrides":
         result = aggregate_overrides()
+    elif args.command == "stats":
+        result = compute_stats(last=args.last, by_reason=args.by_reason,
+                               by_path=args.by_path)
     else:
-        result = run(args.mode, args.model, args.max_tokens, args.threshold,
+        result = run(mode=args.mode, model=args.model,
+                     max_tokens=args.max_tokens, threshold=args.threshold,
                      confidence=args.confidence, language=args.language,
                      scope=args.scope,
                      override_reason=args.override_reason)

@@ -19,7 +19,8 @@ from cold_eyes.policy import apply_policy, filter_by_confidence, format_block_re
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.git import build_diff, is_binary, collect_files, git_cmd
 from cold_eyes.prompt import build_prompt_text
-from cold_eyes.history import log_to_history, aggregate_overrides
+from cold_eyes.history import log_to_history, aggregate_overrides, compute_stats
+from cold_eyes.config import load_policy, _parse_flat_yaml, POLICY_FILENAME
 from cold_eyes.doctor import run_doctor
 
 
@@ -47,6 +48,8 @@ class _EngineCompat:
     build_prompt_text = staticmethod(build_prompt_text)
     log_to_history = staticmethod(log_to_history)
     aggregate_overrides = staticmethod(aggregate_overrides)
+    compute_stats = staticmethod(compute_stats)
+    load_policy = staticmethod(load_policy)
     run_doctor = staticmethod(run_doctor)
     _infra_review = staticmethod(_engine_mod._infra_review)
 
@@ -998,3 +1001,333 @@ class TestAggregateOverrides:
         result = engine.aggregate_overrides(str(history))
         assert result["reasons"][0] == {"reason": "false_positive", "count": 2}
         assert result["reasons"][1] == {"reason": "acceptable_risk", "count": 1}
+
+
+class TestComputeStats:
+
+    def _write_entry(self, path, state, cwd="/repo/a", timestamp=None,
+                     override_reason=None):
+        from datetime import datetime, timezone
+        entry = {
+            "version": 2,
+            "timestamp": timestamp or datetime.now(timezone.utc).strftime(
+                "%Y-%m-%dT%H:%M:%SZ"),
+            "cwd": cwd,
+            "state": state,
+            "mode": "block",
+            "model": "opus",
+        }
+        if override_reason is not None:
+            entry["override_reason"] = override_reason
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def test_empty_history(self, tmp_path):
+        h = tmp_path / "history.jsonl"
+        h.write_text("")
+        result = engine.compute_stats(str(h))
+        assert result["action"] == "stats"
+        assert result["total"] == 0
+        assert result["by_state"] == {}
+        assert result["period"] == "all"
+
+    def test_nonexistent_file(self, tmp_path):
+        result = engine.compute_stats(str(tmp_path / "nope.jsonl"))
+        assert result["total"] == 0
+
+    def test_state_counts(self, tmp_path):
+        h = str(tmp_path / "history.jsonl")
+        self._write_entry(h, "passed")
+        self._write_entry(h, "passed")
+        self._write_entry(h, "blocked")
+        self._write_entry(h, "overridden", override_reason="fp")
+        self._write_entry(h, "skipped")
+        self._write_entry(h, "infra_failed")
+        result = engine.compute_stats(h)
+        assert result["total"] == 6
+        assert result["by_state"]["passed"] == 2
+        assert result["by_state"]["blocked"] == 1
+        assert result["by_state"]["overridden"] == 1
+        assert result["by_state"]["skipped"] == 1
+        assert result["by_state"]["infra_failed"] == 1
+
+    def test_time_filter_last(self, tmp_path):
+        from datetime import datetime, timezone, timedelta
+        h = str(tmp_path / "history.jsonl")
+        old = (datetime.now(timezone.utc) - timedelta(days=10)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self._write_entry(h, "passed", timestamp=old)
+        self._write_entry(h, "blocked", timestamp=recent)
+        result = engine.compute_stats(h, last="7d")
+        assert result["total"] == 1
+        assert result["by_state"]["blocked"] == 1
+        assert result["period"] == "last 7d"
+
+    def test_time_filter_hours(self, tmp_path):
+        from datetime import datetime, timezone, timedelta
+        h = str(tmp_path / "history.jsonl")
+        old = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self._write_entry(h, "passed", timestamp=old)
+        self._write_entry(h, "blocked", timestamp=recent)
+        result = engine.compute_stats(h, last="24h")
+        assert result["total"] == 1
+
+    def test_time_filter_weeks(self, tmp_path):
+        from datetime import datetime, timezone, timedelta
+        h = str(tmp_path / "history.jsonl")
+        old = (datetime.now(timezone.utc) - timedelta(weeks=3)).strftime(
+            "%Y-%m-%dT%H:%M:%SZ")
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        self._write_entry(h, "passed", timestamp=old)
+        self._write_entry(h, "blocked", timestamp=recent)
+        result = engine.compute_stats(h, last="2w")
+        assert result["total"] == 1
+
+    def test_invalid_last_ignored(self, tmp_path):
+        h = str(tmp_path / "history.jsonl")
+        self._write_entry(h, "passed")
+        self._write_entry(h, "blocked")
+        result = engine.compute_stats(h, last="xyz")
+        assert result["total"] == 2
+        assert result["period"] == "all"
+
+    def test_by_reason(self, tmp_path):
+        h = str(tmp_path / "history.jsonl")
+        self._write_entry(h, "overridden", override_reason="false_positive")
+        self._write_entry(h, "overridden", override_reason="false_positive")
+        self._write_entry(h, "overridden", override_reason="acceptable_risk")
+        self._write_entry(h, "passed")
+        result = engine.compute_stats(h, by_reason=True)
+        assert "by_reason" in result
+        assert result["by_reason"][0] == {"reason": "false_positive", "count": 2}
+        assert result["by_reason"][1] == {"reason": "acceptable_risk", "count": 1}
+
+    def test_by_reason_not_included_by_default(self, tmp_path):
+        h = str(tmp_path / "history.jsonl")
+        self._write_entry(h, "passed")
+        result = engine.compute_stats(h)
+        assert "by_reason" not in result
+
+    def test_by_path(self, tmp_path):
+        h = str(tmp_path / "history.jsonl")
+        self._write_entry(h, "blocked", cwd="/repo/a")
+        self._write_entry(h, "blocked", cwd="/repo/a")
+        self._write_entry(h, "passed", cwd="/repo/a")
+        self._write_entry(h, "blocked", cwd="/repo/b")
+        self._write_entry(h, "overridden", cwd="/repo/b", override_reason="fp")
+        result = engine.compute_stats(h, by_path=True)
+        assert "by_path" in result
+        a = next(p for p in result["by_path"] if p["path"] == "/repo/a")
+        b = next(p for p in result["by_path"] if p["path"] == "/repo/b")
+        assert a["total"] == 3
+        assert a["blocked"] == 2
+        assert b["total"] == 2
+        assert b["blocked"] == 1
+        assert b["overridden"] == 1
+        # sorted by blocked desc
+        assert result["by_path"][0]["path"] == "/repo/a"
+
+    def test_by_path_not_included_by_default(self, tmp_path):
+        h = str(tmp_path / "history.jsonl")
+        self._write_entry(h, "passed")
+        result = engine.compute_stats(h)
+        assert "by_path" not in result
+
+    def test_combined_flags(self, tmp_path):
+        h = str(tmp_path / "history.jsonl")
+        self._write_entry(h, "overridden", cwd="/repo/x", override_reason="fp")
+        self._write_entry(h, "blocked", cwd="/repo/x")
+        result = engine.compute_stats(h, by_reason=True, by_path=True)
+        assert "by_reason" in result
+        assert "by_path" in result
+        assert result["total"] == 2
+
+    def test_malformed_lines_skipped(self, tmp_path):
+        h = tmp_path / "history.jsonl"
+        h.write_text("not json\n{bad\n")
+        result = engine.compute_stats(str(h))
+        assert result["total"] == 0
+
+
+class TestParseFlatYaml:
+
+    def test_basic_key_value(self):
+        result = _parse_flat_yaml("mode: block\nmodel: opus\n")
+        assert result == {"mode": "block", "model": "opus"}
+
+    def test_comments_and_blanks(self):
+        text = "# comment\nmode: block\n\n# another\nmodel: opus\n"
+        result = _parse_flat_yaml(text)
+        assert result == {"mode": "block", "model": "opus"}
+
+    def test_quoted_values(self):
+        text = 'language: "繁體中文（台灣）"\n'
+        result = _parse_flat_yaml(text)
+        assert result["language"] == "繁體中文（台灣）"
+
+    def test_single_quoted_values(self):
+        text = "language: '繁體中文'\n"
+        result = _parse_flat_yaml(text)
+        assert result["language"] == "繁體中文"
+
+    def test_colon_in_value(self):
+        text = "language: foo: bar\n"
+        result = _parse_flat_yaml(text)
+        assert result["language"] == "foo: bar"
+
+    def test_empty_value(self):
+        text = "mode:\n"
+        result = _parse_flat_yaml(text)
+        assert result["mode"] == ""
+
+    def test_spaces_around(self):
+        text = "  mode  :  block  \n"
+        result = _parse_flat_yaml(text)
+        assert result["mode"] == "block"
+
+    def test_no_colon_ignored(self):
+        text = "no colon here\nmode: block\n"
+        result = _parse_flat_yaml(text)
+        assert result == {"mode": "block"}
+
+
+class TestLoadPolicy:
+
+    def test_load_from_repo(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("mode: report\nconfidence: high\n", encoding="utf-8")
+        result = engine.load_policy(str(tmp_path))
+        assert result == {"mode": "report", "confidence": "high"}
+
+    def test_no_file(self, tmp_path):
+        result = engine.load_policy(str(tmp_path))
+        assert result == {}
+
+    def test_none_root(self):
+        result = engine.load_policy(None)
+        assert result == {}
+
+    def test_empty_root(self):
+        result = engine.load_policy("")
+        assert result == {}
+
+    def test_integer_conversion(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("max_tokens: 8000\n", encoding="utf-8")
+        result = engine.load_policy(str(tmp_path))
+        assert result["max_tokens"] == 8000
+
+    def test_invalid_integer_dropped(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("max_tokens: abc\n", encoding="utf-8")
+        result = engine.load_policy(str(tmp_path))
+        assert "max_tokens" not in result
+
+    def test_unknown_keys_ignored(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("mode: block\nfoo: bar\nbaz: 42\n", encoding="utf-8")
+        result = engine.load_policy(str(tmp_path))
+        assert result == {"mode": "block"}
+
+    def test_threshold_alias(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("threshold: major\n", encoding="utf-8")
+        result = engine.load_policy(str(tmp_path))
+        assert result == {"block_threshold": "major"}
+
+    def test_block_threshold_direct(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("block_threshold: major\n", encoding="utf-8")
+        result = engine.load_policy(str(tmp_path))
+        assert result == {"block_threshold": "major"}
+
+    def test_empty_values_skipped(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("mode:\nmodel: opus\n", encoding="utf-8")
+        result = engine.load_policy(str(tmp_path))
+        assert result == {"model": "opus"}
+
+    def test_full_policy(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text(
+            "mode: report\n"
+            "model: sonnet\n"
+            "max_tokens: 6000\n"
+            "block_threshold: major\n"
+            "confidence: high\n"
+            "language: English\n"
+            "scope: staged\n",
+            encoding="utf-8",
+        )
+        result = engine.load_policy(str(tmp_path))
+        assert result == {
+            "mode": "report",
+            "model": "sonnet",
+            "max_tokens": 6000,
+            "block_threshold": "major",
+            "confidence": "high",
+            "language": "English",
+            "scope": "staged",
+        }
+
+
+class TestResolve:
+
+    def test_cli_wins(self):
+        from cold_eyes.engine import _resolve
+        result = _resolve("report", "COLD_REVIEW_MODE", {"mode": "off"}, "mode", "block")
+        assert result == "report"
+
+    def test_env_var_over_policy(self, monkeypatch):
+        from cold_eyes.engine import _resolve
+        monkeypatch.setenv("COLD_REVIEW_MODE", "report")
+        result = _resolve(None, "COLD_REVIEW_MODE", {"mode": "off"}, "mode", "block")
+        assert result == "report"
+
+    def test_policy_over_default(self):
+        from cold_eyes.engine import _resolve
+        result = _resolve(None, "COLD_REVIEW_MODE_NONEXISTENT", {"mode": "report"}, "mode", "block")
+        assert result == "report"
+
+    def test_default_fallback(self):
+        from cold_eyes.engine import _resolve
+        result = _resolve(None, "COLD_REVIEW_MODE_NONEXISTENT", {}, "mode", "block")
+        assert result == "block"
+
+    def test_cast_applied(self):
+        from cold_eyes.engine import _resolve
+        result = _resolve("8000", "X", {}, "x", 12000, cast=int)
+        assert result == 8000
+        assert isinstance(result, int)
+
+
+class TestDoctorPolicyFile:
+
+    def test_policy_found(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("mode: report\n", encoding="utf-8")
+        result = engine.run_doctor(scripts_dir=str(tmp_path),
+                                   settings_path=str(tmp_path / "s.json"),
+                                   repo_root=str(tmp_path))
+        pf = next(c for c in result["checks"] if c["name"] == "policy_file")
+        assert pf["status"] == "ok"
+        assert "mode" in pf["detail"]
+
+    def test_policy_not_found(self, tmp_path):
+        result = engine.run_doctor(scripts_dir=str(tmp_path),
+                                   settings_path=str(tmp_path / "s.json"),
+                                   repo_root=str(tmp_path))
+        pf = next(c for c in result["checks"] if c["name"] == "policy_file")
+        assert pf["status"] == "info"
+
+    def test_policy_empty(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("# only comments\n", encoding="utf-8")
+        result = engine.run_doctor(scripts_dir=str(tmp_path),
+                                   settings_path=str(tmp_path / "s.json"),
+                                   repo_root=str(tmp_path))
+        pf = next(c for c in result["checks"] if c["name"] == "policy_file")
+        assert pf["status"] == "info"

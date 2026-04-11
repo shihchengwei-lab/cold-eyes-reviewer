@@ -16,7 +16,7 @@ Claude Code session ends
        ├─ lockfile held by another review → exit
        │
        ▼
-  cold_review_engine.py (all review logic)
+  cold_eyes/cli.py → engine.py (all review logic)
        │
        ├─ collect files → filter → risk-rank → build diff (token-budgeted)
        ├─ call Claude CLI with system prompt
@@ -122,6 +122,31 @@ Other scopes:
 - `COLD_REVIEW_SCOPE=head` — review `git diff HEAD` (staged + unstaged, no untracked)
 
 ## Configuration
+
+### Policy file (per-repo)
+
+Place `.cold-review-policy.yml` in your project root to set repo-level defaults. This replaces the need for global environment variables in repos that need specific settings.
+
+```yaml
+# .cold-review-policy.yml
+mode: report
+model: sonnet
+max_tokens: 8000
+block_threshold: major
+confidence: high
+language: English
+scope: staged
+```
+
+All keys are optional. Only include what you want to override.
+
+**Resolution priority:** CLI arg > environment variable > policy file > hardcoded default.
+
+If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. If neither env var nor policy file sets a value, the hardcoded default applies.
+
+Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`.
+
+`doctor` check 8 reports whether this file exists and what keys it sets.
 
 ### Environment variables
 
@@ -260,6 +285,7 @@ If reviews aren't running, check:
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls `cold_eyes/cli.py` |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
 | `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
+| `.cold-review-policy.yml` | Per-repo configuration defaults (optional, placed in project root) |
 
 ## Background
 
@@ -271,9 +297,10 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`). Build a dashboard, filter by state, chart trends over time. Override entries include `override_reason` when provided.
+- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`). Build a dashboard, filter by state, chart trends over time. Override entries include `override_reason` when provided. Use `stats` and `aggregate-overrides` commands to query it.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
+- **`.cold-review-policy.yml`** — Flat key-value config. Set per-repo defaults for mode, model, threshold, etc.
 
 ## Diagnostics
 
@@ -281,7 +308,7 @@ Cold Eyes is a hook and a set of JSON files. Everything is designed to be readab
 python ~/.claude/scripts/cold_eyes/cli.py doctor
 ```
 
-Outputs a JSON report checking 7 items:
+Outputs a JSON report checking 8 items:
 
 | Check | What it verifies |
 |---|---|
@@ -292,6 +319,7 @@ Outputs a JSON report checking 7 items:
 | `settings_hook` | `settings.json` has a Stop hook referencing `cold-review.sh` |
 | `git_repo` | Current directory is a git repository |
 | `ignore_file` | `.cold-review-ignore` exists in repo root (info only, not required) |
+| `policy_file` | `.cold-review-policy.yml` exists and lists loaded keys (info only, not required) |
 
 If reviews aren't running, `doctor` is the first thing to check.
 
@@ -302,6 +330,21 @@ python ~/.claude/scripts/cold_eyes/cli.py aggregate-overrides
 ```
 
 Returns a JSON summary of all override entries in history: total count, reasons grouped by frequency, and recent override entries. Use this to identify false-positive patterns and tune thresholds or prompts.
+
+### Stats
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py stats
+python ~/.claude/scripts/cold_eyes/cli.py stats --last 7d
+python ~/.claude/scripts/cold_eyes/cli.py stats --last 7d --by-reason --by-path
+```
+
+Returns a JSON summary of review activity from history:
+
+- **Total and per-state counts** — passed, blocked, overridden, skipped, infra_failed, failed, reported
+- **`--last`** — filter by time window: `7d` (days), `24h` (hours), `2w` (weeks)
+- **`--by-reason`** — override reasons grouped by frequency
+- **`--by-path`** — per-repo breakdown with total, blocked, and overridden counts (sorted by blocked descending)
 
 ## Known limitations
 

@@ -7,6 +7,7 @@ import sys
 
 from cold_eyes.constants import DEPLOY_FILES
 from cold_eyes.git import git_cmd
+from cold_eyes.config import load_policy, POLICY_FILENAME
 
 
 def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
@@ -101,6 +102,20 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
     else:
         checks.append({"name": "ignore_file", "status": "info",
                        "detail": ".cold-review-ignore not found (optional)"})
+
+    # 8. .cold-review-policy.yml (info level)
+    policy = load_policy(repo_root) if repo_root else {}
+    policy_path = os.path.join(repo_root, POLICY_FILENAME) if repo_root else ""
+    if policy:
+        keys = ", ".join(sorted(policy.keys()))
+        checks.append({"name": "policy_file", "status": "ok",
+                       "detail": f"{POLICY_FILENAME} loaded ({keys})"})
+    elif policy_path and os.path.isfile(policy_path):
+        checks.append({"name": "policy_file", "status": "info",
+                       "detail": f"{POLICY_FILENAME} found but empty or unreadable"})
+    else:
+        checks.append({"name": "policy_file", "status": "info",
+                       "detail": f"{POLICY_FILENAME} not found (optional)"})
 
     all_ok = all(c["status"] != "fail" for c in checks)
     return {"action": "doctor", "checks": checks, "all_ok": all_ok}

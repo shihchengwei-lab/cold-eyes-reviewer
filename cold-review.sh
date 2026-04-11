@@ -27,19 +27,16 @@ LOCKFILE="$HOME/.claude/.cold-review-lock"
 
 MODE="${COLD_REVIEW_MODE:-block}"
 MODEL="${COLD_REVIEW_MODEL:-opus}"
-THRESHOLD="${COLD_REVIEW_BLOCK_THRESHOLD:-critical}"
-CONFIDENCE="${COLD_REVIEW_CONFIDENCE:-medium}"
-LANGUAGE="${COLD_REVIEW_LANGUAGE:-}"
-SCOPE="${COLD_REVIEW_SCOPE:-working}"
 OVERRIDE_REASON="${COLD_REVIEW_OVERRIDE_REASON:-}"
 
 # Token budget: prefer MAX_TOKENS, fallback to MAX_LINES×4
+# Always computed here for backward compat (MAX_LINES conversion)
 if [[ -n "${COLD_REVIEW_MAX_LINES:-}" ]]; then
   MAX_TOKENS=$((COLD_REVIEW_MAX_LINES * 4))
 elif [[ -n "${COLD_REVIEW_MAX_TOKENS:-}" ]]; then
   MAX_TOKENS="$COLD_REVIEW_MAX_TOKENS"
 else
-  MAX_TOKENS=12000
+  MAX_TOKENS=""
 fi
 
 # --- Helper: log guard-level skips to history ---
@@ -91,9 +88,17 @@ echo $$ > "$LOCKFILE"
 trap 'rm -f "$LOCKFILE"' EXIT
 
 # --- Run engine ---
-ENGINE_ARGS=(run --mode "$MODE" --model "$MODEL" --max-tokens "$MAX_TOKENS" --threshold "$THRESHOLD" --confidence "$CONFIDENCE" --scope "$SCOPE")
-[[ -n "$LANGUAGE" ]] && ENGINE_ARGS+=(--language "$LANGUAGE")
-[[ -n "$OVERRIDE_REASON" ]] && ENGINE_ARGS+=(--override-reason "$OVERRIDE_REASON")
+# Only pass flags for explicitly-set env vars; engine resolves
+# unset values via policy file → hardcoded defaults.
+ENGINE_ARGS=(run)
+[[ -n "${COLD_REVIEW_MODE+x}" ]]            && ENGINE_ARGS+=(--mode "$MODE")
+[[ -n "${COLD_REVIEW_MODEL+x}" ]]           && ENGINE_ARGS+=(--model "${COLD_REVIEW_MODEL}")
+[[ -n "$MAX_TOKENS" ]]                      && ENGINE_ARGS+=(--max-tokens "$MAX_TOKENS")
+[[ -n "${COLD_REVIEW_BLOCK_THRESHOLD+x}" ]] && ENGINE_ARGS+=(--threshold "${COLD_REVIEW_BLOCK_THRESHOLD}")
+[[ -n "${COLD_REVIEW_CONFIDENCE+x}" ]]      && ENGINE_ARGS+=(--confidence "${COLD_REVIEW_CONFIDENCE}")
+[[ -n "${COLD_REVIEW_SCOPE+x}" ]]           && ENGINE_ARGS+=(--scope "${COLD_REVIEW_SCOPE}")
+[[ -n "${COLD_REVIEW_LANGUAGE:-}" ]]         && ENGINE_ARGS+=(--language "${COLD_REVIEW_LANGUAGE}")
+[[ -n "$OVERRIDE_REASON" ]]                  && ENGINE_ARGS+=(--override-reason "$OVERRIDE_REASON")
 RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>&2) || true
 
 # --- Release lock early ---

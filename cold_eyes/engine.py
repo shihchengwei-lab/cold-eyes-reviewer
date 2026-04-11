@@ -11,16 +11,49 @@ from cold_eyes.claude import call_claude
 from cold_eyes.review import parse_review_output
 from cold_eyes.policy import apply_policy
 from cold_eyes.history import log_to_history
+from cold_eyes.config import load_policy
 
 
-def run(mode, model, max_tokens, threshold, confidence=None, language=None,
-        scope="working", override_reason=None):
+def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
+    """Resolve a setting.  CLI arg > env var > policy file > default."""
+    if cli_val is not None:
+        return cast(cli_val) if cast else cli_val
+    env = os.environ.get(env_name)
+    if env is not None:
+        return cast(env) if cast else env
+    pol = policy.get(policy_key)
+    if pol is not None:
+        return cast(pol) if cast else pol
+    return default
+
+
+def run(mode=None, model=None, max_tokens=None, threshold=None,
+        confidence=None, language=None, scope=None, override_reason=None):
     """Execute full review pipeline. Return FinalOutcome dict."""
     cwd = os.getcwd()
+    repo_root = git_cmd("rev-parse", "--show-toplevel")
+    policy = load_policy(repo_root)
+
+    # Resolve settings: CLI arg > env var > policy file > default
+    mode = _resolve(mode, "COLD_REVIEW_MODE", policy, "mode", "block")
+    model = _resolve(model, "COLD_REVIEW_MODEL", policy, "model", "opus")
+    max_tokens = _resolve(max_tokens, "COLD_REVIEW_MAX_TOKENS", policy,
+                          "max_tokens", 12000, cast=int)
+    threshold = _resolve(threshold, "COLD_REVIEW_BLOCK_THRESHOLD", policy,
+                         "block_threshold", "critical")
+    min_confidence = _resolve(confidence, "COLD_REVIEW_CONFIDENCE", policy,
+                              "confidence", "medium")
+    if isinstance(min_confidence, str):
+        min_confidence = min_confidence.lower()
+    scope = _resolve(scope, "COLD_REVIEW_SCOPE", policy, "scope", "working")
+    language = _resolve(language, "COLD_REVIEW_LANGUAGE", policy, "language", None)
+
+    # mode=off: skip immediately (normally caught by shell, but policy file may set it)
+    if mode == "off":
+        return _skip("mode is off")
+
     allow_once = os.environ.get("COLD_REVIEW_ALLOW_ONCE") == "1"
     override_reason = override_reason or os.environ.get("COLD_REVIEW_OVERRIDE_REASON", "")
-    min_confidence = confidence or os.environ.get("COLD_REVIEW_CONFIDENCE", "medium").lower()
-    repo_root = git_cmd("rev-parse", "--show-toplevel")
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
 
     # 1. Collect files
