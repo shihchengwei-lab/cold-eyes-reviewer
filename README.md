@@ -10,20 +10,20 @@ Cold Eyes is a second-pass gate, not a full code review. It sees only the git di
 Claude Code session ends
        │
        ▼
-  Stop hook fires
+  cold-review.sh (guard checks only)
        │
-       ├─ No git changes? → skip
-       ├─ All files ignored? → skip
-       ├─ Already reviewing? → skip (prevents recursion)
-       │
-       ▼
-  Collect diff (filtered, risk-sorted, within token budget)
+       ├─ off mode / recursion / no git repo → exit
+       ├─ lockfile held by another review → exit
        │
        ▼
-  Cold Eyes reviews the diff
+  cold_review_engine.py (all review logic)
        │
-       ├─ block mode: issues at or above threshold → block → Claude fixes → done
-       ├─ report mode: log review → done
+       ├─ collect files → filter → risk-rank → build diff (token-budgeted)
+       ├─ call Claude CLI with system prompt
+       ├─ parse review → confidence hard-filter → policy decision
+       │
+       ├─ block mode: issues at or above threshold → block → Claude fixes
+       ├─ report mode: log review → pass
        └─ all states logged to ~/.claude/cold-review-history.jsonl
 ```
 
@@ -189,9 +189,9 @@ If reviews aren't running, check:
 
 | File | Purpose |
 |---|---|
-| `cold-review.sh` | Main Stop hook script (thin orchestrator) |
-| `cold_review_engine.py` | Review pipeline: diff building, Claude call, policy, confidence filter |
-| `cold-review-helper.py` | JSON parsing, prompt assembly, ignore/rank logic |
+| `cold_review_engine.py` | Core: diff building, Claude call, policy engine, confidence filter, history logging |
+| `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls engine |
+| `cold-review-helper.py` | Legacy shell interface: JSON parsing, prompt assembly, ignore/rank (engine is primary path) |
 | `cold-review-prompt.txt` | System prompt template |
 | `.cold-review-ignore` | Default ignore patterns |
 
