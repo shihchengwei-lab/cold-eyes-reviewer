@@ -77,6 +77,14 @@ Add this to your `hooks.Stop` array:
 
 Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will review them.
 
+## Important: what gets reviewed
+
+Cold Eyes reviews **all uncommitted changes** in the working tree — not just what Claude did in the current turn. It has no way to distinguish "changes Claude made" from "changes you had before opening the session."
+
+**Commit or push before starting a new session.** This keeps the diff clean and the review accurate. If you leave uncommitted changes from a previous session, the reviewer will review those too and may block Claude for things it didn't do.
+
+This is by design. The reviewer sees what git sees. No more, no less.
+
 ## Configuration
 
 ### Environment variables
@@ -85,6 +93,7 @@ Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will r
 |---|---|---|---|
 | `COLD_REVIEW_MODE` | `block` | `block`, `report`, `off` | Block and force fix / log only / disable |
 | `COLD_REVIEW_MODEL` | `opus` | `opus`, `sonnet`, `haiku` | Which model runs the review |
+| `COLD_REVIEW_MAX_LINES` | `500` | any integer | Max diff lines to review (large diffs get truncated) |
 
 ```bash
 # Use sonnet to save tokens
@@ -145,6 +154,12 @@ Edit `~/.claude/scripts/cold-review-prompt.txt` to change what the reviewer chec
 This tool was built after observing [Cinder](https://github.com/shihchengwei-lab/Not-a-Mascot), a Claude Code buddy companion that provided independent commentary during coding sessions. Cinder was silently shut down on April 11, 2026. Cold Eyes carries forward the idea that a second pair of eyes — even artificial ones — catches things the first pair misses.
 
 The difference: Cinder watched in real time and commented. Cold Eyes reviews after the fact and blocks if needed. Cinder was a companion. Cold Eyes is a gate.
+
+## Known limitations
+
+- **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. If you use this daily for months, the file will get large. Periodically archive or truncate it yourself. A future version may add automatic rotation.
+- **Large diffs get truncated.** Diffs over 500 lines (configurable via `COLD_REVIEW_MAX_LINES`) are cut to keep token usage reasonable. The reviewer is told the diff was truncated.
+- **Silent on auth failure.** If your Claude Code subscription is expired or rate-limited, the review silently skips. Check stderr (`claude -d`) if you suspect reviews aren't running.
 
 ## License
 
