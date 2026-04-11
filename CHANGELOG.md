@@ -1,5 +1,48 @@
 # Changelog
 
+## v0.11.0 — Personal Hardening
+
+9-patch hardening to make block mode trustworthy for daily use. 202 tests (was 162).
+
+### Breaking changes
+
+- **`git_cmd()` raises on failure** — Returns are now success-only; non-zero exit raises `GitCommandError`. No more silent pass-through on git errors.
+- **`build_diff()` returns dict** — Replaces 5-tuple with dict containing `partial_files`, `skipped_budget`, `skipped_binary`, `skipped_unreadable`.
+- **`adapter.review()` returns `ReviewInvocation`** — Captures `stdout`, `stderr`, `exit_code`, `failure_kind`. Backward-compatible tuple destructuring via `__iter__`.
+- **Report-mode infra state renamed** — `"failed"` → `"infra_failed"` (consistent across block/report modes).
+- **`COLD_REVIEW_MAX_LINES` removed from shell** — Use `COLD_REVIEW_MAX_TOKENS` only.
+- **Shell lock mechanism** — Changed from plain file to `mkdir`-based atomic lock at `~/.claude/.cold-review-lock.d/`.
+
+### New features
+
+- **One-time override token** — `python cli.py arm-override --reason <reason>` creates a file-based token consumed on next block. Replaces env var `ALLOW_ONCE` (deprecated, still works with warning).
+- **Typed git failures** — `GitCommandError` and `ConfigError` exceptions. `pr-diff` without `--base` raises `ConfigError` instead of silently returning empty.
+- **Rich diff metadata** — `partial_files` (cut mid-content), `skipped_binary`, `skipped_unreadable`, `skipped_budget` tracked separately. `truncated=True` when any is non-empty — fixes bug where last file cut in half was not flagged.
+- **Diagnosable infra failures** — `ReviewInvocation` captures stderr. History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and `stderr_excerpt`.
+- **Language-aware block labels** — `format_block_reason()` uses English labels (Check/Verdict/Fix) when language is not Chinese.
+- **Block reason shows file + line** — `[CRITICAL] auth.py (~L42)` instead of just `[CRITICAL] (~L42)`.
+- **Effective pass after filter** — Report mode uses `len(filtered_issues) == 0` instead of model's raw `pass` field.
+
+### Shell rewrite
+
+- `cold-review.sh` reduced to pure shim (~100 lines): guards + invoke CLI + translate JSON
+- Removed: `helper.py` dependency, `log_state()` function, `MAX_LINES` conversion, direct `claude -p` call
+- `parse-hook` inlined as python one-liner
+- Atomic `mkdir` lock with stale PID detection and single retry
+
+### Doctor improvements
+
+3 new checks (total 11):
+- `legacy_helper` — detects `cold-review-helper.py` in scripts dir (split-brain)
+- `shell_version` — detects legacy patterns in `cold-review.sh`
+- `legacy_env` — detects `COLD_REVIEW_MAX_LINES` still set
+
+`DEPLOY_FILES` expanded from 5 to 16 (complete package).
+
+### Tests
+
+202 tests (+40): git failures 5, ReviewInvocation 5, override token 8, diff metadata 5, policy state machine 7, doctor 4, shell integrity 4, misc 2.
+
 ## v0.8.0 — Package Restructure
 
 Monolithic `cold_review_engine.py` (739 lines) split into `cold_eyes/` package (12 modules). Helper duplication eliminated.
