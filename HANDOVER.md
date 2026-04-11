@@ -2,17 +2,17 @@
 
 ## 現況
 
-- **版本：** v1.0.0（master，2026-04-11）
+- **版本：** v1.0.0（master `f92685b`，2026-04-11）
 - **分支：** master
 - **測試：** 197 passed
-- **部署：** `~/.claude/scripts/` 需同步
+- **部署：** `~/.claude/scripts/` 已同步，`doctor` all_ok
 
 ## 架構
 
 Claude Code Stop hook 的零上下文 code reviewer。
 
 ```
-cold-review.sh              Stop hook 入口（shim，~100 行）
+cold-review.sh              Stop hook shim（~100 行），只做 guard + 呼叫 CLI
   └→ cold_eyes/cli.py       CLI entry → engine.py → 各模組
 
 cold-review-prompt.txt      系統 prompt 模板，placeholders: {language}
@@ -42,82 +42,33 @@ Import 依賴圖無循環：constants 是 leaf，git 定義 GitCommandError/Conf
 ### 起點
 
 接手 v0.10.0（`6dfc272`）。Phase 1+2 全部完成。162 tests。
+收到一份「個人用修補方案」patchset 文件（9 patches），指出 7 個根本問題。
 
-### v0.11.0 — Personal Hardening（9 patches）
+### v0.10.0 → v0.11.0：9-patch hardening
 
-**PATCH 4: Typed git failures（+5 tests）**
+| Patch | 改了什麼 | 測試 |
+|---|---|---|
+| 4 | `git_cmd()` 失敗 raise `GitCommandError`，不再回空字串 | +5 |
+| 6 | `ReviewInvocation` 捕獲 stderr + failure_kind | +7 |
+| 3 | `arm-override` 一次性 token，`ALLOW_ONCE` deprecated | +8 |
+| 5 | `build_diff()` 回傳 dict，partial/binary/unreadable/budget 分開追蹤 | +5 |
+| 7 | `infra_failed` 一致、`effective_pass` 取代 model `pass`、language-aware labels | +7 |
+| 2+1 | Shell 重寫：`mkdir` atomic lock、移除 helper 依賴、移除 MAX_LINES | — |
+| 8 | Doctor 加 3 checks（legacy_helper/shell_version/legacy_env），DEPLOY_FILES 完整 | +4 |
+| 9 | Shell smoke：no_helper、no_claude_direct、no_max_lines、mkdir_lock | +4 |
 
-`git.py` — `GitCommandError(RuntimeError)` + `ConfigError(RuntimeError)`：
-- `git_cmd()` 非零 exit 直接 raise，不再回空字串
-- `collect_files("pr-diff")` 無 base → `ConfigError`
-- `engine.py` 用 `try/except` 包 `collect_files()` + `build_diff()`，映射到 `infra_failed`
+202 tests。
 
-**PATCH 6: ReviewInvocation + stderr（+7 tests）**
+### v0.11.0 → v1.0.0：清殘渣 + API 穩定宣告
 
-`claude.py` — `ReviewInvocation` class（stdout, stderr, exit_code, failure_kind）：
-- `ClaudeCliAdapter._call()` 捕獲 stderr
-- failure_kind: `None`/`timeout`/`cli_not_found`/`cli_error`/`empty_output`
-- `MockAdapter` 同步更新，支援 stderr/failure_kind 參數
-- `__iter__` 保持向後相容 tuple 解構
+- 刪除 `cold_eyes/helper.py`（shell 不再使用，deprecated since v0.11.0）
+- 刪除 `tests/test_helper.py`（5 tests）
+- `DEPLOY_FILES` 15 筆
+- 修 shell `2>&2`（no-op）→ `2>/dev/null`
+- README 加 token 成本估算表、Windows lock caveat
+- GitHub repo description 更新
 
-`history.py` — 新增 `failure_kind` + `stderr_excerpt` 欄位
-
-**PATCH 3: One-time override token（+8 tests）**
-
-新模組 `override.py`：
-- `arm_override(repo_root, reason, ttl_minutes=10)` → `~/.claude/cold-review-overrides/<hash>.json`
-- `consume_override(repo_root)` → 讀取、驗證（repo match + 未過期）、刪除、回傳 `(True, reason)`
-- Token 僅能使用一次，過期自動清除
-
-`cli.py` — `arm-override` 子命令（`--reason`, `--ttl`）
-`engine.py` — `consume_override()` 優先於 legacy `ALLOW_ONCE`（deprecated with warning）
-
-**PATCH 5: Rich diff metadata（+5 tests）**
-
-`git.py` — `build_diff()` 回傳 dict：
-- `partial_files`（切半）、`skipped_budget`（預算）、`skipped_binary`、`skipped_unreadable`
-- `truncated = bool(any of above non-empty)` — 修復最後一個檔案被切半但無後續 skipped 的 bug
-
-**PATCH 7: Policy/state machine fixes（+7 tests）**
-
-`policy.py`：
-- report mode infra failure state: `"failed"` → `"infra_failed"`（與 block mode 一致）
-- `effective_pass = len(filtered_issues) == 0`（取代 model 原始 `pass` 值）
-- `format_block_reason()` 加 `language` 參數，中/英文標籤切換
-- Issue 顯示 `file` + `line_hint`：`[CRITICAL] auth.py (~L42)`
-- Override 指引改為 `arm-override`
-
-**PATCH 2+1: Shell shim rewrite**
-
-`cold-review.sh` — 完全重寫（~100 行）：
-- 移除 helper.py 依賴、`log_state()` 函式、`MAX_LINES` 轉換
-- `parse-hook` 改用 inline python one-liner
-- Lock 改為 `mkdir` atomic（TOCTOU race 修復），stale detection + 單次重試
-- Engine 空輸出不再 log（engine 自己處理）
-
-**PATCH 8: Doctor/deploy cleanup**
-
-`doctor.py` — 3 新 checks：
-- `legacy_helper`：偵測 `cold-review-helper.py`（split-brain）
-- `shell_version`：偵測 shell 中的 legacy patterns
-- `legacy_env`：偵測 `COLD_REVIEW_MAX_LINES`
-
-`constants.py` — `DEPLOY_FILES` 從 5 筆更新為 16 筆（完整 package）
-
-**PATCH 9: Final test sweep（+4 shell smoke tests）**
-
-- `test_no_helper_references`、`test_no_direct_claude_call`、`test_no_max_lines`、`test_uses_mkdir_lock`
-- Doctor: `test_legacy_helper_detected`、`test_clean_shell_ok`、`test_shell_with_legacy_patterns_detected`
-
-**README 更新**
-
-- `ALLOW_ONCE` 標記 deprecated，新增 `arm-override` 段落
-- Failure modes 表重寫（`infra_failed` + `failure_kind`）
-- Diagnostics 表從 8 → 11 checks
-- Known limitations 更新（truncation 有分類、infra 可診斷）
-- Files 表移除硬編模組數
-
-202 tests（engine 155 + helper 5 + shell smoke 14 + override 8 + misc 20）。
+197 tests。API stable。
 
 ## 部署
 
@@ -143,32 +94,33 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor   # 驗證
 
 解析優先級：CLI arg > env var > `.cold-review-policy.yml` > hardcoded default。
 
-### 新的 override 流程
+### Override 流程
 
 ```bash
-# 取代 ALLOW_ONCE — 真的只能用一次
+# 一次性放行（token 10 分鐘後過期，用完即刪）
 python ~/.claude/scripts/cold_eyes/cli.py arm-override --reason false_positive
-# 下一次 block 會被放行，token 自動消耗刪除
 ```
 
-## 後續計畫
+## 後續方向
 
 產品化路線圖在 `~/Downloads/cold_eyes_productization_roadmap.md`。
-Phase 1 計畫在 `~/Desktop/cold-eyes-phase1-plan.md`。
 
-Phase 1 全部完成。Phase 2 全部完成。v0.11.0 hardening 完成。
+### 可能的下一步
 
-### Phase 3（商業化）
+- `pyproject.toml` — 需要 `pip install` 時加（目前用 `sys.path` hack，`cli.py` 頂部）
+- History rotation — append-only JSONL 會無限成長，可加 `--rotate` 子命令
+- `line_hint` 實測 — 幻覺率未量化，prompt 已限制但未驗證
+- PyYAML 升級 — flat parser 夠用，但巢狀結構需要時可無縫切換
 
-- Open-core：Free/OSS 本地 runner + Pro/Team 中央 policy + Enterprise SSO/稽核
+### 不建議做的
 
-### 架構演進時機
+- Phase 3 商業化 — 對個人用工具是過度設計
+- Daemon / 常駐服務 — hook 架構已夠用
+- 複雜權限模型 — 單人使用無需
 
-Package 轉型已完成。下一步：需要 `pip install` 時加 `pyproject.toml`（預計引入外部依賴時）。
-Policy file 目前用 flat YAML subset parser；引入 PyYAML 後可無縫升級支援巢狀結構。
+## 已知問題
 
-## 待辦 / 已知問題
-
-- `line_hint` 的 LLM 幻覺率未實測。prompt 已限制「不確定就留空」，block 顯示加了 `~` 前綴
-- `cli.py` 和 `helper.py` 頂部有 `sys.path` manipulation 以支援直接 `python cold_eyes/cli.py` 呼叫。改為 `pip install -e .` 後可移除
-- 舊的 history 條目仍有 `state: "failed"`（v0.11.0 前的 report-mode infra failure），stats 查詢時要注意
+- `cli.py` 頂部有 `sys.path` manipulation，改為 `pip install -e .` 後可移除
+- Windows Git Bash 的 `mkdir` lock 和 `kill -0` stale detection 不如原生 Unix 可靠
+- 舊 history 條目仍有 `state: "failed"`（v0.11.0 前的 report-mode infra failure），stats 查詢時注意
+- `line_hint` 是 LLM 估計值，block 顯示加了 `~` 前綴，但幻覺率未實測
