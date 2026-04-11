@@ -26,7 +26,7 @@ from cold_eyes.prompt import build_prompt_text
 from cold_eyes.history import log_to_history, aggregate_overrides, compute_stats, prune_history, archive_history, quality_report
 from cold_eyes.config import load_policy, _parse_flat_yaml, POLICY_FILENAME
 from cold_eyes.claude import (
-    ModelAdapter, ClaudeCliAdapter, MockAdapter, call_claude, ReviewInvocation,
+    ModelAdapter, ClaudeCliAdapter, MockAdapter, ReviewInvocation,
 )
 from cold_eyes.doctor import run_doctor
 
@@ -1470,13 +1470,6 @@ class TestClaudeCliAdapter:
     def test_default_timeout(self):
         adapter = ClaudeCliAdapter()
         assert adapter.timeout == 300
-
-
-class TestCallClaudeLegacy:
-
-    def test_legacy_wrapper_callable(self):
-        """call_claude still importable and callable (will fail without CLI)."""
-        assert callable(call_claude)
 
 
 # ===========================================================================

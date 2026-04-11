@@ -94,12 +94,3 @@ class MockAdapter(ModelAdapter):
         self.call_count += 1
         return ReviewInvocation(self.response, self._stderr, self.exit_code,
                                 self._failure_kind)
-
-
-# Backward compat — used nowhere after engine migration, kept for external callers.
-def call_claude(diff_text, model, prompt_file):
-    """Legacy wrapper.  Prefer ClaudeCliAdapter."""
-    adapter = ClaudeCliAdapter()
-    with open(prompt_file, "r", encoding="utf-8") as f:
-        prompt_text = f.read()
-    return adapter.review(diff_text, prompt_text, model)

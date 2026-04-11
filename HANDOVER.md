@@ -2,12 +2,12 @@
 
 ## 現況
 
-- **版本：** v1.3.0（master，`271aa4a`，2026-04-11）
+- **版本：** v1.3.0（master，HEAD 未 commit，base `d28c8bd`，2026-04-12）
 - **分支：** master
-- **測試：** 288 passed（coverage 80%，門檻 75%）
-- **部署：** `~/.claude/scripts/` 已同步
+- **測試：** 289 passed（coverage 82%，門檻 75%）
+- **部署：** `~/.claude/scripts/` 需同步（本次有 code 變更）
 - **GitHub Release：** v1.3.0 已建立（release workflow 自動建），v1.2.0、v1.1.0 也有
-- **版本訊號：** `__init__.py` = 1.3.0 / CHANGELOG = v1.3.0 (288 tests) / README badge / GitHub Release ✓ 一致
+- **版本訊號：** `__init__.py` = 1.3.0 / CHANGELOG = v1.3.0 (289 tests) / README badge / GitHub Release ✓ 一致
 - **CI：** Tests workflow（3 OS × 2 Python + coverage + ruff + shellcheck）全綠
 
 ## 架構
@@ -70,9 +70,9 @@ GitHub 模板
   .github/ISSUE_TEMPLATE/          bug_report.yml, feature_request.yml
   .github/PULL_REQUEST_TEMPLATE.md PR checklist
 
-tests/                       288 tests
-  test_engine.py             184 tests — engine pipeline, scope, mock adapter
-  test_shell_smoke.py        26 tests — shell shim, fail-closed parser
+tests/                       289 tests
+  test_engine.py             183 tests — engine pipeline, scope, mock adapter
+  test_shell_smoke.py        28 tests — shell shim, fail-closed parser, interpreter missing
   test_eval.py               24 tests — case loading, deterministic, sweep, single case
   test_risk_controls.py      30 tests — truncation policy, config, state reachability, zero-file skip, CLI --version, doctor Fix:
   test_schema.py             16 tests — validate_review, parser regressions
@@ -125,6 +125,40 @@ tests/                       288 tests
 7. **Failure modes doc** — 六種狀態完整分析、infra failure 分類、truncation 策略比較
 8. **Troubleshooting** — 8 個常見問題的診斷/修復對
 9. **Zero-file skip** — engine 在 `file_count==0` 時直接 skip，不呼叫 Claude
+
+---
+
+## 第二次會話做了什麼（2026-04-12）
+
+### 起點
+
+接手 v1.3.0（`d28c8bd`，288 tests）。
+收到 `cold-eyes-reviewer-phase-report.md`（三階段第三方複核），綜合 9.6/10「高度可信」。
+報告列出 5 個觀察點（F-1～F-5）和 3 個邊界缺口，加上 9 項改進建議。
+
+### 執行
+
+| # | 做了什麼 | 檔案 | 測試變化 |
+|---|---------|------|---------|
+| P0-3 | Token 估算 `len÷4` → `len(encode("utf-8"))÷4`，中文 diff 不再低估 | `git.py:117` | 0 |
+| P0-1 | Shell 加 python interpreter 偵測，缺失時 fail-closed（block JSON / stderr warn） | `cold-review.sh` | +2 |
+| P1-4 | history prune dedup 從 `id()` 改為 `json.dumps` content hash | `history.py:325` | 0 |
+| P1-5 | config parser 加 50 行防禦上限，只計非空白非註解行，超限 stderr warning | `config.py:20-38` | 0 |
+| P1-6 | 移除 `call_claude()` 保留函式 + 清理 test import + architecture.md 引用 | `claude.py`, `test_engine.py`, `architecture.md` | -1 |
+| P1-5 | release.yml 補齊 ruff + shellcheck（與 test.yml 一致） | `.github/workflows/release.yml` | 0 |
+| P1-3 | README 修正「all states logged」→「engine-level exits logged」+ 括號說明 | `README.md` | 0 |
+| review-fix | shell python 偵測移到 off-mode guard 之後（off mode 不需要 python） | `cold-review.sh` | 0 |
+| review-fix | `$PYTHON_CMD` 三處加雙引號（防 word split，符合 shellcheck） | `cold-review.sh` | 0 |
+| review-fix | config parser 超限改為 warn+break（保留已解析條目），非靜默 return {} | `config.py` | 0 |
+| review-fix | README ASCII tree `└─` 後接 `│` 矛盾修正 | `README.md` | 0 |
+
+### 教訓
+
+1. **防禦上限要計對東西**：第一版 config parser 上限計全部行數（含空白和註解），Cold Eyes 自己抓到「合法 policy 含大量註解會被靜默丟棄」。改為只計有效內容行。
+
+2. **新增的 guard 要放對位置**：python interpreter 偵測放在 off-mode guard 前面，導致 off mode 也被 python 缺失攔住。Cold Eyes 抓到後移到 guard 之後。
+
+3. **Shell 變數要引號**：`$PYTHON_CMD` 不加引號在路徑含空白時會 word split，且加了 shellcheck CI step 就會報錯。
 
 ## 部署
 
@@ -191,6 +225,6 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 - Windows Git Bash 的 `mkdir` lock 和 `kill -0` stale detection 不如原生 Unix 可靠
 - 舊 history 條目仍有 `state: "failed"`（v0.11.0 前），stats 查詢時注意
 - `line_hint` 是 LLM 估計值，block 顯示加了 `~` 前綴，幻覺率未實測
-- Token 估算仍為 len÷4 粗估
+- Token 估算為 `len(encode("utf-8"))÷4`（比舊版 `len÷4` 對中文準確，但仍為近似值）
 - Eval benchmark mode 需要 Claude CLI 可用，CI 環境跑不了
 - v1.3.0 tag 被刪除重建過兩次（第一次指向 pre-bugfix commit，第二次因 CI flaky test 失敗）。最終 tag 指向 `271aa4a`，release workflow 全綠，GitHub Release 已建立。

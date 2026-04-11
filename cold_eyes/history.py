@@ -322,10 +322,15 @@ def prune_history(history_path=None, keep_days=None, keep_entries=None):
     if keep_entries is not None:
         tail = entries[-keep_entries:] if keep_entries > 0 else []
         if kept:
-            kept_set = {id(e) for e in kept}
+            kept_set = {
+                json.dumps(e, sort_keys=True, ensure_ascii=False)
+                for e in kept
+            }
             for e in tail:
-                if id(e) not in kept_set:
+                key = json.dumps(e, sort_keys=True, ensure_ascii=False)
+                if key not in kept_set:
                     kept.append(e)
+                    kept_set.add(key)
             kept.sort(key=lambda e: e.get("timestamp", ""))
         else:
             kept = tail

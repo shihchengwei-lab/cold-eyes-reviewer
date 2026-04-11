@@ -10,8 +10,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - run: pip install pytest pytest-cov
+      - run: pip install pytest pytest-cov ruff
       - run: pytest tests/ -v --cov=cold_eyes --cov-report=term-missing
+      - run: ruff check cold_eyes/ tests/
+      - run: shellcheck cold-review.sh
       - name: Verify tag matches __version__
         run: |
           TAG="${GITHUB_REF_NAME#v}"

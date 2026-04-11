@@ -5,6 +5,7 @@ pairs are supported.  Forward-compatible with full YAML when PyYAML is added.
 """
 
 import os
+import sys
 
 POLICY_FILENAME = ".cold-review-policy.yml"
 
@@ -16,13 +17,25 @@ _VALID_KEYS = {
 }
 
 
+_MAX_POLICY_LINES = 50
+
+
 def _parse_flat_yaml(text):
     """Parse a flat key: value YAML file. Returns dict of string values."""
     result = {}
+    content_lines = 0
     for line in text.splitlines():
         stripped = line.strip()
         if not stripped or stripped.startswith("#"):
             continue
+        content_lines += 1
+        if content_lines > _MAX_POLICY_LINES:
+            print(
+                f"cold-review: policy file exceeds {_MAX_POLICY_LINES} "
+                "content lines, ignoring remaining entries",
+                file=sys.stderr,
+            )
+            break
         colon = stripped.find(":")
         if colon < 1:
             continue

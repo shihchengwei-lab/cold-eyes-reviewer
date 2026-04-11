@@ -26,7 +26,8 @@ Claude Code session ends
        │
        ├─ block mode: issues at or above threshold → block → Claude fixes
        ├─ report mode: log review → pass
-       └─ all states logged to ~/.claude/cold-review-history.jsonl
+       └─ engine-level exits logged to ~/.claude/cold-review-history.jsonl
+          (shell guard skips — off, recursion, no git repo, lock — are not logged)
 ```
 
 ## Output format
@@ -180,7 +181,7 @@ Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`
 |---|---|---|---|
 | `COLD_REVIEW_MODE` | `block` | `block`, `report`, `off` | Block and force fix / log only / disable |
 | `COLD_REVIEW_MODEL` | `opus` | `opus`, `sonnet`, `haiku` | Which model runs the review |
-| `COLD_REVIEW_MAX_TOKENS` | `12000` | any integer | Token budget for diff (len÷4 estimation) |
+| `COLD_REVIEW_MAX_TOKENS` | `12000` | any integer | Token budget for diff (UTF-8 byte÷4 estimation) |
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | `critical`, `major` | Minimum severity that triggers a block |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | `high`, `medium`, `low` | Minimum confidence to keep (hard filter) |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |

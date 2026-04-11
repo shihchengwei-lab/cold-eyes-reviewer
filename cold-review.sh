@@ -36,6 +36,22 @@ MODE="${COLD_REVIEW_MODE:-block}"
 # --- Guard: prevent recursion ---
 [[ "${COLD_REVIEW_ACTIVE:-}" == "1" ]] && exit 0
 
+# --- Resolve Python interpreter ---
+PYTHON_CMD=""
+for _candidate in python3 python; do
+  if command -v "$_candidate" > /dev/null 2>&1; then
+    PYTHON_CMD="$_candidate"
+    break
+  fi
+done
+if [[ -z "$PYTHON_CMD" ]]; then
+  echo "cold-review: python interpreter not found" >&2
+  if [[ "$MODE" == "block" ]]; then
+    echo '{"decision":"block","reason":"Cold Eyes Review — infrastructure failure: python interpreter not found"}'
+  fi
+  exit 0
+fi
+
 # --- Guard: engine must exist ---
 [[ ! -f "$ENGINE" ]] && { echo "cold-review: engine not found at $ENGINE" >&2; exit 0; }
 
@@ -72,7 +88,7 @@ trap 'release_lock' EXIT
 
 # --- Read hook input, check stop_hook_active ---
 INPUT=$(cat)
-STOP_ACTIVE=$(echo "$INPUT" | python -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('stop_hook_active') else 'false')" 2>/dev/null || echo "false")
+STOP_ACTIVE=$(echo "$INPUT" | "$PYTHON_CMD" -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('stop_hook_active') else 'false')" 2>/dev/null || echo "false")
 [[ "$STOP_ACTIVE" == "true" ]] && exit 0
 
 # --- Guard: must be in a git repo ---
@@ -94,7 +110,7 @@ ENGINE_ARGS=(run)
 [[ -n "${COLD_REVIEW_OVERRIDE_REASON:-}" ]]  && ENGINE_ARGS+=(--override-reason "${COLD_REVIEW_OVERRIDE_REASON}")
 
 # --- Run engine ---
-RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>/dev/null) || true
+RESULT=$("$PYTHON_CMD" "$ENGINE" "${ENGINE_ARGS[@]}" 2>/dev/null) || true
 
 # --- Release lock early ---
 release_lock
@@ -103,7 +119,7 @@ trap - EXIT
 # --- Parse result and act (fail-closed) ---
 # Any failure to get valid engine output is an infrastructure failure.
 # Block mode: emit block decision.  Report mode: warn to stderr only.
-echo "$RESULT" | python -c "
+echo "$RESULT" | "$PYTHON_CMD" -c "
 import json, sys
 
 mode = '$MODE'

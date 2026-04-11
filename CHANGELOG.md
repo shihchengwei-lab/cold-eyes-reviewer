@@ -2,7 +2,7 @@
 
 ## v1.3.0 — Governance & Polish
 
-Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 288 tests (was 283).
+Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 289 tests (was 283).
 
 ### Governance
 
@@ -24,11 +24,19 @@ Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 
 ### Fixes
 
 - **Skip on zero file_count** — engine now skips when all file diffs are empty (file_count=0), preventing false `infra_failed` blocks from empty Claude responses
+- **Token estimation accuracy** — `len(text) // 4` → `len(text.encode("utf-8")) // 4`, more accurate for CJK diffs (3 UTF-8 bytes ≈ 1 token)
+- **Shell fail-closed on missing python** — `cold-review.sh` resolves `python3`/`python` before use; if neither found, block mode emits block decision, report mode warns
+- **Shell guard ordering** — python interpreter detection moved after off-mode guard (off mode doesn't need python)
+- **Shell quoting** — `$PYTHON_CMD` quoted in all 3 usage sites to prevent word-split
+- **Config parser line limit** — counts only non-blank non-comment lines (was total lines); warns on stderr when exceeding 50 instead of silent discard
+- **History prune dedup** — `id()`-based object identity replaced with `json.dumps` content hash (robust across refactors)
+- **Removed `call_claude()` legacy wrapper** — dead code, no external callers
+- **README logging claim** — corrected "all states logged" to "engine-level exits logged" (shell guard skips are not logged)
 
 ### CI
 
-- **Coverage in CI** — `pytest-cov` with 75% threshold (actual: 80%), coverage report in test output
-- **Release workflow** — `.github/workflows/release.yml` runs tests and verifies tag-to-`__version__` alignment before creating GitHub Release
+- **Coverage in CI** — `pytest-cov` with 75% threshold (actual: 82%), coverage report in test output
+- **Release workflow** — `.github/workflows/release.yml` runs tests, ruff, shellcheck, and verifies tag-to-`__version__` alignment before creating GitHub Release
 - **Release checklist updated** — coverage gate and release workflow steps added
 
 ### Documentation

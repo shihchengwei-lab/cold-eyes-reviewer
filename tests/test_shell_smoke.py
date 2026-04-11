@@ -28,6 +28,7 @@ def run_shell(env_override=None, stdin_data="", cwd=None):
         input=stdin_data,
         capture_output=True,
         text=True,
+        encoding="utf-8",
         env=env,
         cwd=cwd,
         timeout=30,
@@ -64,6 +65,45 @@ class TestNoGitRepo:
             )
             assert result.returncode == 0
             assert "not a git repo" in result.stderr
+
+
+@skip_no_bash
+class TestNoPythonInterpreter:
+    """Verify fail-closed when python interpreter is missing."""
+
+    def test_block_mode_emits_block_on_missing_python(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, ".claude"), exist_ok=True)
+            # PATH with only bash (no python/python3)
+            bash_dir = os.path.dirname(shutil.which("bash"))
+            result = run_shell(
+                cwd=tmpdir,
+                env_override={
+                    "COLD_REVIEW_MODE": "block",
+                    "HOME": tmpdir,
+                    "PATH": bash_dir,
+                },
+            )
+            assert result.returncode == 0
+            assert "python interpreter not found" in result.stderr
+            out = json.loads(result.stdout)
+            assert out["decision"] == "block"
+
+    def test_report_mode_warns_on_missing_python(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, ".claude"), exist_ok=True)
+            bash_dir = os.path.dirname(shutil.which("bash"))
+            result = run_shell(
+                cwd=tmpdir,
+                env_override={
+                    "COLD_REVIEW_MODE": "report",
+                    "HOME": tmpdir,
+                    "PATH": bash_dir,
+                },
+            )
+            assert result.returncode == 0
+            assert "python interpreter not found" in result.stderr
+            assert result.stdout.strip() == ""
 
 
 class TestPromptTemplateSanity:
@@ -163,7 +203,7 @@ class TestShellParserFailClosed:
             if "Parse result and act" in line:
                 in_block = True
                 continue
-            if in_block and 'python -c "' in line:
+            if in_block and '-c "' in line and ('python' in line or 'PYTHON_CMD' in line):
                 in_python = True
                 continue
             if in_python:

@@ -27,7 +27,7 @@ Layer 3 — Modules (15 files in cold_eyes/)
 4. build_diff()           — git diff with token budget, high-risk files first
                             tracks: truncated files, budget-skipped, binary, unreadable
 5. build_prompt_text()    — inject diff + language into system prompt template
-6. call_claude()          — invoke Claude CLI via subprocess (encoding=utf-8)
+6. ClaudeCliAdapter.review() — invoke Claude CLI via subprocess (encoding=utf-8)
 7. parse_review_output()  — extract JSON from model response, strip markdown fences
 8. validate_review()      — schema validation (schema_version, required fields, types)
 9. filter_by_confidence() — remove issues below confidence threshold (deterministic)

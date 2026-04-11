@@ -114,7 +114,7 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
         if not chunk:
             continue
 
-        chunk_tokens = len(chunk) // 4
+        chunk_tokens = len(chunk.encode("utf-8")) // 4
         if chunk_tokens > remaining:
             char_limit = remaining * 4
             chunk = chunk[:char_limit] + f"\n[truncated: {f}]"
