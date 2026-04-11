@@ -1,0 +1,13 @@
+{
+  "id": "tp-path-traversal",
+  "category": "true_positive",
+  "description": "Path traversal via user-controlled filename in file write",
+  "diff": "--- a/upload.py\n+++ b/upload.py\n@@ -4,7 +4,6 @@ UPLOAD_DIR = \"/var/uploads\"\n \n def save_upload(request):\n     filename = request.form['filename']\n-    safe_name = secure_filename(filename)\n-    path = os.path.join(UPLOAD_DIR, safe_name)\n+    path = os.path.join(UPLOAD_DIR, filename)\n     with open(path, 'wb') as f:\n         f.write(request.data)\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Path traversal via unsanitized user filename\",\"verdict\":\"Removed secure_filename() call, user-supplied filename is passed directly to os.path.join and open(), allowing directory traversal\",\"fix\":\"Restore secure_filename(filename) or validate that filename contains no path separators\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"upload.py\",\"line_hint\":\"7\"}],\"summary\":\"Critical path traversal vulnerability from removing filename sanitization\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

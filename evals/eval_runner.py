@@ -43,6 +43,39 @@ def load_cases(cases_dir):
     return cases
 
 
+def validate_manifest(cases_dir):
+    """Validate manifest.json against actual case files.  Return (ok, errors)."""
+    manifest_path = os.path.join(os.path.dirname(cases_dir), "manifest.json")
+    if not os.path.isfile(manifest_path):
+        return False, ["manifest.json not found"]
+    with open(manifest_path, "r", encoding="utf-8") as f:
+        manifest = json.load(f)
+    cases = load_cases(cases_dir)
+
+    errors = []
+    case_ids = {c["id"] for c in cases}
+    case_by_id = {c["id"]: c for c in cases}
+    manifest_ids = set()
+    for cat, info in manifest.get("categories", {}).items():
+        for cid in info.get("cases", []):
+            manifest_ids.add(cid)
+            if cid not in case_ids:
+                errors.append(f"manifest lists '{cid}' but no case file found")
+            elif case_by_id[cid]["category"] != cat:
+                errors.append(f"'{cid}' category mismatch: manifest={cat}, file={case_by_id[cid]['category']}")
+        actual_count = sum(1 for c in cases if c["category"] == cat)
+        if info.get("count") != actual_count:
+            errors.append(f"category '{cat}' count mismatch: manifest={info.get('count')}, actual={actual_count}")
+
+    for cid in case_ids - manifest_ids:
+        errors.append(f"case '{cid}' exists but not in manifest")
+
+    if manifest.get("total_cases") != len(cases):
+        errors.append(f"total_cases mismatch: manifest={manifest.get('total_cases')}, actual={len(cases)}")
+
+    return len(errors) == 0, errors
+
+
 # ---------------------------------------------------------------------------
 # Deterministic mode
 # ---------------------------------------------------------------------------

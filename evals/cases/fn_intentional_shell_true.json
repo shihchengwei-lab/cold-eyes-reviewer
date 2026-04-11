@@ -1,0 +1,12 @@
+{
+  "id": "fn-intentional-shell-true",
+  "category": "false_negative",
+  "description": "subprocess.run with shell=True on a hardcoded command string, no user input",
+  "diff": "--- a/scripts/cleanup.py\n+++ b/scripts/cleanup.py\n@@ -1,4 +1,7 @@\n import subprocess\n+import logging\n \n def cleanup_temp():\n-    pass\n+    logging.info(\"Cleaning temp files\")\n+    subprocess.run(\"rm -rf /tmp/app-cache/*\", shell=True, check=True)\n+    logging.info(\"Temp cleanup complete\")\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"shell=True used with hardcoded command string, no user-controlled input flows into the command\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

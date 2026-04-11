@@ -1,0 +1,12 @@
+{
+  "id": "edge-cjk-comment",
+  "category": "edge",
+  "description": "Diff contains CJK comments and variable names, no functional issue",
+  "diff": "--- a/utils/converter.py\n+++ b/utils/converter.py\n@@ -1,5 +1,10 @@\n+# \u8cc7\u6599\u8f49\u63db\u5de5\u5177\n+\n class DataConverter:\n-    \"\"\"Convert data formats.\"\"\"\n+    \"\"\"\u8cc7\u6599\u683c\u5f0f\u8f49\u63db\u5668\u3002\n+\n+    \u652f\u63f4 JSON\u3001CSV\u3001XML \u4e92\u8f49\u3002\n+    \"\"\"\n \n     def to_json(self, data):\n+        \"\"\"\u5c07\u8cc7\u6599\u8f49\u63db\u70ba JSON \u683c\u5f0f\u3002\"\"\"\n         return json.dumps(data, ensure_ascii=False)\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"\u65b0\u589e\u4e2d\u6587\u8a3b\u89e3\u548c docstring\uff0c\u7121\u529f\u80fd\u8b8a\u66f4\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

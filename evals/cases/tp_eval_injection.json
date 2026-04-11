@@ -1,0 +1,13 @@
+{
+  "id": "tp-eval-injection",
+  "category": "true_positive",
+  "description": "eval() called on user-provided expression string",
+  "diff": "--- a/calc.py\n+++ b/calc.py\n@@ -1,5 +1,4 @@\n def calculate(user_expr):\n-    # Only allow basic arithmetic\n-    allowed = set('0123456789+-*/. ')\n-    if all(c in allowed for c in user_expr):\n-        return eval(user_expr)\n+    \"\"\"Evaluate a user expression.\"\"\"\n+    result = eval(user_expr)\n+    return result\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Code injection via eval() on user input\",\"verdict\":\"Removed input validation whitelist, eval() now executes arbitrary user-provided strings\",\"fix\":\"Use ast.literal_eval() for safe expression parsing, or restore the character whitelist\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"calc.py\",\"line_hint\":\"3\"}],\"summary\":\"Critical code injection: eval() on unvalidated user input with no sanitization\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

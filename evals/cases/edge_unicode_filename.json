@@ -1,0 +1,12 @@
+{
+  "id": "edge-unicode-filename",
+  "category": "edge",
+  "description": "Diff with unicode characters in filename path",
+  "diff": "--- /dev/null\n+++ \"b/docs/\u5b89\u88dd\u8aaa\u660e.md\"\n@@ -0,0 +1,5 @@\n+# \u5b89\u88dd\u8aaa\u660e\n+\n+1. \u4e0b\u8f09\u5c08\u6848\n+2. \u57f7\u884c `pip install -e .`\n+3. \u9a57\u8b49\u5b89\u88dd `python -m cold_eyes doctor`\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"New documentation file with Chinese filename, no code changes\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

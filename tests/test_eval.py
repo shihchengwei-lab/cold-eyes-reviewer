@@ -11,7 +11,7 @@ if PROJECT_ROOT not in sys.path:
 
 CASES_DIR = os.path.join(PROJECT_ROOT, "evals", "cases")
 
-from evals.eval_runner import load_cases, run_deterministic, threshold_sweep, _evaluate_case
+from evals.eval_runner import load_cases, run_deterministic, threshold_sweep, _evaluate_case, validate_manifest
 
 
 # ---------------------------------------------------------------------------
@@ -21,7 +21,7 @@ from evals.eval_runner import load_cases, run_deterministic, threshold_sweep, _e
 class TestCaseLoading:
     def test_loads_all_cases(self):
         cases = load_cases(CASES_DIR)
-        assert len(cases) == 14
+        assert len(cases) == 24
 
     def test_required_fields_present(self):
         cases = load_cases(CASES_DIR)
@@ -32,7 +32,7 @@ class TestCaseLoading:
 
     def test_valid_categories(self):
         cases = load_cases(CASES_DIR)
-        valid = {"true_positive", "acceptable", "stress"}
+        valid = {"true_positive", "acceptable", "stress", "false_negative", "edge"}
         for case in cases:
             assert case["category"] in valid, f"{case['id']} has invalid category"
 
@@ -56,9 +56,11 @@ class TestCaseLoading:
         by_cat = {}
         for c in cases:
             by_cat.setdefault(c["category"], []).append(c["id"])
-        assert len(by_cat["true_positive"]) == 6
+        assert len(by_cat["true_positive"]) == 8
         assert len(by_cat["acceptable"]) == 4
-        assert len(by_cat["stress"]) == 4
+        assert len(by_cat["stress"]) == 5
+        assert len(by_cat["false_negative"]) == 3
+        assert len(by_cat["edge"]) == 4
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +116,7 @@ class TestDeterministic:
 
     def test_total_equals_case_count(self):
         report = run_deterministic(CASES_DIR)
-        assert report["total"] == 14
+        assert report["total"] == 24
 
 
 # ---------------------------------------------------------------------------
@@ -201,3 +203,71 @@ class TestEvaluateCase:
         case = next(c for c in cases if c["id"] == "stress-mixed-severity")
         result = _evaluate_case(case)
         assert result["actual_block"] is True
+
+
+# ---------------------------------------------------------------------------
+# Manifest validation
+# ---------------------------------------------------------------------------
+
+class TestManifest:
+    def test_manifest_exists(self):
+        manifest_path = os.path.join(PROJECT_ROOT, "evals", "manifest.json")
+        assert os.path.isfile(manifest_path)
+
+    def test_manifest_valid(self):
+        ok, errors = validate_manifest(CASES_DIR)
+        assert ok, f"Manifest validation failed: {errors}"
+
+    def test_manifest_matches_case_count(self):
+        manifest_path = os.path.join(PROJECT_ROOT, "evals", "manifest.json")
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        cases = load_cases(CASES_DIR)
+        assert manifest["total_cases"] == len(cases)
+
+    def test_manifest_category_matches_case_file(self):
+        manifest_path = os.path.join(PROJECT_ROOT, "evals", "manifest.json")
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+        case_by_id = {c["id"]: c for c in load_cases(CASES_DIR)}
+        for cat, info in manifest["categories"].items():
+            for cid in info["cases"]:
+                assert cid in case_by_id, f"{cid} in manifest but not in cases"
+                assert case_by_id[cid]["category"] == cat, \
+                    f"{cid}: manifest says {cat}, file says {case_by_id[cid]['category']}"
+
+
+# ---------------------------------------------------------------------------
+# New category tests
+# ---------------------------------------------------------------------------
+
+class TestNewCategories:
+    def test_false_negatives_pass(self):
+        report = run_deterministic(CASES_DIR)
+        fn_cases = [c for c in report["cases"] if c["category"] == "false_negative"]
+        assert len(fn_cases) == 3
+        for c in fn_cases:
+            assert c["expected_block"] is False, f"{c['id']} should not expect block"
+            assert c["actual_action"] in ("pass", "skip"), f"{c['id']} should pass"
+
+    def test_edge_cases_match(self):
+        report = run_deterministic(CASES_DIR)
+        edge_cases = [c for c in report["cases"] if c["category"] == "edge"]
+        assert len(edge_cases) == 4
+        for c in edge_cases:
+            assert c["match"] is True, f"{c['id']} did not match ground truth"
+
+    def test_new_true_positives_block(self):
+        cases = load_cases(CASES_DIR)
+        for cid in ["tp-path-traversal", "tp-eval-injection"]:
+            case = next(c for c in cases if c["id"] == cid)
+            result = _evaluate_case(case)
+            assert result["actual_block"] is True, f"{cid} should block"
+            assert result["match"] is True, f"{cid} should match"
+
+    def test_stress_all_minor_passes(self):
+        cases = load_cases(CASES_DIR)
+        case = next(c for c in cases if c["id"] == "stress-all-minor")
+        result = _evaluate_case(case)
+        assert result["actual_block"] is False
+        assert result["match"] is True

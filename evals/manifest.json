@@ -1,0 +1,64 @@
+{
+  "schema_version": 1,
+  "total_cases": 24,
+  "categories": {
+    "true_positive": {
+      "description": "Real issues Cold Eyes should block",
+      "count": 8,
+      "cases": [
+        "tp-sql-injection",
+        "tp-hardcoded-secret",
+        "tp-xss-unescaped",
+        "tp-resource-leak",
+        "tp-missing-error-handling",
+        "tp-dangling-import",
+        "tp-path-traversal",
+        "tp-eval-injection"
+      ]
+    },
+    "acceptable": {
+      "description": "Clean changes Cold Eyes should pass",
+      "count": 4,
+      "cases": [
+        "ok-comment-update",
+        "ok-readme-typo",
+        "ok-style-rename",
+        "ok-test-addition"
+      ]
+    },
+    "false_negative": {
+      "description": "Changes that look risky but are acceptable — should NOT block",
+      "count": 3,
+      "cases": [
+        "fn-env-var-not-secret",
+        "fn-test-fixture-secret",
+        "fn-intentional-shell-true"
+      ]
+    },
+    "stress": {
+      "description": "Boundary conditions and stress tests",
+      "count": 5,
+      "cases": [
+        "stress-binary-only",
+        "stress-empty-diff",
+        "stress-large-diff",
+        "stress-mixed-severity",
+        "stress-all-minor"
+      ]
+    },
+    "edge": {
+      "description": "Encoding, unicode, CJK, and infrastructure edge cases",
+      "count": 4,
+      "cases": [
+        "edge-cjk-comment",
+        "edge-unicode-filename",
+        "edge-empty-mock-response",
+        "edge-config-only-change"
+      ]
+    }
+  },
+  "ground_truth_summary": {
+    "should_block_true": 8,
+    "should_block_false": 16
+  }
+}
