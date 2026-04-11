@@ -4,10 +4,10 @@
 
 - **版本：** v1.3.0（master，2026-04-11）
 - **分支：** master
-- **測試：** 287 passed
+- **測試：** 288 passed
 - **部署：** `~/.claude/scripts/` 需重新同步
 - **GitHub Release：** v1.2.0 已建立（v1.1.0 也有），v1.3.0 待推 tag 後自動建
-- **版本訊號：** `__init__.py` = 1.3.0 / About = 287 tests / CHANGELOG = v1.3.0 / README 已更新 ✓ 一致
+- **版本訊號：** `__init__.py` = 1.3.0 / About = 288 tests / CHANGELOG = v1.3.0 / README 已更新 ✓ 一致
 
 ## 架構
 
@@ -58,7 +58,7 @@ docs/                        11 份文件 + 5 份 sample + 1 legacy
   samples/                   pass_outcome, block_outcome, history_entry, quality_report, stats_output
   alpha-scope.md             (legacy) v0.2.0 scope document
 
-tests/                       287 tests
+tests/                       288 tests
   test_engine.py             184 tests — engine pipeline, scope, mock adapter
   test_shell_smoke.py        26 tests — shell shim, fail-closed parser
   test_eval.py               24 tests — case loading, deterministic, sweep, single case

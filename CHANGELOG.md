@@ -2,7 +2,7 @@
 
 ## v1.3.0 — Governance & Polish
 
-Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 287 tests (was 283).
+Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 288 tests (was 283).
 
 ### Governance
 
@@ -20,6 +20,10 @@ Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 
 - **Actionable doctor messages** — all failure messages now include `Fix:` instructions with specific remediation steps
 - **Troubleshooting guide** — `docs/troubleshooting.md` with 8 problem/solution pairs
 - **Failure modes doc** — `docs/failure-modes.md` with state machine, infra failure taxonomy, truncation analysis
+
+### Fixes
+
+- **Skip on zero file_count** — engine now skips when all file diffs are empty (file_count=0), preventing false `infra_failed` blocks from empty Claude responses
 
 ### CI
 
