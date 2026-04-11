@@ -12,15 +12,22 @@ def git_cmd(*args):
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
-def collect_files(scope="working"):
+def collect_files(scope="working", base=None):
     """Return (all_files sorted list, untracked set).
 
     Scopes:
-      working — staged + unstaged + untracked (default)
-      staged  — only staged changes
-      head    — diff against HEAD (staged + unstaged, no untracked)
+      working  — staged + unstaged + untracked (default)
+      staged   — only staged changes
+      head     — diff against HEAD (staged + unstaged, no untracked)
+      pr-diff  — diff of current branch vs base (requires base arg)
     """
-    if scope == "staged":
+    if scope == "pr-diff":
+        if not base:
+            return [], set()
+        pr = set(filter(None, git_cmd(
+            "diff", f"{base}...HEAD", "--name-only").split("\n")))
+        return sorted(pr), set()
+    elif scope == "staged":
         staged = set(filter(None, git_cmd("diff", "--cached", "--name-only").split("\n")))
         return sorted(staged), set()
     elif scope == "head":
@@ -42,7 +49,8 @@ def is_binary(filepath):
         return False
 
 
-def build_diff(ranked_files, untracked, max_tokens=12000, scope="working"):
+def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
+               base=None):
     """Build token-budgeted diff.
 
     Returns (diff_text, file_count, token_count, truncated, skipped_files).
@@ -70,7 +78,9 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working"):
                 continue
             chunk = f"=== NEW FILE: {f} ===\n{content}"
         else:
-            if scope == "staged":
+            if scope == "pr-diff" and base:
+                chunk = git_cmd("diff", f"{base}...HEAD", "--", f)
+            elif scope == "staged":
                 chunk = git_cmd("diff", "--cached", "--", f)
             elif scope == "head":
                 chunk = git_cmd("diff", "HEAD", "--", f)

@@ -706,6 +706,31 @@ class TestCollectFilesScope:
         files, untracked = engine.collect_files("head")
         assert untracked == set()
 
+    def test_pr_diff_scope_uses_triple_dot(self, monkeypatch):
+        calls = []
+
+        def spy(*args):
+            calls.append(args)
+            if "main...HEAD" in args:
+                return "file1.py\nfile2.py"
+            return ""
+
+        monkeypatch.setattr(_git_mod, "git_cmd", spy)
+        files, untracked = engine.collect_files("pr-diff", base="main")
+        assert files == ["file1.py", "file2.py"]
+        assert untracked == set()
+        assert any("main...HEAD" in c for c in calls)
+
+    def test_pr_diff_no_base_returns_empty(self, monkeypatch):
+        monkeypatch.setattr(_git_mod, "git_cmd", lambda *a: "")
+        files, untracked = engine.collect_files("pr-diff")
+        assert files == []
+
+    def test_pr_diff_empty_base_returns_empty(self, monkeypatch):
+        monkeypatch.setattr(_git_mod, "git_cmd", lambda *a: "")
+        files, untracked = engine.collect_files("pr-diff", base="")
+        assert files == []
+
 
 class TestBuildDiffScope:
 
@@ -758,6 +783,23 @@ class TestBuildDiffScope:
         has_bare = any("--cached" not in c and "HEAD" not in c for c in diff_calls)
         assert has_cached
         assert has_bare
+
+    def test_pr_diff_scope_uses_base(self, monkeypatch):
+        calls = []
+
+        def mock_git(*args):
+            calls.append(args)
+            if "main...HEAD" in args:
+                return "diff --git a/x.py\n+pr change"
+            return ""
+
+        monkeypatch.setattr(_git_mod, "git_cmd", mock_git)
+        diff, fc, tc, trunc, skip = engine.build_diff(
+            ["x.py"], set(), 12000, scope="pr-diff", base="main"
+        )
+        diff_calls = [c for c in calls if c[0] == "diff"]
+        assert any("main...HEAD" in c for c in diff_calls)
+        assert "pr change" in diff
 
 
 class TestHistoryScope:

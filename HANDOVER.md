@@ -2,10 +2,10 @@
 
 ## 現況
 
-- **版本：** v0.9.1（master，2026-04-11）
+- **版本：** v0.10.0（master，2026-04-11）
 - **分支：** master
-- **測試：** 158 passed
-- **部署：** `~/.claude/scripts/` 需同步（新增 `config.py`，`claude.py` 重構）
+- **測試：** 162 passed
+- **部署：** `~/.claude/scripts/` 需同步
 
 ## 架構
 
@@ -84,7 +84,19 @@ CLI: `python cold_eyes/cli.py stats [--last 7d] [--by-reason] [--by-path]`
 - 移除 temp file 管理（由 adapter 內部處理）
 - `import tempfile` 移除
 
-158 tests（engine 143 + helper 5 + smoke 10）。
+**Phase 2.4: CI/PR mode（+4 tests）**
+
+`git.py`：
+- `collect_files(scope, base=None)` — 新增 `pr-diff` scope，使用 `git diff <base>...HEAD`
+- `build_diff(…, base=None)` — pr-diff scope 使用三點 diff
+
+`engine.py`：`run()` 新增 `base=None` 參數，透過 `_resolve()` 支援 env var / policy file
+
+CLI: `--scope pr-diff --base main`
+Shell: `COLD_REVIEW_BASE` env var
+Policy: `base` key
+
+162 tests（engine 147 + helper 5 + smoke 10）。
 
 ## 部署
 
@@ -103,7 +115,8 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor   # 驗證
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | 擋的 severity 門檻 |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | confidence 硬過濾門檻（high / medium / low） |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | 輸出語言 |
-| `COLD_REVIEW_SCOPE` | `working` | diff 範圍：working / staged / head |
+| `COLD_REVIEW_SCOPE` | `working` | diff 範圍：working / staged / head / pr-diff |
+| `COLD_REVIEW_BASE` | 未設 | pr-diff scope 的 base branch（如 main） |
 | `COLD_REVIEW_ALLOW_ONCE` | 未設 | 設 1 一次性繞過 block |
 | `COLD_REVIEW_OVERRIDE_REASON` | 未設 | override 理由（free-text，搭配 ALLOW_ONCE 使用） |
 
@@ -114,11 +127,7 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor   # 驗證
 產品化路線圖在 `~/Downloads/cold_eyes_productization_roadmap.md`。
 Phase 1 計畫在 `~/Desktop/cold-eyes-phase1-plan.md`。
 
-Phase 1 全部完成。Phase 2.1–2.3 已完成。
-
-### Phase 2 剩餘項目
-
-4. **CI/PR mode** — `--scope pr-diff --base main`，GitHub Action wrapper，adapter 已就位。
+Phase 1 全部完成。Phase 2 全部完成。
 
 ### Phase 3（商業化）
 

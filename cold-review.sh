@@ -98,6 +98,7 @@ ENGINE_ARGS=(run)
 [[ -n "${COLD_REVIEW_CONFIDENCE+x}" ]]      && ENGINE_ARGS+=(--confidence "${COLD_REVIEW_CONFIDENCE}")
 [[ -n "${COLD_REVIEW_SCOPE+x}" ]]           && ENGINE_ARGS+=(--scope "${COLD_REVIEW_SCOPE}")
 [[ -n "${COLD_REVIEW_LANGUAGE:-}" ]]         && ENGINE_ARGS+=(--language "${COLD_REVIEW_LANGUAGE}")
+[[ -n "${COLD_REVIEW_BASE:-}" ]]             && ENGINE_ARGS+=(--base "${COLD_REVIEW_BASE}")
 [[ -n "$OVERRIDE_REASON" ]]                  && ENGINE_ARGS+=(--override-reason "$OVERRIDE_REASON")
 RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>&2) || true
 

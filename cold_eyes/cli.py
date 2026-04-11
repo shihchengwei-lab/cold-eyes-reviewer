@@ -27,7 +27,9 @@ if __name__ == "__main__":
     parser.add_argument("--confidence", default=None)
     parser.add_argument("--language", default=None)
     parser.add_argument("--scope", default=None,
-                        choices=["working", "staged", "head"])
+                        choices=["working", "staged", "head", "pr-diff"])
+    parser.add_argument("--base", default=None,
+                        help="Base branch for pr-diff scope (e.g. main)")
     parser.add_argument("--override-reason", default=None)
     parser.add_argument("--last", default=None,
                         help="Time filter for stats (e.g. 7d, 24h, 2w)")
@@ -48,6 +50,6 @@ if __name__ == "__main__":
         result = run(mode=args.mode, model=args.model,
                      max_tokens=args.max_tokens, threshold=args.threshold,
                      confidence=args.confidence, language=args.language,
-                     scope=args.scope,
+                     scope=args.scope, base=args.base,
                      override_reason=args.override_reason)
     print(json.dumps(result, ensure_ascii=False))

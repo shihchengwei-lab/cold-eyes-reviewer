@@ -28,10 +28,11 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
 
 def run(mode=None, model=None, max_tokens=None, threshold=None,
         confidence=None, language=None, scope=None, override_reason=None,
-        adapter=None):
+        adapter=None, base=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
+    base: base branch for pr-diff scope (e.g. 'main').
     """
     cwd = os.getcwd()
     repo_root = git_cmd("rev-parse", "--show-toplevel")
@@ -49,6 +50,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     if isinstance(min_confidence, str):
         min_confidence = min_confidence.lower()
     scope = _resolve(scope, "COLD_REVIEW_SCOPE", policy, "scope", "working")
+    base = _resolve(base, "COLD_REVIEW_BASE", policy, "base", None)
     language = _resolve(language, "COLD_REVIEW_LANGUAGE", policy, "language", None)
 
     # mode=off: skip immediately (normally caught by shell, but policy file may set it)
@@ -63,7 +65,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
 
     # 1. Collect files
-    all_files, untracked = collect_files(scope)
+    all_files, untracked = collect_files(scope, base=base)
     if not all_files:
         log_to_history(cwd, mode, model, "skipped", "no changes",
                        min_confidence=min_confidence, scope=scope)
@@ -81,7 +83,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
 
     # 4. Build diff
     diff_text, file_count, token_count, truncated, skipped = build_diff(
-        ranked, untracked, max_tokens, scope
+        ranked, untracked, max_tokens, scope, base=base
     )
 
     if not diff_text.strip():

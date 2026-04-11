@@ -120,6 +120,7 @@ By default (`COLD_REVIEW_SCOPE=working`), Cold Eyes reviews **all uncommitted ch
 Other scopes:
 - `COLD_REVIEW_SCOPE=staged` — only review `git diff --cached` (staged changes)
 - `COLD_REVIEW_SCOPE=head` — review `git diff HEAD` (staged + unstaged, no untracked)
+- `COLD_REVIEW_SCOPE=pr-diff` — review `git diff <base>...HEAD` (PR changes vs base branch, requires `COLD_REVIEW_BASE`)
 
 ## Configuration
 
@@ -144,7 +145,7 @@ All keys are optional. Only include what you want to override.
 
 If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. If neither env var nor policy file sets a value, the hardcoded default applies.
 
-Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`.
+Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`.
 
 `doctor` check 8 reports whether this file exists and what keys it sets.
 
@@ -158,7 +159,8 @@ Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | `critical`, `major` | Minimum severity that triggers a block |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | `high`, `medium`, `low` | Minimum confidence to keep (hard filter) |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |
-| `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head` | Diff scope: all uncommitted / staged only / vs HEAD |
+| `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head`, `pr-diff` | Diff scope: all uncommitted / staged only / vs HEAD / vs base branch |
+| `COLD_REVIEW_BASE` | (unset) | any branch name | Base branch for `pr-diff` scope (e.g. `main`) |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | Set to skip block once (logged as override) |
 | `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override when using ALLOW_ONCE |
 
@@ -180,6 +182,10 @@ export COLD_REVIEW_LANGUAGE=English
 
 # Only review staged changes
 export COLD_REVIEW_SCOPE=staged
+
+# Review PR changes against main (CI mode)
+export COLD_REVIEW_SCOPE=pr-diff
+export COLD_REVIEW_BASE=main
 
 # One-time override when blocked by a false positive
 export COLD_REVIEW_ALLOW_ONCE=1
