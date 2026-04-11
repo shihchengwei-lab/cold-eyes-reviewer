@@ -146,6 +146,35 @@ class TestParseReview:
         assert parsed["review_status"] == "failed"
         assert parsed["pass"] is True
 
+    def test_parse_review_line_hint_default(self):
+        claude_output = json.dumps({
+            "type": "result", "subtype": "success",
+            "result": json.dumps({
+                "pass": False,
+                "issues": [{"check": "x", "severity": "critical"}],
+                "summary": "bug"
+            })
+        })
+        stdout, _, _ = run_helper("parse-review", stdin_data=claude_output)
+        parsed = json.loads(stdout)
+        assert parsed["issues"][0]["line_hint"] == ""
+
+    def test_parse_review_schema_version_default(self):
+        claude_output = json.dumps({
+            "type": "result", "subtype": "success",
+            "result": json.dumps({
+                "pass": True, "issues": [], "summary": "ok"
+            })
+        })
+        stdout, _, _ = run_helper("parse-review", stdin_data=claude_output)
+        parsed = json.loads(stdout)
+        assert parsed["schema_version"] == 1
+
+    def test_parse_review_schema_version_in_failure(self):
+        stdout, _, _ = run_helper("parse-review", stdin_data="not json")
+        parsed = json.loads(stdout)
+        assert parsed["schema_version"] == 1
+
 
 # --- check-pass ---
 
@@ -251,6 +280,24 @@ class TestFormatBlock:
         }
         stdout, _, _ = run_helper("format-block", stdin_data=json.dumps(review))
         assert "[MAJOR]" in stdout
+
+    def test_format_block_includes_line_hint(self):
+        review = {
+            "summary": "test",
+            "issues": [{"severity": "critical", "line_hint": "L42",
+                        "check": "bad", "verdict": "wrong", "fix": "fix it"}]
+        }
+        stdout, _, _ = run_helper("format-block", stdin_data=json.dumps(review))
+        assert "(L42)" in stdout
+
+    def test_format_block_no_parens_when_no_hint(self):
+        review = {
+            "summary": "test",
+            "issues": [{"severity": "critical",
+                        "check": "bad", "verdict": "wrong", "fix": "fix it"}]
+        }
+        stdout, _, _ = run_helper("format-block", stdin_data=json.dumps(review))
+        assert "()" not in stdout
 
 
 # --- filter-files ---

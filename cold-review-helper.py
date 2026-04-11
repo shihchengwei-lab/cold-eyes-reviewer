@@ -91,6 +91,7 @@ def parse_review():
         else:
             result = result_str
         # Apply defaults for missing fields
+        result.setdefault("schema_version", 1)
         result.setdefault("review_status", "completed")
         result.setdefault("pass", True)
         result.setdefault("issues", [])
@@ -100,10 +101,12 @@ def parse_review():
             issue.setdefault("confidence", "medium")
             issue.setdefault("category", "correctness")
             issue.setdefault("file", "unknown")
+            issue.setdefault("line_hint", "")
         print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
         # Explicit failure state — do not block on parse failure
         print(json.dumps({
+            "schema_version": 1,
             "pass": True,
             "review_status": "failed",
             "issues": [],
@@ -166,10 +169,12 @@ def format_block():
     lines = [f"Cold Eyes Review — {summary}"]
     for issue in issues:
         severity = issue.get("severity", "major").upper()
+        line_hint = issue.get("line_hint", "")
         check = issue.get("check", "")
         verdict = issue.get("verdict", "")
         fix = issue.get("fix", "")
-        lines.append(f"  - [{severity}] 檢查：{check}")
+        hint_part = f" ({line_hint})" if line_hint else ""
+        lines.append(f"  - [{severity}]{hint_part} 檢查：{check}")
         lines.append(f"    判決：{verdict}")
         lines.append(f"    指示：{fix}")
 

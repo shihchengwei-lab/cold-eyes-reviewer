@@ -5,6 +5,7 @@ checks pass.  Outputs a single FinalOutcome JSON line to stdout.
 
 Usage:
   python cold_review_engine.py run --mode block --model opus --max-tokens 12000 --threshold critical
+  python cold_review_engine.py doctor
 """
 
 import argparse
@@ -23,6 +24,7 @@ HISTORY_FILE = os.path.join(
     os.path.expanduser("~"), ".claude", "cold-review-history.jsonl"
 )
 
+SCHEMA_VERSION = 1
 SEVERITY_ORDER = {"critical": 3, "major": 2, "minor": 1}
 CONFIDENCE_ORDER = {"high": 3, "medium": 2, "low": 1}
 
@@ -35,6 +37,11 @@ BUILTIN_IGNORE = [
 RISK_PATTERN = re.compile(
     r"(auth|payment|db|migration|secret|credential|config|api)", re.IGNORECASE
 )
+
+DEPLOY_FILES = [
+    "cold-review.sh", "cold-review-helper.py",
+    "cold_review_engine.py", "cold-review-prompt.txt",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +56,25 @@ def git_cmd(*args):
     return r.stdout.strip() if r.returncode == 0 else ""
 
 
-def collect_files():
-    """Return (all_files sorted list, untracked set)."""
-    staged = set(filter(None, git_cmd("diff", "--cached", "--name-only").split("\n")))
-    unstaged = set(filter(None, git_cmd("diff", "--name-only").split("\n")))
-    untracked = set(filter(None, git_cmd("ls-files", "--others", "--exclude-standard").split("\n")))
-    return sorted(staged | unstaged | untracked), untracked
+def collect_files(scope="working"):
+    """Return (all_files sorted list, untracked set).
+
+    Scopes:
+      working — staged + unstaged + untracked (default)
+      staged  — only staged changes
+      head    — diff against HEAD (staged + unstaged, no untracked)
+    """
+    if scope == "staged":
+        staged = set(filter(None, git_cmd("diff", "--cached", "--name-only").split("\n")))
+        return sorted(staged), set()
+    elif scope == "head":
+        head = set(filter(None, git_cmd("diff", "HEAD", "--name-only").split("\n")))
+        return sorted(head), set()
+    else:  # working
+        staged = set(filter(None, git_cmd("diff", "--cached", "--name-only").split("\n")))
+        unstaged = set(filter(None, git_cmd("diff", "--name-only").split("\n")))
+        untracked = set(filter(None, git_cmd("ls-files", "--others", "--exclude-standard").split("\n")))
+        return sorted(staged | unstaged | untracked), untracked
 
 
 # ---------------------------------------------------------------------------
@@ -115,7 +135,7 @@ def is_binary(filepath):
 # Diff building with token budget
 # ---------------------------------------------------------------------------
 
-def build_diff(ranked_files, untracked, max_tokens=12000):
+def build_diff(ranked_files, untracked, max_tokens=12000, scope="working"):
     """Build token-budgeted diff.
 
     Returns (diff_text, file_count, token_count, truncated, skipped_files).
@@ -143,9 +163,14 @@ def build_diff(ranked_files, untracked, max_tokens=12000):
                 continue
             chunk = f"=== NEW FILE: {f} ===\n{content}"
         else:
-            staged = git_cmd("diff", "--cached", "--", f)
-            unstaged = git_cmd("diff", "--", f)
-            chunk = f"{staged}\n{unstaged}".strip()
+            if scope == "staged":
+                chunk = git_cmd("diff", "--cached", "--", f)
+            elif scope == "head":
+                chunk = git_cmd("diff", "HEAD", "--", f)
+            else:  # working
+                staged = git_cmd("diff", "--cached", "--", f)
+                unstaged = git_cmd("diff", "--", f)
+                chunk = f"{staged}\n{unstaged}".strip()
 
         if not chunk:
             continue
@@ -238,6 +263,7 @@ def parse_review_output(raw_json_str):
             result = json.loads(cleaned)
         else:
             result = result_str
+        result.setdefault("schema_version", SCHEMA_VERSION)
         result.setdefault("review_status", "completed")
         result.setdefault("pass", True)
         result.setdefault("issues", [])
@@ -247,9 +273,11 @@ def parse_review_output(raw_json_str):
             issue.setdefault("confidence", "medium")
             issue.setdefault("category", "correctness")
             issue.setdefault("file", "unknown")
+            issue.setdefault("line_hint", "")
         return result
     except Exception as e:
         return {
+            "schema_version": SCHEMA_VERSION,
             "pass": True,
             "review_status": "failed",
             "issues": [],
@@ -274,10 +302,12 @@ def format_block_reason(review, truncated=False, skipped_count=0):
     lines = [f"Cold Eyes Review — {summary}"]
     for issue in issues:
         sev = issue.get("severity", "major").upper()
+        line_hint = issue.get("line_hint", "")
         check = issue.get("check", "")
         verdict = issue.get("verdict", "")
         fix = issue.get("fix", "")
-        lines.append(f"  - [{sev}] \u6aa2\u67e5\uff1a{check}")
+        hint_part = f" ({line_hint})" if line_hint else ""
+        lines.append(f"  - [{sev}]{hint_part} \u6aa2\u67e5\uff1a{check}")
         lines.append(f"    \u5224\u6c7a\uff1a{verdict}")
         lines.append(f"    \u6307\u793a\uff1a{fix}")
     if truncated:
@@ -382,7 +412,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
 
 def log_to_history(cwd, mode, model, state, reason="", review=None,
                    file_count=0, line_count=0, truncated=False, token_count=0,
-                   min_confidence="medium"):
+                   min_confidence="medium", scope="working"):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -392,6 +422,8 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
         "model": model,
         "state": state,
         "min_confidence": min_confidence,
+        "scope": scope,
+        "schema_version": review.get("schema_version", SCHEMA_VERSION) if review else SCHEMA_VERSION,
     }
 
     if review is not None:
@@ -415,7 +447,8 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-def run(mode, model, max_tokens, threshold, confidence=None, language=None):
+def run(mode, model, max_tokens, threshold, confidence=None, language=None,
+        scope="working"):
     """Execute full review pipeline. Return FinalOutcome dict."""
     cwd = os.getcwd()
     allow_once = os.environ.get("COLD_REVIEW_ALLOW_ONCE") == "1"
@@ -424,17 +457,17 @@ def run(mode, model, max_tokens, threshold, confidence=None, language=None):
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
 
     # 1. Collect files
-    all_files, untracked = collect_files()
+    all_files, untracked = collect_files(scope)
     if not all_files:
         log_to_history(cwd, mode, model, "skipped", "no changes",
-                       min_confidence=min_confidence)
+                       min_confidence=min_confidence, scope=scope)
         return _skip("no changes")
 
     # 2. Filter
     filtered = filter_file_list(all_files, ignore_file)
     if not filtered:
         log_to_history(cwd, mode, model, "skipped", "all files ignored",
-                       min_confidence=min_confidence)
+                       min_confidence=min_confidence, scope=scope)
         return _skip("all files ignored")
 
     # 3. Rank
@@ -442,12 +475,12 @@ def run(mode, model, max_tokens, threshold, confidence=None, language=None):
 
     # 4. Build diff
     diff_text, file_count, token_count, truncated, skipped = build_diff(
-        ranked, untracked, max_tokens
+        ranked, untracked, max_tokens, scope
     )
 
     if not diff_text.strip():
         log_to_history(cwd, mode, model, "skipped", "no diff content",
-                       min_confidence=min_confidence)
+                       min_confidence=min_confidence, scope=scope)
         return _skip("no diff content")
 
     # 5. Build prompt
@@ -467,14 +500,16 @@ def run(mode, model, max_tokens, threshold, confidence=None, language=None):
             review = _infra_review(f"claude exit {exit_code}")
             outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
             log_to_history(cwd, mode, model, outcome["state"],
-                           reason=review["summary"], min_confidence=min_confidence)
+                           reason=review["summary"], min_confidence=min_confidence,
+                           scope=scope)
             return outcome
 
         if not raw_output:
             review = _infra_review("empty output")
             outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
             log_to_history(cwd, mode, model, outcome["state"],
-                           reason=review["summary"], min_confidence=min_confidence)
+                           reason=review["summary"], min_confidence=min_confidence,
+                           scope=scope)
             return outcome
 
         # 8. Parse review
@@ -491,6 +526,7 @@ def run(mode, model, max_tokens, threshold, confidence=None, language=None):
             review=review, file_count=file_count,
             line_count=diff_line_count, truncated=truncated,
             token_count=token_count, min_confidence=min_confidence,
+            scope=scope,
         )
 
         return outcome
@@ -510,6 +546,7 @@ def _skip(reason):
 def _infra_review(summary):
     """Build a synthetic review dict representing an infrastructure failure."""
     return {
+        "schema_version": SCHEMA_VERSION,
         "pass": True,
         "review_status": "failed",
         "issues": [],
@@ -518,20 +555,127 @@ def _infra_review(summary):
 
 
 # ---------------------------------------------------------------------------
+# Doctor
+# ---------------------------------------------------------------------------
+
+def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
+    """Check environment health. Return structured report dict."""
+    if scripts_dir is None:
+        scripts_dir = os.path.join(os.path.expanduser("~"), ".claude", "scripts")
+    if settings_path is None:
+        settings_path = os.path.join(os.path.expanduser("~"), ".claude", "settings.json")
+
+    checks = []
+
+    # 1. Python version
+    ver = f"{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}"
+    checks.append({"name": "python", "status": "ok", "detail": ver})
+
+    # 2. Git
+    git_ver = git_cmd("--version")
+    if git_ver:
+        checks.append({"name": "git", "status": "ok", "detail": git_ver})
+    else:
+        checks.append({"name": "git", "status": "fail", "detail": "not found"})
+
+    # 3. Claude CLI
+    try:
+        r = subprocess.run(
+            ["claude", "--version"], capture_output=True, text=True, timeout=10
+        )
+        if r.returncode == 0 and r.stdout.strip():
+            checks.append({"name": "claude_cli", "status": "ok",
+                           "detail": r.stdout.strip()})
+        else:
+            checks.append({"name": "claude_cli", "status": "fail",
+                           "detail": f"exit {r.returncode}"})
+    except FileNotFoundError:
+        checks.append({"name": "claude_cli", "status": "fail",
+                       "detail": "not found"})
+    except Exception as e:
+        checks.append({"name": "claude_cli", "status": "fail",
+                       "detail": str(e)})
+
+    # 4. Deploy files
+    missing = [f for f in DEPLOY_FILES if not os.path.isfile(os.path.join(scripts_dir, f))]
+    if not missing:
+        checks.append({"name": "deploy_files", "status": "ok",
+                       "detail": f"{len(DEPLOY_FILES)} files in {scripts_dir}"})
+    else:
+        checks.append({"name": "deploy_files", "status": "fail",
+                       "detail": f"missing: {', '.join(missing)}"})
+
+    # 5. settings.json Stop hook
+    try:
+        with open(settings_path, "r", encoding="utf-8") as f:
+            settings = json.load(f)
+        hooks = settings.get("hooks", {})
+        stop_hooks = hooks.get("Stop", [])
+        found = any(
+            "cold-review.sh" in cmd
+            for entry in stop_hooks
+            for hook_list in ([entry] if isinstance(entry, str) else
+                              entry.get("hooks", []) if isinstance(entry, dict) else [])
+            for cmd in ([hook_list] if isinstance(hook_list, str) else
+                        [hook_list.get("command", "")] if isinstance(hook_list, dict) else [])
+        )
+        if found:
+            checks.append({"name": "settings_hook", "status": "ok",
+                           "detail": "Stop hook configured"})
+        else:
+            checks.append({"name": "settings_hook", "status": "fail",
+                           "detail": "cold-review.sh not found in hooks.Stop"})
+    except FileNotFoundError:
+        checks.append({"name": "settings_hook", "status": "fail",
+                       "detail": f"{settings_path} not found"})
+    except Exception as e:
+        checks.append({"name": "settings_hook", "status": "fail",
+                       "detail": str(e)})
+
+    # 6. Git repo
+    git_dir = git_cmd("rev-parse", "--git-dir")
+    if git_dir:
+        checks.append({"name": "git_repo", "status": "ok", "detail": "in git repo"})
+    else:
+        checks.append({"name": "git_repo", "status": "fail",
+                       "detail": "not in a git repo"})
+
+    # 7. .cold-review-ignore (info level)
+    if repo_root is None:
+        repo_root = git_cmd("rev-parse", "--show-toplevel")
+    ignore_path = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
+    if ignore_path and os.path.isfile(ignore_path):
+        checks.append({"name": "ignore_file", "status": "ok",
+                       "detail": ".cold-review-ignore found"})
+    else:
+        checks.append({"name": "ignore_file", "status": "info",
+                       "detail": ".cold-review-ignore not found (optional)"})
+
+    all_ok = all(c["status"] != "fail" for c in checks)
+    return {"action": "doctor", "checks": checks, "all_ok": all_ok}
+
+
+# ---------------------------------------------------------------------------
 # CLI entry point
 # ---------------------------------------------------------------------------
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cold Eyes Reviewer engine")
-    parser.add_argument("command", choices=["run"])
+    parser.add_argument("command", choices=["run", "doctor"])
     parser.add_argument("--mode", default="block")
     parser.add_argument("--model", default="opus")
     parser.add_argument("--max-tokens", type=int, default=12000)
     parser.add_argument("--threshold", default="critical")
     parser.add_argument("--confidence", default=None)
     parser.add_argument("--language", default=None)
+    parser.add_argument("--scope", default="working",
+                        choices=["working", "staged", "head"])
     args = parser.parse_args()
 
-    result = run(args.mode, args.model, args.max_tokens, args.threshold,
-                 confidence=args.confidence, language=args.language)
+    if args.command == "doctor":
+        result = run_doctor()
+    else:
+        result = run(args.mode, args.model, args.max_tokens, args.threshold,
+                     confidence=args.confidence, language=args.language,
+                     scope=args.scope)
     print(json.dumps(result, ensure_ascii=False))

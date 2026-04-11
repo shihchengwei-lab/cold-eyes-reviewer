@@ -3,6 +3,7 @@
 import importlib.util
 import json
 import os
+import sys
 import tempfile
 
 import pytest
@@ -520,3 +521,322 @@ class TestTruncationVisibility:
         outcome = engine.apply_policy(review, "block", "critical", False, "medium")
         assert outcome["truncated"] is False
         assert outcome["skipped_count"] == 0
+
+
+# ---------------------------------------------------------------------------
+# Doctor
+# ---------------------------------------------------------------------------
+
+class TestDoctor:
+
+    def test_returns_required_keys(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        assert result["action"] == "doctor"
+        assert isinstance(result["checks"], list)
+        assert isinstance(result["all_ok"], bool)
+
+    def test_checks_have_required_fields(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        for check in result["checks"]:
+            assert "name" in check
+            assert "status" in check
+            assert "detail" in check
+            assert check["status"] in ("ok", "fail", "info")
+
+    def test_python_check_ok(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        py = next(c for c in result["checks"] if c["name"] == "python")
+        assert py["status"] == "ok"
+        assert str(sys.version_info.major) in py["detail"]
+
+    def test_git_check_ok(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        git = next(c for c in result["checks"] if c["name"] == "git")
+        assert git["status"] == "ok"
+
+    def test_deploy_files_missing(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        deploy = next(c for c in result["checks"] if c["name"] == "deploy_files")
+        assert deploy["status"] == "fail"
+        assert "missing" in deploy["detail"]
+
+    def test_deploy_files_present(self, tmp_path):
+        for f in engine.DEPLOY_FILES:
+            (tmp_path / f).write_text("x")
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        deploy = next(c for c in result["checks"] if c["name"] == "deploy_files")
+        assert deploy["status"] == "ok"
+
+    def test_settings_json_missing(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path),
+            settings_path=str(tmp_path / "nonexistent.json")
+        )
+        hook = next(c for c in result["checks"] if c["name"] == "settings_hook")
+        assert hook["status"] == "fail"
+
+    def test_settings_json_no_hook(self, tmp_path):
+        settings = tmp_path / "settings.json"
+        settings.write_text(json.dumps({"hooks": {"Stop": []}}))
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(settings)
+        )
+        hook = next(c for c in result["checks"] if c["name"] == "settings_hook")
+        assert hook["status"] == "fail"
+
+    def test_settings_json_with_hook(self, tmp_path):
+        settings = tmp_path / "settings.json"
+        settings.write_text(json.dumps({
+            "hooks": {"Stop": [{"hooks": [
+                {"command": "bash /home/user/.claude/scripts/cold-review.sh"}
+            ]}]}
+        }))
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(settings)
+        )
+        hook = next(c for c in result["checks"] if c["name"] == "settings_hook")
+        assert hook["status"] == "ok"
+
+    def test_ignore_file_info_when_missing(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json"),
+            repo_root=str(tmp_path)
+        )
+        ignore = next(c for c in result["checks"] if c["name"] == "ignore_file")
+        assert ignore["status"] == "info"
+
+    def test_all_ok_false_when_deploy_missing(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        assert result["all_ok"] is False
+
+
+# ---------------------------------------------------------------------------
+# Scope
+# ---------------------------------------------------------------------------
+
+class TestCollectFilesScope:
+
+    def test_default_scope_is_working(self, monkeypatch):
+        calls = []
+        original = engine.git_cmd
+
+        def spy(*args):
+            calls.append(args)
+            return original(*args)
+
+        monkeypatch.setattr(engine, "git_cmd", spy)
+        engine.collect_files()
+        # working scope calls diff --cached, diff, and ls-files
+        cmd_args = [c[0] for c in calls]
+        assert "diff" in cmd_args
+        assert "ls-files" in cmd_args
+
+    def test_staged_scope_no_untracked(self, monkeypatch):
+        calls = []
+
+        def spy(*args):
+            calls.append(args)
+            return ""
+
+        monkeypatch.setattr(engine, "git_cmd", spy)
+        files, untracked = engine.collect_files("staged")
+        assert untracked == set()
+        # Should only call diff --cached
+        assert all(
+            "ls-files" not in c for c in calls
+        )
+
+    def test_head_scope_no_untracked(self, monkeypatch):
+        calls = []
+
+        def spy(*args):
+            calls.append(args)
+            return ""
+
+        monkeypatch.setattr(engine, "git_cmd", spy)
+        files, untracked = engine.collect_files("head")
+        assert untracked == set()
+
+
+class TestBuildDiffScope:
+
+    def test_staged_scope_uses_cached_only(self, monkeypatch):
+        calls = []
+
+        def mock_git(*args):
+            calls.append(args)
+            if args[0] == "diff" and "--cached" in args:
+                return "diff --git a/x.py\n+added"
+            return ""
+
+        monkeypatch.setattr(engine, "git_cmd", mock_git)
+        diff, fc, tc, trunc, skip = engine.build_diff(
+            ["x.py"], set(), 12000, scope="staged"
+        )
+        # Verify only --cached was called, not bare diff or diff HEAD
+        diff_calls = [c for c in calls if c[0] == "diff"]
+        for c in diff_calls:
+            assert "--cached" in c
+
+    def test_head_scope_uses_head(self, monkeypatch):
+        calls = []
+
+        def mock_git(*args):
+            calls.append(args)
+            if args[0] == "diff" and "HEAD" in args:
+                return "diff --git a/x.py\n+added"
+            return ""
+
+        monkeypatch.setattr(engine, "git_cmd", mock_git)
+        diff, fc, tc, trunc, skip = engine.build_diff(
+            ["x.py"], set(), 12000, scope="head"
+        )
+        diff_calls = [c for c in calls if c[0] == "diff"]
+        for c in diff_calls:
+            assert "HEAD" in c
+
+    def test_working_scope_uses_both(self, monkeypatch):
+        calls = []
+
+        def mock_git(*args):
+            calls.append(args)
+            return "some diff"
+
+        monkeypatch.setattr(engine, "git_cmd", mock_git)
+        engine.build_diff(["x.py"], set(), 12000, scope="working")
+        diff_calls = [c for c in calls if c[0] == "diff"]
+        has_cached = any("--cached" in c for c in diff_calls)
+        has_bare = any("--cached" not in c and "HEAD" not in c for c in diff_calls)
+        assert has_cached
+        assert has_bare
+
+
+class TestHistoryScope:
+
+    def test_log_history_includes_scope(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        engine.HISTORY_FILE = str(history)
+        engine.log_to_history("/tmp", "block", "opus", "passed",
+                              min_confidence="medium", scope="staged")
+        entry = json.loads(history.read_text().strip())
+        assert entry["scope"] == "staged"
+
+    def test_log_history_default_scope(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        engine.HISTORY_FILE = str(history)
+        engine.log_to_history("/tmp", "block", "opus", "passed")
+        entry = json.loads(history.read_text().strip())
+        assert entry["scope"] == "working"
+
+
+# ---------------------------------------------------------------------------
+# line_hint
+# ---------------------------------------------------------------------------
+
+class TestLineHint:
+
+    def test_parse_default_empty_string(self):
+        raw = json.dumps({
+            "type": "result", "subtype": "success",
+            "result": json.dumps({
+                "pass": False, "issues": [{"check": "x", "severity": "critical"}],
+                "summary": "bug"
+            })
+        })
+        r = engine.parse_review_output(raw)
+        assert r["issues"][0]["line_hint"] == ""
+
+    def test_parse_preserves_line_hint(self):
+        raw = json.dumps({
+            "type": "result", "subtype": "success",
+            "result": json.dumps({
+                "pass": False,
+                "issues": [{"check": "x", "severity": "critical", "line_hint": "L42"}],
+                "summary": "bug"
+            })
+        })
+        r = engine.parse_review_output(raw)
+        assert r["issues"][0]["line_hint"] == "L42"
+
+    def test_block_reason_includes_line_hint(self):
+        review = {
+            "summary": "test",
+            "issues": [{"severity": "critical", "line_hint": "L42",
+                        "check": "bad", "verdict": "wrong", "fix": "fix it"}]
+        }
+        reason = engine.format_block_reason(review)
+        assert "(L42)" in reason
+        assert "[CRITICAL]" in reason
+
+    def test_block_reason_no_parens_when_empty(self):
+        review = {
+            "summary": "test",
+            "issues": [{"severity": "critical", "line_hint": "",
+                        "check": "bad", "verdict": "wrong", "fix": "fix it"}]
+        }
+        reason = engine.format_block_reason(review)
+        assert "()" not in reason
+        assert "[CRITICAL]" in reason
+
+
+# ---------------------------------------------------------------------------
+# schema_version
+# ---------------------------------------------------------------------------
+
+class TestSchemaVersion:
+
+    def test_parse_sets_default(self):
+        raw = json.dumps({
+            "type": "result", "subtype": "success",
+            "result": json.dumps({"pass": True, "issues": [], "summary": "ok"})
+        })
+        r = engine.parse_review_output(raw)
+        assert r["schema_version"] == engine.SCHEMA_VERSION
+
+    def test_parse_preserves_explicit(self):
+        raw = json.dumps({
+            "type": "result", "subtype": "success",
+            "result": json.dumps({
+                "schema_version": 1, "pass": True, "issues": [], "summary": "ok"
+            })
+        })
+        r = engine.parse_review_output(raw)
+        assert r["schema_version"] == 1
+
+    def test_parse_failure_includes_schema_version(self):
+        r = engine.parse_review_output("not json")
+        assert r["schema_version"] == engine.SCHEMA_VERSION
+
+    def test_infra_review_includes_schema_version(self):
+        r = engine._infra_review("timeout")
+        assert r["schema_version"] == engine.SCHEMA_VERSION
+
+    def test_history_includes_schema_version(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        engine.HISTORY_FILE = str(history)
+        review = {"schema_version": 1, "pass": True, "review_status": "completed",
+                  "issues": [], "summary": "ok"}
+        engine.log_to_history("/tmp", "block", "opus", "passed", review=review)
+        entry = json.loads(history.read_text().strip())
+        assert entry["schema_version"] == 1
+
+    def test_history_state_log_includes_schema_version(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        engine.HISTORY_FILE = str(history)
+        engine.log_to_history("/tmp", "block", "opus", "skipped", reason="no changes")
+        entry = json.loads(history.read_text().strip())
+        assert entry["schema_version"] == engine.SCHEMA_VERSION

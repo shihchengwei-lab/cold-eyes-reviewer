@@ -71,3 +71,23 @@ class TestPromptTemplateSanity:
         with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
             content = f.read()
         assert "Cold Eyes" in content
+
+    def test_has_schema_version(self):
+        with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "schema_version" in content
+
+    def test_has_line_hint(self):
+        with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "line_hint" in content
+
+
+class TestReadmeSanity:
+    """Verify README contains key product sections."""
+
+    def test_has_strategy_presets(self):
+        readme = os.path.join(SCRIPTS_DIR, "README.md")
+        with open(readme, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "Strategy presets" in content

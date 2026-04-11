@@ -1,5 +1,30 @@
 # Changelog
 
+## v0.6.0 — Phase 1 Alpha
+
+Phase 1 implementation based on the productization roadmap. Five features targeting single-developer daily use.
+
+### New features
+
+- **`doctor` command** — `python cold_review_engine.py doctor` checks environment health: Python, Git, Claude CLI, deploy files, settings.json hook config, git repo status, and .cold-review-ignore. Returns structured JSON report with ok/fail/info status per check.
+- **Diff scope control** — New `--scope` parameter (`working`/`staged`/`head`) and `COLD_REVIEW_SCOPE` env var. `staged` reviews only `git diff --cached`; `head` reviews `git diff HEAD`. Default `working` preserves existing behavior.
+- **`line_hint` in issues** — Issues now include a `line_hint` field (e.g., `"L42"` or `"L42-L50"`) derived from diff hunk headers. Displayed in block messages as `[CRITICAL] (L42)`. Empty string when uncertain.
+- **`schema_version`** — Review output and history entries now carry `schema_version: 1` for forward compatibility.
+
+### Documentation
+
+- **Strategy presets** — README documents 5 preset configurations (Conservative/Standard/Strict/Aggressive/Observe) with env var examples.
+- **`COLD_REVIEW_SCOPE`** added to environment variables table.
+
+### Tests
+
+135 tests (37 new: doctor 11, scope 8, presets 1, line_hint 7, schema_version 10).
+
+## v0.5.2 — CHANGELOG Backfill + Helper Description Fix
+
+- CHANGELOG backfilled v0.5.0 and v0.5.1.
+- Helper description changed from "Legacy shell interface" to "Shell-facing utilities".
+
 ## v0.5.1 — README Architecture Clarification
 
 - Flow diagram now shows `cold-review.sh` (guard checks) and `cold_review_engine.py` (all review logic) as two distinct layers.

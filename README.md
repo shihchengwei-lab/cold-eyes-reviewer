@@ -29,10 +29,11 @@ Claude Code session ends
 
 ## Output format
 
-Every issue includes severity, confidence, category, file, and a three-part structure (check / verdict / fix):
+Every issue includes severity, confidence, category, file, line_hint, and a three-part structure (check / verdict / fix):
 
 ```json
 {
+  "schema_version": 1,
   "pass": false,
   "review_status": "completed",
   "summary": "Chinese page links to English chapter",
@@ -42,6 +43,7 @@ Every issue includes severity, confidence, category, file, and a three-part stru
       "confidence": "high",
       "category": "reference",
       "file": "index.html",
+      "line_hint": "L43",
       "check": "index.html line 43 links to ch3-en.html but this is the Chinese page",
       "verdict": "Cross-language reference.",
       "fix": "Change to ch3.html"
@@ -49,6 +51,9 @@ Every issue includes severity, confidence, category, file, and a three-part stru
   ]
 }
 ```
+
+- `schema_version` — output schema version (currently `1`). Consumers can branch on this for forward compatibility.
+- `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain.
 
 **Severity levels:**
 - `critical` — production crash, data loss, or security breach
@@ -84,7 +89,15 @@ cp cold-review.sh cold-review-helper.py cold_review_engine.py cold-review-prompt
 }
 ```
 
-### 3. Done
+### 3. Verify installation
+
+```bash
+python ~/.claude/scripts/cold_review_engine.py doctor
+```
+
+Checks Python, Git, Claude CLI, deploy files, hook config, and current repo. All checks should show `"ok"`. `"info"` items are optional hints.
+
+### 4. Done
 
 Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will review them.
 
@@ -100,9 +113,13 @@ Every review consumes tokens from your Claude subscription. You see what it cost
 
 ## What gets reviewed
 
-Cold Eyes reviews **all uncommitted changes** in the working tree — not just what Claude did in the current turn. It has no way to distinguish "changes Claude made" from "changes you had before opening the session."
+By default (`COLD_REVIEW_SCOPE=working`), Cold Eyes reviews **all uncommitted changes** in the working tree — staged, unstaged, and untracked. It has no way to distinguish "changes Claude made" from "changes you had before opening the session."
 
 **Commit or push before starting a new session.** This keeps the diff clean and the review accurate.
+
+Other scopes:
+- `COLD_REVIEW_SCOPE=staged` — only review `git diff --cached` (staged changes)
+- `COLD_REVIEW_SCOPE=head` — review `git diff HEAD` (staged + unstaged, no untracked)
 
 ## Configuration
 
@@ -116,6 +133,7 @@ Cold Eyes reviews **all uncommitted changes** in the working tree — not just w
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | `critical`, `major` | Minimum severity that triggers a block |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | `high`, `medium`, `low` | Minimum confidence to keep (hard filter) |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |
+| `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head` | Diff scope: all uncommitted / staged only / vs HEAD |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | Set to skip block once (logged as override) |
 
 ```bash
@@ -134,8 +152,37 @@ export COLD_REVIEW_CONFIDENCE=high
 # Review in English
 export COLD_REVIEW_LANGUAGE=English
 
+# Only review staged changes
+export COLD_REVIEW_SCOPE=staged
+
 # One-time override when blocked by a false positive
 export COLD_REVIEW_ALLOW_ONCE=1
+```
+
+### Strategy presets
+
+Common configuration combinations for different risk tolerance levels:
+
+| Preset | MODE | THRESHOLD | CONFIDENCE | Description |
+|---|---|---|---|---|
+| Conservative | block | critical | high | Only block high-confidence critical issues. Lowest friction. |
+| Standard | block | critical | medium | **Default.** Block medium+ confidence critical issues. |
+| Strict | block | major | medium | Also block major issues. |
+| Aggressive | block | major | low | Block any issue at major or above. |
+| Observe | report | — | low | Log everything, never block. Best for first-time adoption. |
+
+Example — switch to Strict:
+
+```bash
+export COLD_REVIEW_BLOCK_THRESHOLD=major
+export COLD_REVIEW_CONFIDENCE=medium
+```
+
+Example — Observe mode for a trial run:
+
+```bash
+export COLD_REVIEW_MODE=report
+export COLD_REVIEW_CONFIDENCE=low
 ```
 
 ### Ignore rules
@@ -189,10 +236,10 @@ If reviews aren't running, check:
 
 | File | Purpose |
 |---|---|
-| `cold_review_engine.py` | Core: diff building, Claude call, policy engine, confidence filter, history logging |
+| `cold_review_engine.py` | Core: diff building, Claude call, policy engine, confidence filter, history logging, doctor |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls engine |
 | `cold-review-helper.py` | Shell-facing utilities: hook parsing, state logging, ignore/rank (called by shell; prompt delegates to engine) |
-| `cold-review-prompt.txt` | System prompt template |
+| `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
 | `.cold-review-ignore` | Default ignore patterns |
 
 ## Background
@@ -205,15 +252,36 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`). Build a dashboard, filter by state, chart trends over time.
+- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`). Build a dashboard, filter by state, chart trends over time.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
+
+## Diagnostics
+
+```bash
+python ~/.claude/scripts/cold_review_engine.py doctor
+```
+
+Outputs a JSON report checking 7 items:
+
+| Check | What it verifies |
+|---|---|
+| `python` | Python version |
+| `git` | Git CLI available |
+| `claude_cli` | Claude Code CLI available |
+| `deploy_files` | All 4 script files exist in `~/.claude/scripts/` |
+| `settings_hook` | `settings.json` has a Stop hook referencing `cold-review.sh` |
+| `git_repo` | Current directory is a git repository |
+| `ignore_file` | `.cold-review-ignore` exists in repo root (info only, not required) |
+
+If reviews aren't running, `doctor` is the first thing to check.
 
 ## Known limitations
 
 - **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. Periodically archive or truncate it yourself.
 - **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. When truncation causes files to be skipped, block messages include a warning with the count of unreviewed files.
 - **Silent on auth failure.** If your Claude subscription is expired or rate-limited, the review logs a `failed` state. Check stderr or history.
+- **`line_hint` may be inaccurate.** Line references are extracted by the LLM from diff hunk headers. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible.
 
 ## License
 

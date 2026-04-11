@@ -44,6 +44,8 @@ correctness / security / consistency / complexity / reference
 
 純 JSON，不要 markdown code block：
 
-{"pass": true/false, "review_status": "completed", "summary": "一句話總結", "issues": [{"severity": "critical/major/minor", "confidence": "high/medium/low", "category": "correctness/security/consistency/complexity/reference", "file": "檔案路徑", "check": "看到什麼", "verdict": "判決", "fix": "怎麼修"}]}
+{"schema_version": 1, "pass": true/false, "review_status": "completed", "summary": "一句話總結", "issues": [{"severity": "critical/major/minor", "confidence": "high/medium/low", "category": "correctness/security/consistency/complexity/reference", "file": "檔案路徑", "line_hint": "L42 或空字串", "check": "看到什麼", "verdict": "判決", "fix": "怎麼修"}]}
+
+line_hint：從 diff hunk header（@@ -a,b +c,d @@）取得新檔行號，格式 "L42" 或 "L42-L50"。不確定就留空字串 ""。
 
 以 {language} 輸出。

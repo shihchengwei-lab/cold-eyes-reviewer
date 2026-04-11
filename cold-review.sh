@@ -12,6 +12,7 @@
 #   COLD_REVIEW_BLOCK_THRESHOLD — critical (default), major
 #   COLD_REVIEW_CONFIDENCE      — minimum confidence to keep: high, medium (default), low
 #   COLD_REVIEW_LANGUAGE        — output language (default: 繁體中文（台灣）)
+#   COLD_REVIEW_SCOPE           — diff scope: working (default), staged, head
 #   COLD_REVIEW_ALLOW_ONCE      — set to 1 to bypass block once (logged)
 
 set -uo pipefail
@@ -28,6 +29,7 @@ MODEL="${COLD_REVIEW_MODEL:-opus}"
 THRESHOLD="${COLD_REVIEW_BLOCK_THRESHOLD:-critical}"
 CONFIDENCE="${COLD_REVIEW_CONFIDENCE:-medium}"
 LANGUAGE="${COLD_REVIEW_LANGUAGE:-}"
+SCOPE="${COLD_REVIEW_SCOPE:-working}"
 
 # Token budget: prefer MAX_TOKENS, fallback to MAX_LINES×4
 if [[ -n "${COLD_REVIEW_MAX_LINES:-}" ]]; then
@@ -87,7 +89,7 @@ echo $$ > "$LOCKFILE"
 trap 'rm -f "$LOCKFILE"' EXIT
 
 # --- Run engine ---
-ENGINE_ARGS=(run --mode "$MODE" --model "$MODEL" --max-tokens "$MAX_TOKENS" --threshold "$THRESHOLD" --confidence "$CONFIDENCE")
+ENGINE_ARGS=(run --mode "$MODE" --model "$MODEL" --max-tokens "$MAX_TOKENS" --threshold "$THRESHOLD" --confidence "$CONFIDENCE" --scope "$SCOPE")
 [[ -n "$LANGUAGE" ]] && ENGINE_ARGS+=(--language "$LANGUAGE")
 RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>&2) || true
 
