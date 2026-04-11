@@ -167,6 +167,16 @@ This tool was built after observing [Cinder](https://github.com/shihchengwei-lab
 
 The difference: Cinder watched in real time and commented. Cold Eyes reviews after the fact and blocks if needed. Cinder was a companion. Cold Eyes is a gate.
 
+## Building on top of Cold Eyes
+
+Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
+
+- **`cold-review-profile.json`** — Plain JSON. Build a UI to let users drag sliders for RIGOR/SNARK/PATIENCE/PARANOIA, pick a name, set a language.
+- **`cold-review-history.jsonl`** — One JSON object per line. Build a dashboard, filter by pass/fail, chart trends over time.
+- **`cold-review-prompt.txt`** — Template with `{name}`, `{language}`, `{stats_*}` placeholders. Swap in your own review criteria.
+
+The core is the hook. The shell around it is yours.
+
 ## Known limitations
 
 - **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. If you use this daily for months, the file will get large. Periodically archive or truncate it yourself. A future version may add automatic rotation.
