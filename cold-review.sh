@@ -21,13 +21,21 @@ MAX_LINES="${COLD_REVIEW_MAX_LINES:-500}"
 # --- Guard: off mode ---
 [[ "$MODE" == "off" ]] && exit 0
 
-# --- Guard: prevent recursion (env var from parent + lockfile as backup) ---
+# --- Guard: prevent recursion (env var) ---
 if [[ "${COLD_REVIEW_ACTIVE:-}" == "1" ]]; then
   exit 0
 fi
+
+# --- Guard: lockfile with stale detection ---
 if [[ -f "$LOCKFILE" ]]; then
-  echo "cold-review: skipped (lockfile exists, another review in progress)" >&2
-  exit 0
+  LOCK_PID=$(head -1 "$LOCKFILE" 2>/dev/null || echo "")
+  if [[ -n "$LOCK_PID" ]] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    echo "cold-review: skipped (another review in progress, pid=$LOCK_PID)" >&2
+    exit 0
+  else
+    echo "cold-review: removing stale lockfile (pid=$LOCK_PID no longer alive)" >&2
+    rm -f "$LOCKFILE"
+  fi
 fi
 
 # --- Read hook input, check stop_hook_active ---
@@ -44,21 +52,38 @@ if ! git rev-parse --git-dir > /dev/null 2>&1; then
   exit 0
 fi
 
-# --- Collect diff ---
+# --- Collect diff (truncate at pipe level to avoid large shell variables) ---
 DIFF=""
-DIFF+=$(git diff --cached 2>/dev/null || true)
-DIFF+=$'\n'
-DIFF+=$(git diff 2>/dev/null || true)
+STAGED=$(git diff --cached 2>/dev/null | head -n "$MAX_LINES" || true)
+DIFF+="$STAGED"
 
-# Include content of new untracked files
-UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
-if [[ -n "$UNTRACKED" ]]; then
-  while IFS= read -r f; do
-    if [[ -f "$f" ]]; then
-      DIFF+=$'\n'"=== NEW FILE: $f ==="$'\n'
-      DIFF+=$(cat "$f" 2>/dev/null || true)
-    fi
-  done <<< "$UNTRACKED"
+REMAINING=$((MAX_LINES - $(echo "$STAGED" | wc -l)))
+if [[ "$REMAINING" -gt 0 ]]; then
+  UNSTAGED=$(git diff 2>/dev/null | head -n "$REMAINING" || true)
+  DIFF+=$'\n'"$UNSTAGED"
+  REMAINING=$((REMAINING - $(echo "$UNSTAGED" | wc -l)))
+fi
+
+# Include content of new untracked files (within line budget)
+if [[ "$REMAINING" -gt 0 ]]; then
+  UNTRACKED=$(git ls-files --others --exclude-standard 2>/dev/null || true)
+  if [[ -n "$UNTRACKED" ]]; then
+    while IFS= read -r f; do
+      if [[ -f "$f" ]] && [[ "$REMAINING" -gt 0 ]]; then
+        CONTENT=$(cat "$f" 2>/dev/null | head -n "$REMAINING" || true)
+        CONTENT_LINES=$(echo "$CONTENT" | wc -l)
+        DIFF+=$'\n'"=== NEW FILE: $f ==="$'\n'"$CONTENT"$'\n'
+        REMAINING=$((REMAINING - CONTENT_LINES - 2))
+      fi
+    done <<< "$UNTRACKED"
+  fi
+fi
+
+# Check if we hit the limit
+TOTAL_LINES=$(echo "$DIFF" | wc -l)
+if [[ "$TOTAL_LINES" -ge "$MAX_LINES" ]]; then
+  DIFF+=$'\n\n'"[Cold Eyes: diff truncated at ~$MAX_LINES lines. Review may be incomplete.]"
+  echo "cold-review: diff truncated at $MAX_LINES lines" >&2
 fi
 
 # --- Guard: no changes ---
@@ -67,32 +92,33 @@ if [[ -z "${DIFF// /}" ]]; then
   exit 0
 fi
 
-# --- Truncate large diffs ---
-LINE_COUNT=$(echo "$DIFF" | wc -l)
-if [[ "$LINE_COUNT" -gt "$MAX_LINES" ]]; then
-  DIFF=$(echo "$DIFF" | head -n "$MAX_LINES")
-  DIFF+=$'\n\n'"[Cold Eyes: diff truncated at $MAX_LINES lines out of $LINE_COUNT. Review may be incomplete.]"
-  echo "cold-review: diff truncated from $LINE_COUNT to $MAX_LINES lines" >&2
-fi
-
-# --- Build prompt to temp file (avoids shell interpretation of special chars) ---
+# --- Build prompt to temp file ---
 TMPFILE=$(mktemp)
-trap 'rm -f "$TMPFILE" "$LOCKFILE"' EXIT
+trap 'rm -f "$TMPFILE"' EXIT
 python "$HELPER" build-prompt > "$TMPFILE"
 
-# --- Acquire lock ---
+# --- Acquire lock (after tmpfile, so trap order is clean) ---
 echo $$ > "$LOCKFILE"
+trap 'rm -f "$TMPFILE" "$LOCKFILE"' EXIT
 
 # --- Run reviewer ---
 export COLD_REVIEW_ACTIVE=1
+REVIEW_EXIT=0
 REVIEW_RAW=$(echo "$DIFF" | claude -p "Review the following changes." \
   --model "$MODEL" \
   --append-system-prompt-file "$TMPFILE" \
-  --output-format json 2>/dev/null) || true
+  --output-format json 2>/dev/null) || REVIEW_EXIT=$?
 unset COLD_REVIEW_ACTIVE
 
-# --- Release lock (trap also handles this) ---
+# --- Release lock early (trap also handles this) ---
 rm -f "$LOCKFILE"
+trap 'rm -f "$TMPFILE"' EXIT
+
+# --- Handle claude CLI errors ---
+if [[ "$REVIEW_EXIT" -ne 0 ]]; then
+  echo "cold-review: claude exited with code $REVIEW_EXIT" >&2
+  exit 0
+fi
 
 if [[ -z "$REVIEW_RAW" ]]; then
   echo "cold-review: reviewer returned empty output" >&2
