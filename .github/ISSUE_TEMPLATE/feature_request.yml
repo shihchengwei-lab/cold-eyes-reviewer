@@ -1,0 +1,31 @@
+name: Feature Request
+description: Suggest an enhancement to Cold Eyes Reviewer
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case or pain point.
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like?
+      description: Describe your proposed solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: What other approaches have you thought about?
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Any other information (screenshots, history entries, config snippets).

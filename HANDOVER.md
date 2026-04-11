@@ -2,12 +2,12 @@
 
 ## 現況
 
-- **版本：** v1.2.0（master，`69b1bfd`，2026-04-11）
+- **版本：** v1.3.0（master，2026-04-11）
 - **分支：** master
-- **測試：** 283 passed
-- **部署：** `~/.claude/scripts/` 已同步
-- **GitHub Release：** v1.1.0 已建立；v1.2.0 尚未打 tag / Release
-- **版本訊號：** `__init__.py` = 1.2.0 / About = 283 tests / CHANGELOG = v1.2.0 ✓ 一致
+- **測試：** 287 passed
+- **部署：** `~/.claude/scripts/` 需重新同步
+- **GitHub Release：** v1.2.0 已建立（v1.1.0 也有），v1.3.0 待推 tag 後自動建
+- **版本訊號：** `__init__.py` = 1.3.0 / About = 287 tests / CHANGELOG = v1.3.0 / README 已更新 ✓ 一致
 
 ## 架構
 
@@ -35,28 +35,34 @@ cold_eyes/                   Package（15 模組）
   override.py                arm_override, consume_override
   doctor.py                  run_doctor（11 checks）, verify_install（3 critical checks）, run_doctor_fix, run_init
   engine.py                  run()（coverage visibility: reviewed_files/total_files/coverage_pct）, _resolve(), _skip(), _infra_review()
-  cli.py                     11 subcommands: run, doctor, verify-install, init, eval, stats, quality-report, aggregate-overrides, arm-override, history-prune, history-archive
-  __init__.py                __version__ = "1.2.0"
+  cli.py                     11 subcommands + --version: run, doctor, verify-install, init, eval, stats, quality-report, aggregate-overrides, arm-override, history-prune, history-archive
+  __init__.py                __version__ = "1.3.0"
 
 evals/                       Evaluation framework
   eval_runner.py             deterministic / benchmark / sweep — 測 parse_review_output → apply_policy 的 decision boundary
   cases/                     14 eval case fixtures（6 true_positive, 4 acceptable, 4 stress）
 
-docs/                        6 份文件 + 5 份 sample + 1 legacy
-  release-checklist.md       Release process checklist（7 步）
+docs/                        11 份文件 + 5 份 sample + 1 legacy
+  architecture.md            三層架構、data flow、模組職責、設計決策
+  failure-modes.md           六種狀態、infra failure 分類、truncation 分析、false positive 處理
+  troubleshooting.md         8 個問題/解法對
+  release-checklist.md       Release process checklist（含 coverage gate + release workflow）
   evaluation.md              Eval system + threshold sweep results + 預設值理由
   scope-strategy.md          4 種 scope 的適用場景 + truncation 交互
   history-schema.md          JSONL v2 全 field 規格 + 6 種 state 範例 + v1→v2 migration
   tuning.md                  調參 playbook（diagnostic workflow + 何時改什麼）
   agent-setup.md             5 步 agent 安裝指南 + troubleshooting
+  version-policy.md          SemVer 規則 + 四處版本訊號定義
+  support-policy.md          Python/OS/Shell 支援矩陣 + CI 測試範圍
+  roadmap.md                 當前優先、可能方向、明確不做
   samples/                   pass_outcome, block_outcome, history_entry, quality_report, stats_output
   alpha-scope.md             (legacy) v0.2.0 scope document
 
-tests/                       283 tests
+tests/                       287 tests
   test_engine.py             184 tests — engine pipeline, scope, mock adapter
   test_shell_smoke.py        26 tests — shell shim, fail-closed parser
   test_eval.py               24 tests — case loading, deterministic, sweep, single case
-  test_risk_controls.py      25 tests — truncation policy (warn/soft-pass/fail-closed), config, coverage, state reachability
+  test_risk_controls.py      29 tests — truncation policy, config, coverage, state reachability, CLI --version, doctor Fix: messages
   test_schema.py             16 tests — validate_review, parser regressions
   test_override.py           8 tests — arm/consume override token
 ```
@@ -71,22 +77,23 @@ tests/                       283 tests
 
 ### 執行
 
-| Phase | 做了什麼 | 新增測試 | Commit |
-|-------|---------|---------|--------|
-| 1 Release discipline | GitHub Release v1.1.0 + `docs/release-checklist.md` | 0 | `bf55b17` |
-| 2 Evaluation pack | 14 eval cases + `evals/eval_runner.py` + CLI `eval` + `docs/evaluation.md` | +24 | `bf55b17` |
-| 3 Risk controls | `truncation_policy` (warn/soft-pass/fail-closed) + coverage visibility + `docs/scope-strategy.md` | +25 | `bf55b17` |
-| 4 Governance docs | `docs/history-schema.md` + `docs/tuning.md` + 5 sample JSON | 0 | `bf55b17` |
-| 5 Agent-native polish | `verify-install` command + `docs/agent-setup.md` | 0 | `bf55b17` |
-| fix | `__init__` 1.1.0→1.2.0, About 234→283 tests, CHANGELOG 去掉 unreleased | 0 | `0dffa33` |
+| # | 做了什麼 | 新增測試 | Commit |
+|---|---------|---------|--------|
+| Phase 1 | GitHub Release v1.1.0 + `docs/release-checklist.md` | 0 | `bf55b17` |
+| Phase 2 | 14 eval cases + `evals/eval_runner.py` + CLI `eval` + `docs/evaluation.md` | +24 | `bf55b17` |
+| Phase 3 | `truncation_policy` (warn/soft-pass/fail-closed) + coverage visibility + `docs/scope-strategy.md` | +25 | `bf55b17` |
+| Phase 4 | `docs/history-schema.md` + `docs/tuning.md` + 5 sample JSON | 0 | `bf55b17` |
+| Phase 5 | `verify-install` command + `docs/agent-setup.md` | 0 | `bf55b17` |
+| fix | `__init__` 1.1.0→1.2.0, About 234→283, CHANGELOG 去 unreleased | 0 | `0dffa33` |
 | fix | `git.py` subprocess 加 `encoding="utf-8"`（Windows GBK 崩潰） | 0 | `189d948` |
-| fix | `claude.py` subprocess 加 `encoding="utf-8"`（同上，stdin 寫入端） | 0 | `69b1bfd` |
+| fix | `claude.py` subprocess 加 `encoding="utf-8"`（同上，stdin 端） | 0 | `69b1bfd` |
+| docs | README 加 truncation policy / eval / verify-install / coverage；HANDOVER 更新 | 0 | `7a6d2c8` |
 
 ### 教訓
 
 1. **版本訊號一致性**：第一次 push 時 `__init__.py` 仍是 1.1.0、About 仍顯示 234 tests。每次 push 前必須驗四個訊號：`__version__`、About、CHANGELOG、test count。
 
-2. **Windows subprocess encoding**：Python 在 Windows 上 `subprocess.run(text=True)` 預設用系統編碼（中文 Windows = GBK）。所有 subprocess 都必須顯式指定 `encoding="utf-8"`，否則任何非 GBK 字元（中文 docs 裡的 ✓、UTF-8 中文等）會導致 engine 崩潰，觸發 fail-closed 擋住每一次 commit。修了兩處：`git.py:git_cmd()` 和 `claude.py:ClaudeCliAdapter._call()`。
+2. **Windows subprocess encoding**：Python 在 Windows 上 `subprocess.run(text=True)` 預設用系統編碼（中文 Windows = GBK）。所有 subprocess 都必須顯式指定 `encoding="utf-8"`，否則中文 diff 會導致 engine 崩潰，觸發 fail-closed 擋住每次 commit。修了兩處：`git.py:git_cmd()` 和 `claude.py:ClaudeCliAdapter._call()`。
 
 ### 新增的核心能力
 
@@ -141,7 +148,6 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 
 ### 可能的下一步
 
-- Git tag v1.2.0 + GitHub Release — 版本訊號已對齊，可以打
 - 更多 eval cases — 目前 14 個是最小可行集，隨實際使用擴充
 - Benchmark mode 實測 — `eval --eval-mode benchmark --model opus` 用真實 model 量化 accuracy
 - `line_hint` 幻覺率 — 可在 eval framework 加案例測量

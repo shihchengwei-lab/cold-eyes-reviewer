@@ -29,4 +29,15 @@ ignore = ["E741"]
 [tool.ruff.lint.per-file-ignores]
 "cold_eyes/cli.py" = ["E402"]
 "cold_eyes/git.py" = ["F401"]
-"tests/*" = ["F401", "F841"]
+"tests/*" = ["E402", "F401", "F841"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+source = ["cold_eyes"]
+omit = ["cold_eyes/cli.py"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 75

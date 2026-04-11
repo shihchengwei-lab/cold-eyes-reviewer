@@ -1,5 +1,36 @@
 # Changelog
 
+## v1.3.0 — Governance & Polish
+
+Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 287 tests (was 283).
+
+### Governance
+
+- **CONTRIBUTING.md** — development setup, code style, commit convention, deployment model
+- **SECURITY.md** — vulnerability disclosure policy, scope, trust boundaries
+- **Issue templates** — bug report and feature request forms (`.github/ISSUE_TEMPLATE/`)
+- **PR template** — `.github/PULL_REQUEST_TEMPLATE.md` with checklist
+- **Version policy** — `docs/version-policy.md` documents SemVer rules and signal alignment
+- **Support policy** — `docs/support-policy.md` documents tested Python/OS/shell matrix
+- **Roadmap** — `docs/roadmap.md` with priorities and explicit out-of-scope list
+
+### Diagnostics
+
+- **`--version` flag** — `python cli.py --version` prints version string
+- **Actionable doctor messages** — all failure messages now include `Fix:` instructions with specific remediation steps
+- **Troubleshooting guide** — `docs/troubleshooting.md` with 8 problem/solution pairs
+- **Failure modes doc** — `docs/failure-modes.md` with state machine, infra failure taxonomy, truncation analysis
+
+### CI
+
+- **Coverage in CI** — `pytest-cov` with 75% threshold (actual: 80%), coverage report in test output
+- **Release workflow** — `.github/workflows/release.yml` runs tests and verifies tag-to-`__version__` alignment before creating GitHub Release
+- **Release checklist updated** — coverage gate and release workflow steps added
+
+### Documentation
+
+- **Architecture doc** — `docs/architecture.md` with layer diagram, data flow, module responsibilities, design decisions
+
 ## v1.2.0 — Evidence & Controls
 
 5-phase credibility push: evaluation framework, risk controls, governance docs. 283 tests (was 234).

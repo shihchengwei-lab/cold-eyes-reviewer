@@ -12,8 +12,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install pytest
-      - run: pytest tests/ -v
+      - run: pip install pytest pytest-cov
+      - run: pytest tests/ -v --cov=cold_eyes --cov-report=term-missing
 
   lint:
     runs-on: ubuntu-latest

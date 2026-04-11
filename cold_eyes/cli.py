@@ -18,10 +18,13 @@ from cold_eyes.history import (
     aggregate_overrides, compute_stats, prune_history, archive_history, quality_report,
 )
 from cold_eyes.override import arm_override
+from cold_eyes import __version__
 
 
 def main():
     parser = argparse.ArgumentParser(description="Cold Eyes Reviewer engine")
+    parser.add_argument("--version", action="version",
+                        version=f"cold-eyes-reviewer {__version__}")
     parser.add_argument("command", choices=[
         "run", "doctor", "init", "aggregate-overrides", "stats", "quality-report",
         "arm-override", "history-prune", "history-archive",

@@ -28,7 +28,8 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
         git_ver = git_cmd("--version")
         checks.append({"name": "git", "status": "ok", "detail": git_ver})
     except GitCommandError:
-        checks.append({"name": "git", "status": "fail", "detail": "not found"})
+        checks.append({"name": "git", "status": "fail",
+                       "detail": "not found. Fix: install Git and ensure it is on PATH"})
 
     # 3. Claude CLI
     try:
@@ -40,10 +41,10 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
                            "detail": r.stdout.strip()})
         else:
             checks.append({"name": "claude_cli", "status": "fail",
-                           "detail": f"exit {r.returncode}"})
+                           "detail": f"exit {r.returncode}. Fix: run 'claude --version' to diagnose"})
     except FileNotFoundError:
         checks.append({"name": "claude_cli", "status": "fail",
-                       "detail": "not found"})
+                       "detail": "not found. Fix: install Claude Code CLI (https://docs.anthropic.com/en/docs/claude-code)"})
     except Exception as e:
         checks.append({"name": "claude_cli", "status": "fail",
                        "detail": str(e)})
@@ -55,7 +56,7 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
                        "detail": f"{len(DEPLOY_FILES)} files in {scripts_dir}"})
     else:
         checks.append({"name": "deploy_files", "status": "fail",
-                       "detail": f"missing: {', '.join(missing)}"})
+                       "detail": f"missing: {', '.join(missing)}. Fix: re-run 'bash install.sh' from the repo root"})
 
     # 5. settings.json Stop hook
     try:
@@ -75,11 +76,11 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
             checks.append({"name": "settings_hook", "status": "ok",
                            "detail": "Stop hook configured"})
         else:
-            checks.append({"name": "settings_hook", "status": "fail",
-                           "detail": "cold-review.sh not found in hooks.Stop"})
+            msg = f"cold-review.sh not found in hooks.Stop. Fix: add Stop hook to {settings_path}"
+            checks.append({"name": "settings_hook", "status": "fail", "detail": msg})
     except FileNotFoundError:
-        checks.append({"name": "settings_hook", "status": "fail",
-                       "detail": f"{settings_path} not found"})
+        msg = f"{settings_path} not found. Fix: create settings.json with Stop hook config"
+        checks.append({"name": "settings_hook", "status": "fail", "detail": msg})
     except Exception as e:
         checks.append({"name": "settings_hook", "status": "fail",
                        "detail": str(e)})
@@ -90,7 +91,7 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
         checks.append({"name": "git_repo", "status": "ok", "detail": "in git repo"})
     except GitCommandError:
         checks.append({"name": "git_repo", "status": "fail",
-                       "detail": "not in a git repo"})
+                       "detail": "not in a git repo. Fix: run 'git init' or cd to a git repository"})
 
     # 7. .cold-review-ignore (info level)
     if repo_root is None:
@@ -123,8 +124,8 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
     # 9. Legacy helper detection (split-brain check)
     helper_path = os.path.join(scripts_dir, "cold-review-helper.py")
     if os.path.isfile(helper_path):
-        checks.append({"name": "legacy_helper", "status": "fail",
-                       "detail": "cold-review-helper.py found — remove to avoid split-brain"})
+        msg = f"cold-review-helper.py found — split-brain risk. Fix: run 'doctor --fix' or delete {helper_path}"
+        checks.append({"name": "legacy_helper", "status": "fail", "detail": msg})
     else:
         checks.append({"name": "legacy_helper", "status": "ok",
                        "detail": "no legacy helper"})
@@ -140,7 +141,7 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
                           or "COLD_REVIEW_MAX_LINES" in shell_content)
             if has_legacy:
                 checks.append({"name": "shell_version", "status": "fail",
-                               "detail": "cold-review.sh contains legacy patterns"})
+                               "detail": "cold-review.sh contains legacy patterns. Fix: re-run 'bash install.sh' to update"})
             else:
                 checks.append({"name": "shell_version", "status": "ok",
                                "detail": "shell is current version"})

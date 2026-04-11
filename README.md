@@ -1,5 +1,7 @@
 # Cold Eyes Reviewer
 
+![Tests](https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/workflows/test.yml/badge.svg)
+
 A zero-context code reviewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
 
 Cold Eyes is a second-pass gate, not a full code review. It sees only the git diff — no conversation context, no project history, no requirements. It catches surface-level correctness, security, and consistency issues. It does not understand your intent.
@@ -335,8 +337,10 @@ Cold Eyes logs its state to `~/.claude/cold-review-history.jsonl` at every exit 
 
 If reviews aren't running, check:
 1. `~/.claude/cold-review-history.jsonl` — look for recent `infra_failed` or `skipped` entries. `failure_kind` and `stderr_excerpt` fields pinpoint the cause.
-2. `python ~/.claude/scripts/cold_eyes/cli.py doctor` — checks environment health
+2. `python ~/.claude/scripts/cold_eyes/cli.py doctor` — checks environment health (failure messages include `Fix:` instructions)
 3. `claude -d` — check for auth or rate limit issues
+
+For detailed state analysis, see `docs/failure-modes.md`. For common issues, see `docs/troubleshooting.md`.
 
 ## Requirements
 
@@ -344,6 +348,8 @@ If reviews aren't running, check:
 - Python 3.10+
 - Git
 - Bash (Git Bash on Windows)
+
+See `docs/support-policy.md` for the full tested platform matrix.
 
 ## Files
 
@@ -353,7 +359,7 @@ If reviews aren't running, check:
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
 | `evals/` | Evaluation framework: 14 case fixtures + eval runner (deterministic/benchmark/sweep) |
-| `docs/` | Evaluation results, scope strategy, history schema, tuning playbook, agent setup guide, sample outputs |
+| `docs/` | Architecture, failure modes, troubleshooting, evaluation, scope strategy, history schema, tuning, support policy, roadmap, version policy, agent setup, release checklist, sample outputs |
 | `pyproject.toml` | Package metadata and ruff/lint config (optional `pip install -e .` for `cold-eyes` CLI command) |
 | `install.sh` / `uninstall.sh` | Deploy to / remove from `~/.claude/scripts/` |
 | `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
@@ -481,6 +487,14 @@ bash uninstall.sh
 ```
 
 Then remove the Stop hook entry from `~/.claude/settings.json`.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards, and contribution workflow.
+
+## Security
+
+See [SECURITY.md](SECURITY.md) for vulnerability disclosure policy and trust boundaries.
 
 ## License
 

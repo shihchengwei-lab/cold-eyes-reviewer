@@ -12,6 +12,8 @@ if PROJECT_ROOT not in sys.path:
 
 from cold_eyes.policy import apply_policy
 from cold_eyes.config import load_policy
+from cold_eyes.doctor import run_doctor
+from cold_eyes import __version__
 from cold_eyes.constants import (
     STATE_PASSED, STATE_BLOCKED, STATE_OVERRIDDEN,
     STATE_INFRA_FAILED, STATE_REPORTED, STATE_SKIPPED,
@@ -258,3 +260,50 @@ class TestStateReachability:
         review = _review_with_issues()
         outcome = apply_policy(review, "report", "critical", False)
         assert outcome["state"] == STATE_REPORTED
+
+
+# ---------------------------------------------------------------------------
+# CLI --version
+# ---------------------------------------------------------------------------
+
+class TestCLIVersion:
+    def test_version_flag(self):
+        import subprocess
+        cli_path = os.path.join(PROJECT_ROOT, "cold_eyes", "cli.py")
+        r = subprocess.run(
+            [sys.executable, cli_path, "--version"],
+            capture_output=True, text=True, encoding="utf-8",
+        )
+        assert r.returncode == 0
+        assert __version__ in r.stdout
+
+
+# ---------------------------------------------------------------------------
+# Doctor actionable messages
+# ---------------------------------------------------------------------------
+
+class TestDoctorActionableMessages:
+    def test_deploy_files_fail_has_fix(self, tmp_path):
+        """Deploy files failure detail must contain 'Fix:' guidance."""
+        report = run_doctor(scripts_dir=str(tmp_path), repo_root=str(tmp_path))
+        deploy_check = next(c for c in report["checks"] if c["name"] == "deploy_files")
+        assert deploy_check["status"] == "fail"
+        assert "Fix:" in deploy_check["detail"]
+
+    def test_settings_hook_fail_has_fix(self, tmp_path):
+        """Missing settings.json failure detail must contain 'Fix:' guidance."""
+        fake_settings = str(tmp_path / "nonexistent_settings.json")
+        report = run_doctor(scripts_dir=str(tmp_path), settings_path=fake_settings,
+                            repo_root=str(tmp_path))
+        hook_check = next(c for c in report["checks"] if c["name"] == "settings_hook")
+        assert hook_check["status"] == "fail"
+        assert "Fix:" in hook_check["detail"]
+
+    def test_legacy_helper_fail_has_fix(self, tmp_path):
+        """Legacy helper detection must contain 'Fix:' guidance."""
+        helper = tmp_path / "cold-review-helper.py"
+        helper.write_text("# legacy")
+        report = run_doctor(scripts_dir=str(tmp_path), repo_root=str(tmp_path))
+        legacy_check = next(c for c in report["checks"] if c["name"] == "legacy_helper")
+        assert legacy_check["status"] == "fail"
+        assert "Fix:" in legacy_check["detail"]
