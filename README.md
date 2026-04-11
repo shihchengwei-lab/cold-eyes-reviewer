@@ -85,6 +85,10 @@ If you already have other Stop hooks, just add the new object to the existing ar
 
 Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will review them.
 
+## Important: token usage
+
+Every review consumes tokens from **your own** Claude subscription. This tool never uses hidden quotas, background calls, or tokens you didn't agree to spend. You see what it costs, you control when it runs, you decide the model. Your resources, your choice.
+
 ## Important: what gets reviewed
 
 Cold Eyes reviews **all uncommitted changes** in the working tree — not just what Claude did in the current turn. It has no way to distinguish "changes Claude made" from "changes you had before opening the session."
