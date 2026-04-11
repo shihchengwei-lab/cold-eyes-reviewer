@@ -21,6 +21,9 @@ from cold_eyes.git import build_diff, is_binary, collect_files, git_cmd
 from cold_eyes.prompt import build_prompt_text
 from cold_eyes.history import log_to_history, aggregate_overrides, compute_stats
 from cold_eyes.config import load_policy, _parse_flat_yaml, POLICY_FILENAME
+from cold_eyes.claude import (
+    ModelAdapter, ClaudeCliAdapter, MockAdapter, call_claude,
+)
 from cold_eyes.doctor import run_doctor
 
 
@@ -1331,3 +1334,54 @@ class TestDoctorPolicyFile:
                                    repo_root=str(tmp_path))
         pf = next(c for c in result["checks"] if c["name"] == "policy_file")
         assert pf["status"] == "info"
+
+
+class TestMockAdapter:
+
+    def test_returns_fixed_response(self):
+        adapter = MockAdapter(response='{"pass": true}', exit_code=0)
+        out, code = adapter.review("diff", "prompt", "opus")
+        assert out == '{"pass": true}'
+        assert code == 0
+
+    def test_records_inputs(self):
+        adapter = MockAdapter()
+        adapter.review("my diff", "my prompt", "sonnet")
+        assert adapter.last_diff == "my diff"
+        assert adapter.last_prompt == "my prompt"
+        assert adapter.last_model == "sonnet"
+        assert adapter.call_count == 1
+
+    def test_call_count_increments(self):
+        adapter = MockAdapter()
+        adapter.review("a", "b", "c")
+        adapter.review("d", "e", "f")
+        assert adapter.call_count == 2
+
+    def test_error_exit_code(self):
+        adapter = MockAdapter(response="", exit_code=-1)
+        out, code = adapter.review("diff", "prompt", "opus")
+        assert out == ""
+        assert code == -1
+
+
+class TestClaudeCliAdapter:
+
+    def test_inherits_model_adapter(self):
+        adapter = ClaudeCliAdapter()
+        assert isinstance(adapter, ModelAdapter)
+
+    def test_custom_timeout(self):
+        adapter = ClaudeCliAdapter(timeout=60)
+        assert adapter.timeout == 60
+
+    def test_default_timeout(self):
+        adapter = ClaudeCliAdapter()
+        assert adapter.timeout == 300
+
+
+class TestCallClaudeLegacy:
+
+    def test_legacy_wrapper_callable(self):
+        """call_claude still importable and callable (will fail without CLI)."""
+        assert callable(call_claude)

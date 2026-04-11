@@ -2,10 +2,10 @@
 
 ## 現況
 
-- **版本：** v0.9.0（master，2026-04-11）
+- **版本：** v0.9.1（master，2026-04-11）
 - **分支：** master
-- **測試：** 150 passed
-- **部署：** `~/.claude/scripts/` 需同步（新增 `config.py`）
+- **測試：** 158 passed
+- **部署：** `~/.claude/scripts/` 需同步（新增 `config.py`，`claude.py` 重構）
 
 ## 架構
 
@@ -21,6 +21,7 @@ cold-review-prompt.txt      系統 prompt 模板，placeholders: {language}
 cold_eyes/                   Package（13 模組）
   constants.py               共用常數（SCHEMA_VERSION, SEVERITY_ORDER, BUILTIN_IGNORE 等）
   config.py                  Policy file loader（flat YAML subset parser，無 PyYAML 依賴）
+  claude.py                  Model adapter（ModelAdapter base, ClaudeCliAdapter, MockAdapter）
   git.py                     git_cmd, collect_files, is_binary, build_diff
   filter.py                  filter_file_list, rank_file_list
   prompt.py                  build_prompt_text
@@ -70,7 +71,20 @@ CLI: `python cold_eyes/cli.py stats [--last 7d] [--by-reason] [--by-path]`
 
 `doctor.py` — 新增第 8 項 `policy_file` 檢查（info level）
 
-150 tests（engine 135 + helper 5 + smoke 10）。
+**Phase 2.3: model adapter（+8 tests）**
+
+`claude.py` 重構為 adapter pattern：
+- `ModelAdapter` base class：`review(diff_text, prompt_text, model) -> (raw_output, exit_code)`
+- `ClaudeCliAdapter`：原有 CLI 邏輯，temp file 處理從 engine 移入 adapter
+- `MockAdapter`：固定回應，記錄 inputs（last_diff/last_prompt/last_model/call_count）
+- `call_claude()` 保留為 legacy wrapper
+
+`engine.py`：
+- `run()` 新增 `adapter=None` 參數，預設 `ClaudeCliAdapter()`
+- 移除 temp file 管理（由 adapter 內部處理）
+- `import tempfile` 移除
+
+158 tests（engine 143 + helper 5 + smoke 10）。
 
 ## 部署
 
@@ -100,12 +114,11 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor   # 驗證
 產品化路線圖在 `~/Downloads/cold_eyes_productization_roadmap.md`。
 Phase 1 計畫在 `~/Desktop/cold-eyes-phase1-plan.md`。
 
-Phase 1 全部完成。Phase 2.1（stats）和 2.2（policy file）已完成。
+Phase 1 全部完成。Phase 2.1–2.3 已完成。
 
 ### Phase 2 剩餘項目
 
-3. **model adapter** — 抽象 `claude.py` 為 adapter pattern（CLI adapter + API adapter），為 CI mode 鋪路。
-4. **CI/PR mode** — `--scope pr-diff --base main`，GitHub Action wrapper，需要 adapter 先行。
+4. **CI/PR mode** — `--scope pr-diff --base main`，GitHub Action wrapper，adapter 已就位。
 
 ### Phase 3（商業化）
 

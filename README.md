@@ -281,7 +281,7 @@ If reviews aren't running, check:
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Package: engine, policy, review parsing, history, doctor, CLI (12 modules) |
+| `cold_eyes/` | Package: engine, policy, review parsing, history, doctor, CLI, model adapter (13 modules) |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls `cold_eyes/cli.py` |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
 | `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
