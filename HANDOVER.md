@@ -2,12 +2,13 @@
 
 ## 現況
 
-- **版本：** v1.3.0（master，`9ff8c86`，2026-04-11）
+- **版本：** v1.3.0（master，`271aa4a`，2026-04-11）
 - **分支：** master
 - **測試：** 288 passed（coverage 80%，門檻 75%）
 - **部署：** `~/.claude/scripts/` 已同步
-- **GitHub Release：** v1.3.0 tag 已推，release workflow 應自動建立（v1.2.0、v1.1.0 也有）
-- **版本訊號：** `__init__.py` = 1.3.0 / CHANGELOG = v1.3.0 (288 tests) / README badge ✓ 一致
+- **GitHub Release：** v1.3.0 已建立（release workflow 自動建），v1.2.0、v1.1.0 也有
+- **版本訊號：** `__init__.py` = 1.3.0 / CHANGELOG = v1.3.0 (288 tests) / README badge / GitHub Release ✓ 一致
+- **CI：** Tests workflow（3 OS × 2 Python + coverage + ruff + shellcheck）全綠
 
 ## 架構
 
@@ -98,6 +99,8 @@ tests/                       288 tests
 | Phase D | `__init__` 1.2.0→1.3.0 + CHANGELOG v1.3.0 + HANDOVER 更新 | 0 | `3405e1b` |
 | fix | engine.py: `file_count==0` 時 skip（防空 diff 觸發 infra_failed block） | +1 | `036b47c` |
 | docs | CHANGELOG/HANDOVER test count 287→288 對齊 | 0 | `9ff8c86` |
+| docs | HANDOVER 重寫（完整 v1.3.0 交接） | 0 | `db64776` |
+| fix | shell test: 隔離 HOME 防 CI lock 衝突（flaky test 修復） | 0 | `271aa4a` |
 
 ### 教訓
 
@@ -108,6 +111,8 @@ tests/                       288 tests
 3. **Ruff E402 in tests**：test 檔案有 `sys.path` manipulation 導致 import 在前面，加 E402 到 pyproject.toml 的 per-file-ignores。
 
 4. **Doctor detail 行過長**：加了 Fix: 指引後有 3 行超過 130 字元限制，用中間變數拆行修正。
+
+5. **CI flaky test**：`test_skips_outside_git` 在 CI 上穩定失敗。原因：Tests workflow 和 Release workflow 平行跑，共用 `$HOME/.claude/.cold-review-lock.d/`，一個 workflow 的 shell test 佔住 lock，另一個拿到 "another review in progress"。修法：測試用隔離的 `HOME`（tmpdir + `.claude/` 預建）。第一次修只清 lock（不夠），第二次改用獨立 HOME 才真正解決。
 
 ### 本次新增的核心能力
 
@@ -188,4 +193,4 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 - `line_hint` 是 LLM 估計值，block 顯示加了 `~` 前綴，幻覺率未實測
 - Token 估算仍為 len÷4 粗估
 - Eval benchmark mode 需要 Claude CLI 可用，CI 環境跑不了
-- v1.3.0 tag 在 bugfix（`036b47c`）之前推出，tag 指向的 commit 有 zero-file infra_failed bug。master HEAD（`9ff8c86`）已修。下次 release 時 tag v1.3.1 即可。
+- v1.3.0 tag 被刪除重建過兩次（第一次指向 pre-bugfix commit，第二次因 CI flaky test 失敗）。最終 tag 指向 `271aa4a`，release workflow 全綠，GitHub Release 已建立。
