@@ -2,12 +2,12 @@
 
 ## 現況
 
-- **版本：** v1.3.0（master，HEAD 未 commit，base `d28c8bd`，2026-04-12）
+- **版本：** v1.3.1（master，2026-04-12）
 - **分支：** master
 - **測試：** 289 passed（coverage 82%，門檻 75%）
 - **部署：** `~/.claude/scripts/` 需同步（本次有 code 變更）
 - **GitHub Release：** v1.3.0 已建立（release workflow 自動建），v1.2.0、v1.1.0 也有
-- **版本訊號：** `__init__.py` = 1.3.0 / CHANGELOG = v1.3.0 (289 tests) / README badge / GitHub Release ✓ 一致
+- **版本訊號：** `__init__.py` = 1.3.1 / CHANGELOG = v1.3.1 (289 tests) / README badge / GitHub Release ✓ 一致
 - **CI：** Tests workflow（3 OS × 2 Python + coverage + ruff + shellcheck）全綠
 
 ## 架構

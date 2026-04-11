@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.3.1 — Phase Report Hardening
+
+Third-party audit fixes: shell fail-closed, token estimation, config guard, dedup robustness. 289 tests (was 288).
+
+### Fixes
+
+- **Token estimation accuracy** — `len(text) // 4` → `len(text.encode("utf-8")) // 4`, more accurate for CJK diffs
+- **Shell fail-closed on missing python** — resolves `python3`/`python`; block mode emits block decision if neither found
+- **Shell guard ordering** — python detection moved after off-mode guard (off mode doesn't need python)
+- **Shell quoting** — `$PYTHON_CMD` quoted in all usage sites
+- **Config parser line limit** — counts only non-blank non-comment lines; warns on stderr instead of silent discard
+- **History prune dedup** — `id()`-based identity replaced with `json.dumps` content hash
+- **Removed `call_claude()`** — dead legacy wrapper with no external callers
+- **README logging claim** — corrected "all states logged" to "engine-level exits logged"
+
+### CI
+
+- **Release workflow parity** — added ruff + shellcheck to `release.yml` (matches `test.yml`)
+
 ## v1.3.0 — Governance & Polish
 
 Project governance, CI coverage gate, CLI version flag, actionable diagnostics. 289 tests (was 283).
