@@ -87,7 +87,7 @@ Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will r
 
 ## Important: token usage
 
-Every review consumes tokens from **your own** Claude subscription. This tool never uses hidden quotas, background calls, or tokens you didn't agree to spend. You see what it costs, you control when it runs, you decide the model. Your resources, your choice.
+Every review consumes tokens from your own Claude subscription. You see what it costs, you control when it runs, you decide the model.
 
 ## Important: what gets reviewed
 
