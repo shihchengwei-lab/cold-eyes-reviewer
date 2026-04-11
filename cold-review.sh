@@ -138,10 +138,11 @@ if [[ -n "$SKIPPED_FILES" ]]; then
   echo "cold-review: diff truncated at $MAX_LINES lines" >&2
 fi
 
-# --- Guard: no changes ---
-if [[ -z "${DIFF// /}" ]]; then
-  echo "cold-review: skipped (no changes)" >&2
-  log_state "skipped" "no changes"
+# --- Guard: no diff content (strip whitespace + newlines) ---
+DIFF_STRIPPED=$(echo "$DIFF" | tr -d '[:space:]')
+if [[ -z "$DIFF_STRIPPED" ]]; then
+  echo "cold-review: skipped (no diff content)" >&2
+  log_state "skipped" "no diff content"
   exit 0
 fi
 
