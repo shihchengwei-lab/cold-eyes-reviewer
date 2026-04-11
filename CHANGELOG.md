@@ -1,6 +1,6 @@
 # Changelog
 
-## v1.2.0 — Evidence & Controls (unreleased)
+## v1.2.0 — Evidence & Controls
 
 5-phase credibility push: evaluation framework, risk controls, governance docs. 283 tests (was 234).
 
