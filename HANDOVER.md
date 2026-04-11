@@ -2,11 +2,12 @@
 
 ## 現況
 
-- **版本：** v1.2.0-dev（master，2026-04-11）
+- **版本：** v1.2.0（master，`69b1bfd`，2026-04-11）
 - **分支：** master
 - **測試：** 283 passed
-- **部署：** `~/.claude/scripts/` 需重新同步，`doctor` all_ok
-- **GitHub Release：** v1.1.0 已建立
+- **部署：** `~/.claude/scripts/` 已同步
+- **GitHub Release：** v1.1.0 已建立；v1.2.0 尚未打 tag / Release
+- **版本訊號：** `__init__.py` = 1.2.0 / About = 283 tests / CHANGELOG = v1.2.0 ✓ 一致
 
 ## 架構
 
@@ -22,42 +23,42 @@ pyproject.toml              Package metadata + CLI entry point + ruff config
 
 cold_eyes/                   Package（15 模組）
   constants.py               共用常數（SCHEMA_VERSION, SEVERITY_ORDER, STATE_*, DEPLOY_FILES）
-  config.py                  Policy file loader（flat YAML subset parser，無 PyYAML 依賴）
-  git.py                     git_cmd, collect_files, is_binary, build_diff
+  config.py                  Policy file loader（flat YAML，無 PyYAML 依賴，9 valid keys 含 truncation_policy）
+  git.py                     git_cmd（encoding="utf-8"）, collect_files, is_binary, build_diff
   filter.py                  filter_file_list, rank_file_list
   prompt.py                  build_prompt_text
-  claude.py                  ModelAdapter base, ClaudeCliAdapter, MockAdapter, ReviewInvocation
+  claude.py                  ModelAdapter base, ClaudeCliAdapter（encoding="utf-8"）, MockAdapter, ReviewInvocation
   review.py                  parse_review_output（含 validate_review 整合）
   schema.py                  review output schema 定義 + validate_review()
-  policy.py                  apply_policy（含 truncation_policy）, filter_by_confidence, format_block_reason
+  policy.py                  apply_policy（truncation_policy: warn/soft-pass/fail-closed）, filter_by_confidence, format_block_reason
   history.py                 log_to_history, aggregate_overrides, compute_stats, quality_report, prune, archive
   override.py                arm_override, consume_override
-  doctor.py                  run_doctor（11 checks）, verify_install, run_doctor_fix, run_init
-  engine.py                  run()（含 coverage visibility）、_resolve()、_skip()、_infra_review()
-  cli.py                     11 subcommands（+eval, +verify-install）
-  __init__.py
+  doctor.py                  run_doctor（11 checks）, verify_install（3 critical checks）, run_doctor_fix, run_init
+  engine.py                  run()（coverage visibility: reviewed_files/total_files/coverage_pct）, _resolve(), _skip(), _infra_review()
+  cli.py                     11 subcommands: run, doctor, verify-install, init, eval, stats, quality-report, aggregate-overrides, arm-override, history-prune, history-archive
+  __init__.py                __version__ = "1.2.0"
 
 evals/                       Evaluation framework
-  eval_runner.py             deterministic / benchmark / sweep modes
-  cases/                     14 eval case fixtures (6 TP, 4 OK, 4 stress)
+  eval_runner.py             deterministic / benchmark / sweep — 測 parse_review_output → apply_policy 的 decision boundary
+  cases/                     14 eval case fixtures（6 true_positive, 4 acceptable, 4 stress）
 
-docs/                        Documentation
-  release-checklist.md       Release process checklist
-  evaluation.md              Eval system + threshold sweep results
-  scope-strategy.md          Scope selection guide + truncation interactions
-  history-schema.md          JSONL v2 field reference + migration notes
-  tuning.md                  Tuning playbook (diagnostic workflow)
-  agent-setup.md             5-step agent installation guide
-  samples/                   5 sample output JSON files
+docs/                        6 份文件 + 5 份 sample + 1 legacy
+  release-checklist.md       Release process checklist（7 步）
+  evaluation.md              Eval system + threshold sweep results + 預設值理由
+  scope-strategy.md          4 種 scope 的適用場景 + truncation 交互
+  history-schema.md          JSONL v2 全 field 規格 + 6 種 state 範例 + v1→v2 migration
+  tuning.md                  調參 playbook（diagnostic workflow + 何時改什麼）
+  agent-setup.md             5 步 agent 安裝指南 + troubleshooting
+  samples/                   pass_outcome, block_outcome, history_entry, quality_report, stats_output
   alpha-scope.md             (legacy) v0.2.0 scope document
 
 tests/                       283 tests
-  test_engine.py             184 tests
-  test_shell_smoke.py        26 tests
-  test_eval.py               24 tests
-  test_risk_controls.py      25 tests
-  test_schema.py             16 tests
-  test_override.py           8 tests
+  test_engine.py             184 tests — engine pipeline, scope, mock adapter
+  test_shell_smoke.py        26 tests — shell shim, fail-closed parser
+  test_eval.py               24 tests — case loading, deterministic, sweep, single case
+  test_risk_controls.py      25 tests — truncation policy (warn/soft-pass/fail-closed), config, coverage, state reachability
+  test_schema.py             16 tests — validate_review, parser regressions
+  test_override.py           8 tests — arm/consume override token
 ```
 
 ## 本次會話做了什麼
@@ -65,27 +66,35 @@ tests/                       283 tests
 ### 起點
 
 接手 v1.1.0（`f3db917`，234 tests）。
-收到 95-plan（agent-native 版），目標從 ~89 推到 95/100。
+收到 `cold-eyes-reviewer-95-plan-agent-native.md`，目標從 ~89 推到 95/100。
+核心論點：差的不是功能，而是**可信度**（eval 證據、truncation 可控性、治理文件）。
 
-### v1.1.0 → 95-plan：5 Phase 執行
+### 執行
 
-| Phase | 做了什麼 | 測試變化 |
-|-------|---------|---------|
-| 1 Release discipline | GitHub Release v1.1.0 + release checklist | 0 |
-| 2 Evaluation pack | 14 eval cases + eval_runner (deterministic/benchmark/sweep) + CLI eval + docs/evaluation.md | +24 |
-| 3 Risk controls | truncation_policy (warn/soft-pass/fail-closed) + coverage visibility + scope strategy doc | +25 |
-| 4 Governance docs | history-schema.md + tuning.md + 5 sample JSON | 0 |
-| 5 Agent-native polish | verify-install command + agent-setup.md | 0 |
+| Phase | 做了什麼 | 新增測試 | Commit |
+|-------|---------|---------|--------|
+| 1 Release discipline | GitHub Release v1.1.0 + `docs/release-checklist.md` | 0 | `bf55b17` |
+| 2 Evaluation pack | 14 eval cases + `evals/eval_runner.py` + CLI `eval` + `docs/evaluation.md` | +24 | `bf55b17` |
+| 3 Risk controls | `truncation_policy` (warn/soft-pass/fail-closed) + coverage visibility + `docs/scope-strategy.md` | +25 | `bf55b17` |
+| 4 Governance docs | `docs/history-schema.md` + `docs/tuning.md` + 5 sample JSON | 0 | `bf55b17` |
+| 5 Agent-native polish | `verify-install` command + `docs/agent-setup.md` | 0 | `bf55b17` |
+| fix | `__init__` 1.1.0→1.2.0, About 234→283 tests, CHANGELOG 去掉 unreleased | 0 | `0dffa33` |
+| fix | `git.py` subprocess 加 `encoding="utf-8"`（Windows GBK 崩潰） | 0 | `189d948` |
+| fix | `claude.py` subprocess 加 `encoding="utf-8"`（同上，stdin 寫入端） | 0 | `69b1bfd` |
 
-283 tests。
+### 教訓
+
+1. **版本訊號一致性**：第一次 push 時 `__init__.py` 仍是 1.1.0、About 仍顯示 234 tests。每次 push 前必須驗四個訊號：`__version__`、About、CHANGELOG、test count。
+
+2. **Windows subprocess encoding**：Python 在 Windows 上 `subprocess.run(text=True)` 預設用系統編碼（中文 Windows = GBK）。所有 subprocess 都必須顯式指定 `encoding="utf-8"`，否則任何非 GBK 字元（中文 docs 裡的 ✓、UTF-8 中文等）會導致 engine 崩潰，觸發 fail-closed 擋住每一次 commit。修了兩處：`git.py:git_cmd()` 和 `claude.py:ClaudeCliAdapter._call()`。
 
 ### 新增的核心能力
 
-1. **Eval framework** — `python cli.py eval --eval-mode deterministic` 跑 14 cases 驗證 decision boundary
-2. **Threshold sweep** — `--eval-mode sweep` 產出 precision/recall/F1 for 6 combinations，資料支持預設值 critical/medium (F1=1.0)
-3. **Truncation policy** — `truncation_policy: fail-closed` 可讓大 diff 無條件 block；`soft-pass` 可讓 truncated + no issues 不 block
-4. **Coverage visibility** — outcome 包含 `reviewed_files`, `total_files`, `coverage_pct`
-5. **verify-install** — machine-readable install check for agents
+1. **Eval framework** — `python cli.py eval --eval-mode deterministic` 跑 14 cases，驗證 decision boundary
+2. **Threshold sweep** — `--eval-mode sweep` 產出 6 組合的 precision/recall/F1，資料支持 critical/medium (F1=1.0)
+3. **Truncation policy** — `truncation_policy: fail-closed` 大 diff 無條件 block；`soft-pass` truncated + no issues 不 block
+4. **Coverage visibility** — outcome 含 `reviewed_files`, `total_files`, `coverage_pct`
+5. **verify-install** — machine-readable 3-check install verification
 
 ## 部署
 
@@ -116,33 +125,35 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 
 | 命令 | 說明 |
 |---|---|
-| `run` | 執行 review |
+| `run` | 執行 review（加 `--truncation-policy` 可指定截斷策略） |
 | `doctor` | 環境健康檢查（加 `--fix` 自動修復） |
 | `verify-install` | Machine-readable 安裝驗證（3 critical checks） |
 | `init` | 在 repo 建立預設 policy + ignore |
 | `eval` | 跑 eval（`--eval-mode deterministic/benchmark/sweep`） |
-| `stats` | 歷史統計 |
-| `quality-report` | 品質報告 |
+| `stats` | 歷史統計（`--last`, `--by-reason`, `--by-path`） |
+| `quality-report` | 品質報告（rates, noisy paths, categories） |
 | `aggregate-overrides` | Override 模式摘要 |
 | `arm-override` | 建立一次性 override token |
-| `history-prune` | 清理舊 history |
-| `history-archive` | 歸檔 history |
+| `history-prune` | 清理舊 history（`--keep-days`, `--keep-entries`） |
+| `history-archive` | 歸檔指定日期前的 history（`--before`） |
 
 ## 後續方向
 
 ### 可能的下一步
 
-- Git tag v1.2.0 — 打 tag 並建 Release
-- 更多 eval cases — 目前 14 個是最小可行集
-- Benchmark mode 實測 — 用真實 model 跑 eval，量化 model-specific accuracy
-- `line_hint` 幻覺率量化 — 可加入 eval framework
-- Coverage gate — CI 可加 `pytest --cov` threshold
+- Git tag v1.2.0 + GitHub Release — 版本訊號已對齊，可以打
+- 更多 eval cases — 目前 14 個是最小可行集，隨實際使用擴充
+- Benchmark mode 實測 — `eval --eval-mode benchmark --model opus` 用真實 model 量化 accuracy
+- `line_hint` 幻覺率 — 可在 eval framework 加案例測量
+- Coverage gate — CI 加 `pytest --cov` threshold
+- `pip install -e .` — pyproject.toml 已就位，裝完可移除 `cli.py` 頂部 sys.path hack
 
 ### 不建議做的
 
-- Phase 3 商業化 — 個人用工具不需要
-- GUI / dashboard — 底層 eval 和 risk policy 才剛建好
+- 商業化 — 個人用工具不需要
+- GUI / dashboard — 底層 eval 和 risk policy 才剛建好，先累積資料
 - Daemon / 常駐服務 — hook 架構已夠用
+- 更花俏的 prompt — 這階段上限不在 prompt
 
 ## 已知問題
 
@@ -151,3 +162,4 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 - 舊 history 條目仍有 `state: "failed"`（v0.11.0 前），stats 查詢時注意
 - `line_hint` 是 LLM 估計值，block 顯示加了 `~` 前綴，幻覺率未實測
 - Token 估算仍為 len÷4 粗估
+- Eval benchmark mode 需要 Claude CLI 可用，CI 環境跑不了

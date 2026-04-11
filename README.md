@@ -159,6 +159,7 @@ block_threshold: major
 confidence: high
 language: English
 scope: staged
+truncation_policy: warn
 ```
 
 All keys are optional. Only include what you want to override.
@@ -167,7 +168,7 @@ All keys are optional. Only include what you want to override.
 
 If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. If neither env var nor policy file sets a value, the hardcoded default applies.
 
-Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`.
+Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`.
 
 `doctor` check 8 reports whether this file exists and what keys it sets.
 
@@ -183,6 +184,7 @@ Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |
 | `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head`, `pr-diff` | Diff scope: all uncommitted / staged only / vs HEAD / vs base branch |
 | `COLD_REVIEW_BASE` | (unset) | any branch name | Base branch for `pr-diff` scope (e.g. `main`) |
+| `COLD_REVIEW_TRUNCATION_POLICY` | `warn` | `warn`, `soft-pass`, `fail-closed` | How to handle truncated diffs (see Truncation policy) |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | **Deprecated.** Use `arm-override` instead. Still works but emits a warning. |
 | `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override (used with ALLOW_ONCE or arm-override) |
 
@@ -270,6 +272,28 @@ export COLD_REVIEW_MODE=report
 export COLD_REVIEW_CONFIDENCE=low
 ```
 
+### Truncation policy
+
+Controls what happens when a diff exceeds the token budget and files are skipped:
+
+| Policy | Behavior |
+|--------|----------|
+| `warn` (default) | Adds a warning to the block message, does not change the block/pass decision |
+| `soft-pass` | If truncated and no issues found in the reviewed portion, force pass |
+| `fail-closed` | If any files were unreviewed, block regardless of findings |
+
+```bash
+export COLD_REVIEW_TRUNCATION_POLICY=fail-closed
+```
+
+Or in `.cold-review-policy.yml`:
+
+```yaml
+truncation_policy: fail-closed
+```
+
+Review outcomes include coverage visibility: `reviewed_files`, `total_files`, and `coverage_pct` fields show what proportion of the diff was actually reviewed.
+
 ### Ignore rules
 
 **Built-in patterns** (always active, no configuration needed):
@@ -328,6 +352,8 @@ If reviews aren't running, check:
 | `cold_eyes/` | Python package: engine, git, filter, policy, review, schema, history, doctor, CLI, model adapter, override token |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
+| `evals/` | Evaluation framework: 14 case fixtures + eval runner (deterministic/benchmark/sweep) |
+| `docs/` | Evaluation results, scope strategy, history schema, tuning playbook, agent setup guide, sample outputs |
 | `pyproject.toml` | Package metadata and ruff/lint config (optional `pip install -e .` for `cold-eyes` CLI command) |
 | `install.sh` / `uninstall.sh` | Deploy to / remove from `~/.claude/scripts/` |
 | `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
@@ -371,6 +397,29 @@ Outputs a JSON report:
 | `legacy_env` | `COLD_REVIEW_MAX_LINES` not set (info only) |
 
 If reviews aren't running, `doctor` is the first thing to check.
+
+### Quick install check
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py verify-install
+```
+
+Returns `{"action": "verify-install", "ok": true, "failures": []}` if the 3 critical checks (deploy files, hook config, git repo) pass.
+
+### Evaluation
+
+```bash
+# Deterministic eval — 14 cases, no model calls
+python cold_eyes/cli.py eval --eval-mode deterministic
+
+# Threshold sweep — precision/recall/F1 for all threshold x confidence combos
+python cold_eyes/cli.py eval --eval-mode sweep
+
+# Benchmark with real model
+python cold_eyes/cli.py eval --eval-mode benchmark --model opus
+```
+
+The eval framework tests the decision boundary (`parse_review_output` + `apply_policy`) against 14 cases: 6 true positives (SQL injection, hardcoded secrets, XSS, resource leak, missing error handling, dangling import), 4 acceptable changes, and 4 stress cases (truncation, binary-only, empty diff, mixed severity). See `docs/evaluation.md` for details and threshold sweep results.
 
 ### Override aggregation
 
