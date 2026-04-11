@@ -1,5 +1,29 @@
 # Changelog
 
+## v0.5.1 — README Architecture Clarification
+
+- Flow diagram now shows `cold-review.sh` (guard checks) and `cold_review_engine.py` (all review logic) as two distinct layers.
+- Files table reordered: engine listed first as core component.
+
+## v0.5.0 — Phase 0 Closure
+
+Closed remaining Phase 0 gaps from the product plan.
+
+### New features
+
+- **Truncation warning in block messages** — When diff exceeds token budget and files are skipped, block messages now show `⚠ 審查不完整：diff 超過 token 預算，N 個檔案未審查。` FinalOutcome includes `truncated` and `skipped_count` fields.
+- **Explicit CLI parameters** — Engine accepts `--confidence` and `--language` arguments. Shell passes them explicitly instead of relying on environment variable inheritance.
+- **History records confidence threshold** — Every history entry now includes `min_confidence` field.
+
+### Changes
+
+- **Helper build-prompt deduplication** — `build_prompt()` now delegates to engine's `build_prompt_text()`, with fallback to local logic if engine unavailable.
+- **CHANGELOG backfilled** — Added v0.3.0 and v0.4.0 entries.
+
+### Tests
+
+98 tests (8 new: truncation visibility, history confidence, helper dedup).
+
 ## v0.4.0 — Confidence Hard Filter
 
 Replaced soft prompt steering with deterministic confidence filtering.

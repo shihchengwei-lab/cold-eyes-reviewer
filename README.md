@@ -191,7 +191,7 @@ If reviews aren't running, check:
 |---|---|
 | `cold_review_engine.py` | Core: diff building, Claude call, policy engine, confidence filter, history logging |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls engine |
-| `cold-review-helper.py` | Legacy shell interface: JSON parsing, prompt assembly, ignore/rank (engine is primary path) |
+| `cold-review-helper.py` | Shell-facing utilities: hook parsing, state logging, ignore/rank (called by shell; prompt delegates to engine) |
 | `cold-review-prompt.txt` | System prompt template |
 | `.cold-review-ignore` | Default ignore patterns |
 
