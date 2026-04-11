@@ -135,7 +135,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     coverage_pct = (round(reviewed_count / total_candidates * 100, 1)
                     if total_candidates > 0 else 100.0)
 
-    if not diff_text.strip():
+    if not diff_text.strip() or file_count == 0:
         log_to_history(cwd, mode, model, STATE_SKIPPED, "no diff content",
                        min_confidence=min_confidence, scope=scope)
         return _skip("no diff content")

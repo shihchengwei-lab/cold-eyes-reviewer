@@ -263,6 +263,51 @@ class TestStateReachability:
 
 
 # ---------------------------------------------------------------------------
+# Engine skip on zero file_count
+# ---------------------------------------------------------------------------
+
+class TestZeroFileCountSkip:
+    def test_skip_when_file_count_zero(self):
+        """Engine skips when diff has file_count=0 even if diff_text is non-empty."""
+        from cold_eyes.engine import run
+        from cold_eyes.claude import MockAdapter
+        # MockAdapter returns a valid review, but if engine reaches it with
+        # zero files, it should have skipped before calling the adapter.
+        adapter = MockAdapter('{"pass": true, "issues": [], "review_status": "completed"}')
+        # Monkeypatch collect_files to return a file, and build_diff to return
+        # file_count=0 (simulates empty diff chunks with truncation notice)
+        import cold_eyes.engine as eng_mod
+
+        orig_collect = eng_mod.collect_files
+        orig_build = eng_mod.build_diff
+        orig_filter = eng_mod.filter_file_list
+        orig_rank = eng_mod.rank_file_list
+
+        eng_mod.collect_files = lambda scope, base=None: (["phantom.py"], set())
+        eng_mod.filter_file_list = lambda files, ignore_file="": files
+        eng_mod.rank_file_list = lambda files, untracked: files
+        eng_mod.build_diff = lambda ranked, untracked, max_tokens, scope=None, base=None: {
+            "diff_text": "\n[Cold Eyes: diff truncated]\n",
+            "file_count": 0,
+            "token_count": 0,
+            "truncated": True,
+            "partial_files": [],
+            "skipped_budget": ["phantom.py"],
+            "skipped_binary": [],
+            "skipped_unreadable": [],
+        }
+        try:
+            result = run(adapter=adapter)
+            assert result["state"] == STATE_SKIPPED
+            assert "no diff content" in result["reason"]
+        finally:
+            eng_mod.collect_files = orig_collect
+            eng_mod.build_diff = orig_build
+            eng_mod.filter_file_list = orig_filter
+            eng_mod.rank_file_list = orig_rank
+
+
+# ---------------------------------------------------------------------------
 # CLI --version
 # ---------------------------------------------------------------------------
 
