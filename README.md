@@ -109,7 +109,15 @@ Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will r
 
 ## Token usage
 
-Every review consumes tokens from your Claude subscription. You see what it costs, you control when it runs, you decide the model.
+Every review consumes tokens from your Claude subscription. Rough per-review cost estimates (input + output, typical 200-500 line diff):
+
+| Model | Estimated cost per review |
+|---|---|
+| `haiku` | ~$0.01–0.05 |
+| `sonnet` | ~$0.05–0.20 |
+| `opus` | ~$0.50–2.00 |
+
+Actual cost depends on diff size (token budget default: 12000) and output length. Use `COLD_REVIEW_MODEL=sonnet` or `haiku` to reduce cost.
 
 ## What gets reviewed
 
@@ -377,6 +385,7 @@ Returns a JSON summary of review activity from history:
 - **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. Truncation metadata tracks partial files, budget-skipped files, binary files, and unreadable files separately. Block messages include a warning listing what was not reviewed.
 - **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. Check history for patterns.
 - **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
+- **Windows (Git Bash) lock caveats.** The atomic `mkdir` lock and `kill -0` stale PID check work in Git Bash but are less reliable than on native Unix. Concurrent Claude Code sessions on Windows may occasionally bypass the lock.
 
 ## License
 

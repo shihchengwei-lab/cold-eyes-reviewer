@@ -94,7 +94,7 @@ ENGINE_ARGS=(run)
 [[ -n "${COLD_REVIEW_OVERRIDE_REASON:-}" ]]  && ENGINE_ARGS+=(--override-reason "${COLD_REVIEW_OVERRIDE_REASON}")
 
 # --- Run engine ---
-RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>&2) || true
+RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>/dev/null) || true
 
 # --- Release lock early ---
 release_lock
