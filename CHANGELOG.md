@@ -2,7 +2,7 @@
 
 ## v1.1.0 — Trust & Maturity
 
-9-patch quality push (P0 trust, P1 publishability, P2 long-term ops). 225 tests (was 197).
+9-patch quality push (P0 trust, P1 publishability, P2 long-term ops). 234 tests (was 197).
 
 ### Trust (P0)
 
