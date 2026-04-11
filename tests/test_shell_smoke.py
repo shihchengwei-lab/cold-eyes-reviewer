@@ -53,15 +53,14 @@ class TestRecursionGuard:
 @skip_no_bash
 class TestNoGitRepo:
     def test_skips_outside_git(self):
-        # Clear any stale lock from concurrent shell tests to avoid
-        # "another review in progress" masking the expected message.
-        lockdir = os.path.join(os.path.expanduser("~"), ".claude", ".cold-review-lock.d")
-        if os.path.isdir(lockdir):
-            shutil.rmtree(lockdir, ignore_errors=True)
         with tempfile.TemporaryDirectory() as tmpdir:
+            # Use isolated HOME so this test gets its own lock directory,
+            # avoiding conflicts with concurrent CI workflows.
+            os.makedirs(os.path.join(tmpdir, ".claude"), exist_ok=True)
             result = run_shell(
                 cwd=tmpdir,
                 stdin_data='{"stop_hook_active": false}',
+                env_override={"HOME": tmpdir},
             )
             assert result.returncode == 0
             assert "not a git repo" in result.stderr
