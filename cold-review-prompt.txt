@@ -36,6 +36,11 @@
 
 correctness / security / consistency / complexity / reference
 
+## 截斷
+
+如果 diff 末尾出現 `[Cold Eyes: diff truncated...]`，表示有檔案因 token 預算限制未被納入。
+只審查你看到的內容。在 summary 中註明有截斷及跳過的檔案數。
+
 ## 輸出
 
 純 JSON，不要 markdown code block：

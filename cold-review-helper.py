@@ -47,7 +47,6 @@ def build_prompt():
     except FileNotFoundError:
         profile = {
             "name": "Cold Eyes",
-            "personality": "A methodical reviewer.",
             "language": "English",
             "stats": {}
         }
@@ -301,6 +300,15 @@ def check_pass():
         print("true")
 
 
+def check_engine():
+    """Read review JSON from stdin, print review_status (completed/failed)."""
+    try:
+        data = json.load(sys.stdin)
+        print(data.get("review_status", "completed"))
+    except Exception:
+        print("failed")
+
+
 if __name__ == "__main__":
     if len(sys.argv) < 2:
         print("Usage: cold-review-helper.py <command>", file=sys.stderr)
@@ -323,6 +331,8 @@ if __name__ == "__main__":
         log_state()
     elif cmd == "should-block":
         should_block()
+    elif cmd == "check-engine":
+        check_engine()
     elif cmd == "filter-files":
         filter_files()
     elif cmd == "rank-files":

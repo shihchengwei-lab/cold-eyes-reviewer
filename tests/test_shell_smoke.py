@@ -1,13 +1,13 @@
-"""Smoke tests for cold-review.sh."""
+"""Smoke tests for cold-review.sh and profile sanity checks."""
 
+import json
 import os
 import subprocess
 import tempfile
 
-SHELL_SCRIPT = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
-    "cold-review.sh",
-)
+SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SHELL_SCRIPT = os.path.join(SCRIPTS_DIR, "cold-review.sh")
+PROFILE_PATH = os.path.join(SCRIPTS_DIR, "cold-review-profile.json")
 
 
 def run_shell(env_override=None, stdin_data="", cwd=None):
@@ -50,3 +50,27 @@ class TestNoGitRepo:
             )
             assert result.returncode == 0
             assert "not a git repo" in result.stderr
+
+
+class TestProfileSanity:
+    """Verify profile.json has no dead fields."""
+
+    def test_no_dead_config_fields(self):
+        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
+            profile = json.load(f)
+
+        # These fields were identified as dead code and should be removed
+        assert "personality" not in profile, "personality is dead code"
+        stats = profile.get("stats", {})
+        assert "SNARK" not in stats, "SNARK is dead code"
+        assert "PATIENCE" not in stats, "PATIENCE is dead code"
+
+    def test_required_fields_present(self):
+        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
+            profile = json.load(f)
+
+        assert "name" in profile
+        assert "language" in profile
+        stats = profile.get("stats", {})
+        assert "RIGOR" in stats
+        assert "PARANOIA" in stats

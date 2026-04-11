@@ -9,6 +9,7 @@ FIXTURES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "fixture
 SCRIPTS_DIR = PROJECT_ROOT
 SHELL_SCRIPT = os.path.join(SCRIPTS_DIR, "cold-review.sh")
 HELPER_SCRIPT = os.path.join(SCRIPTS_DIR, "cold-review-helper.py")
+ENGINE_SCRIPT = os.path.join(SCRIPTS_DIR, "cold_review_engine.py")
 
 
 def load_helper():
@@ -22,9 +23,25 @@ def load_helper():
     return mod
 
 
+def load_engine():
+    """Import cold_review_engine.py as a module."""
+    spec = importlib.util.spec_from_file_location(
+        "cold_review_engine",
+        ENGINE_SCRIPT,
+    )
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
 @pytest.fixture
 def helper():
     return load_helper()
+
+
+@pytest.fixture
+def review_engine():
+    return load_engine()
 
 
 @pytest.fixture

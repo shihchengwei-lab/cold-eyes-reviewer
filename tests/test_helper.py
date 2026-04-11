@@ -311,6 +311,30 @@ class TestRankFiles:
             os.unlink(untracked_file)
 
 
+# --- check-engine ---
+
+class TestCheckEngine:
+    def test_completed_review(self):
+        review = json.dumps({"review_status": "completed", "pass": True, "issues": []})
+        stdout, _, rc = run_helper("check-engine", stdin_data=review)
+        assert rc == 0
+        assert stdout == "completed"
+
+    def test_failed_review(self):
+        review = json.dumps({"review_status": "failed", "pass": True, "issues": []})
+        stdout, _, _ = run_helper("check-engine", stdin_data=review)
+        assert stdout == "failed"
+
+    def test_malformed_input_returns_failed(self):
+        stdout, _, _ = run_helper("check-engine", stdin_data="garbage")
+        assert stdout == "failed"
+
+    def test_missing_field_defaults_to_completed(self):
+        review = json.dumps({"pass": True, "issues": []})
+        stdout, _, _ = run_helper("check-engine", stdin_data=review)
+        assert stdout == "completed"
+
+
 # --- log-review ---
 
 class TestLogReview:
