@@ -23,7 +23,7 @@ class ConfigError(RuntimeError):
 def git_cmd(*args):
     """Run a git command, return stdout.  Raise GitCommandError on failure."""
     r = subprocess.run(
-        ["git"] + list(args), capture_output=True, text=True
+        ["git"] + list(args), capture_output=True, text=True, encoding="utf-8"
     )
     if r.returncode != 0:
         raise GitCommandError(list(args), r.returncode, r.stderr.strip())
