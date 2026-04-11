@@ -1,0 +1,85 @@
+# Trust Model
+
+How Cold Eyes works, what it can and cannot catch, and how to verify.
+
+## What Cold Eyes is
+
+A zero-context second-pass gate. It reads a git diff and produces a block/pass verdict. It sees only the diff — no conversation, no project history, no requirements, no full codebase.
+
+It is not an AI code reviewer in the general sense. It is a **risk gate** that catches surface-level issues visible in a single diff.
+
+## What it can detect
+
+Issues that a human reviewer would catch by reading the diff alone, without needing to understand intent or full project context:
+
+| Category | Examples |
+|---|---|
+| Security | SQL injection via string concatenation, hardcoded credentials, XSS from unescaped output, path traversal, eval() on user input |
+| Correctness | Removed error handling, unclosed resources, dangling imports after deletion |
+| Consistency | Text contradicting nearby text within the same diff |
+| Reference | Deleted function still referenced in the same diff |
+| Complexity | Copy-paste patterns visible in the diff |
+
+These are the six check items defined in the system prompt (`cold-review-prompt.txt`).
+
+## What it cannot detect
+
+| Gap | Why |
+|---|---|
+| Business logic errors | Requires understanding intent and requirements |
+| Requirement violations | Cold Eyes does not know what the code should do |
+| Cross-file issues not in diff | Only files in the diff are visible |
+| Subtle algorithmic bugs | Requires reasoning beyond diff surface |
+| Race conditions / timing issues | Rarely visible in a single diff |
+| Architectural problems | Requires full codebase understanding |
+| Style preferences | Explicitly excluded from the prompt |
+| Domain-specific correctness | Prompt instructs: "不確定就不報" |
+
+## Trust properties
+
+**Deterministic post-filter.** The confidence filter and policy decision are deterministic Python code. Given the same model output, the same block/pass decision always results. The eval framework tests this boundary.
+
+**Non-deterministic model.** The LLM review itself is non-deterministic. Different runs on the same diff may produce different issues. The benchmark eval mode measures real model behavior; the deterministic mode tests only the decision boundary.
+
+**Fail-closed by default.** In block mode, infrastructure failures (CLI timeout, parse error, empty output) produce a block, not a silent pass. The `failure_kind` field in history records the cause. This is configurable via `truncation_policy`.
+
+**No network.** All external communication happens through local subprocess calls to `git` and `claude` CLI. No HTTP, no API keys, no outbound connections from Cold Eyes itself.
+
+**No persistent state.** Review history is an append-only JSONL file. Override tokens are single-use files with TTL. No database, no service, no daemon.
+
+**No code execution.** Cold Eyes never generates, modifies, or executes code. It reads diffs and produces JSON verdicts.
+
+## False positive direction
+
+Cold Eyes is tuned to minimize false negatives (missed real issues) at the cost of occasional false positives (flagging acceptable code). The user's knobs:
+
+- **Threshold** (`critical` / `major`) — higher threshold means fewer blocks, more FN risk
+- **Confidence** (`high` / `medium` / `low`) — higher confidence means fewer blocks from uncertain findings
+- **Override** (`arm-override`) — escape hatch for known-good code that triggers a false positive
+
+See `docs/assurance-matrix.md` for per-category FP/FN analysis.
+
+## Verification
+
+Anyone can verify Cold Eyes' decision boundary locally:
+
+```bash
+# Deterministic eval — tests parse + policy against 24 cases
+python cold_eyes/cli.py eval --eval-mode deterministic
+
+# Threshold sweep — precision/recall/F1 across all threshold × confidence combos
+python cold_eyes/cli.py eval --eval-mode sweep
+
+# Benchmark (requires Claude CLI) — sends real diffs to model
+python cold_eyes/cli.py eval --eval-mode benchmark --model opus
+```
+
+The eval corpus is at `evals/cases/` with schema at `evals/schema.md` and manifest at `evals/manifest.json`. See `docs/evaluation.md` for details.
+
+## Known gaps
+
+- **`line_hint` accuracy unmeasured.** Line references are LLM estimates from diff hunk headers. Block messages display `~` prefix. Hallucination rate is not formally measured.
+- **Token estimation is approximate.** `len(encode("utf-8")) ÷ 4` is closer than `len ÷ 4` for CJK but still a heuristic.
+- **No cross-file analysis.** If a function is deleted in file A and referenced in file B, Cold Eyes only catches this if both files are in the diff.
+- **Eval corpus is minimal.** 24 cases test the decision boundary. Real-world accuracy depends on model behavior, which varies by model and prompt.
+- **No intent understanding.** Cold Eyes cannot distinguish "intentionally removed error handling" from "accidentally removed error handling."
