@@ -23,7 +23,7 @@ from cold_eyes.policy import apply_policy, filter_by_confidence, format_block_re
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.git import build_diff, is_binary, collect_files, git_cmd, GitCommandError, ConfigError
 from cold_eyes.prompt import build_prompt_text
-from cold_eyes.history import log_to_history, aggregate_overrides, compute_stats
+from cold_eyes.history import log_to_history, aggregate_overrides, compute_stats, prune_history, archive_history, quality_report
 from cold_eyes.config import load_policy, _parse_flat_yaml, POLICY_FILENAME
 from cold_eyes.claude import (
     ModelAdapter, ClaudeCliAdapter, MockAdapter, call_claude, ReviewInvocation,
@@ -1730,3 +1730,113 @@ class TestPolicyStateMachine:
         report_outcome = engine.apply_policy(infra, "report", "critical", False, "medium")
         assert block_outcome["state"] == STATE_INFRA_FAILED
         assert report_outcome["state"] == STATE_INFRA_FAILED
+
+
+# ===========================================================================
+# History retention (prune / archive) and quality report
+# ===========================================================================
+
+class TestHistoryPrune:
+
+    def _write_entry(self, path, state, timestamp=None):
+        entry = {
+            "version": 2, "state": state, "mode": "block", "model": "opus",
+            "timestamp": timestamp or "2026-04-10T12:00:00Z",
+            "cwd": "/tmp",
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def test_prune_by_entries(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        for _ in range(10):
+            self._write_entry(h, STATE_PASSED)
+        result = prune_history(h, keep_entries=3)
+        assert result["original"] == 10
+        assert result["kept"] == 3
+        assert result["removed"] == 7
+
+    def test_prune_by_days(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        self._write_entry(h, STATE_PASSED, "2020-01-01T00:00:00Z")  # old
+        self._write_entry(h, STATE_BLOCKED, "2099-01-01T00:00:00Z")  # future
+        result = prune_history(h, keep_days=1)
+        assert result["kept"] == 1
+        assert result["removed"] == 1
+
+    def test_prune_requires_args(self):
+        result = prune_history(keep_days=None, keep_entries=None)
+        assert "error" in result
+
+
+class TestHistoryArchive:
+
+    def _write_entry(self, path, state, timestamp):
+        entry = {
+            "version": 2, "state": state, "mode": "block", "model": "opus",
+            "timestamp": timestamp, "cwd": "/tmp",
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def test_archive_moves_old_entries(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        a = str(tmp_path / "h.jsonl.archive")
+        self._write_entry(h, STATE_PASSED, "2025-01-01T00:00:00Z")
+        self._write_entry(h, STATE_BLOCKED, "2026-06-01T00:00:00Z")
+        result = archive_history(h, before="2026-01-01", dest=a)
+        assert result["archived"] == 1
+        assert result["kept"] == 1
+        assert os.path.isfile(a)
+
+    def test_archive_requires_before(self):
+        result = archive_history(before=None)
+        assert "error" in result
+
+
+class TestQualityReport:
+
+    def _write_entry(self, path, state, cwd="/tmp", review=None, timestamp=None):
+        entry = {
+            "version": 2, "state": state, "mode": "block", "model": "opus",
+            "timestamp": timestamp or "2026-04-10T12:00:00Z",
+            "cwd": cwd,
+        }
+        if review:
+            entry["review"] = review
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def test_empty_history(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        (tmp_path / "h.jsonl").write_text("")
+        result = quality_report(h)
+        assert result["total"] == 0
+
+    def test_rates_computed(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        self._write_entry(h, STATE_PASSED)
+        self._write_entry(h, STATE_PASSED)
+        self._write_entry(h, STATE_BLOCKED)
+        self._write_entry(h, STATE_OVERRIDDEN)
+        result = quality_report(h)
+        assert result["total"] == 4
+        assert result["rates"]["block_rate"] == 0.25
+        assert result["rates"]["override_rate"] == 0.25
+
+    def test_noisy_paths(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        self._write_entry(h, STATE_BLOCKED, cwd="/noisy")
+        self._write_entry(h, STATE_BLOCKED, cwd="/noisy")
+        self._write_entry(h, STATE_PASSED, cwd="/quiet")
+        result = quality_report(h)
+        assert len(result["top_noisy_paths"]) == 1
+        assert result["top_noisy_paths"][0]["path"] == "/noisy"
+
+    def test_issue_categories(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        review = {"issues": [{"category": "security"}, {"category": "security"}, {"category": "logic"}]}
+        self._write_entry(h, STATE_BLOCKED, review=review)
+        result = quality_report(h)
+        assert result["top_issue_categories"][0]["category"] == "security"
+        assert result["top_issue_categories"][0]["count"] == 2

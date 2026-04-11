@@ -2,8 +2,15 @@
 
 import json
 import os
+import shutil
 import subprocess
+import sys
 import tempfile
+
+import pytest
+
+_HAS_BASH = shutil.which("bash") is not None
+skip_no_bash = pytest.mark.skipif(not _HAS_BASH, reason="bash not available")
 
 SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHELL_SCRIPT = os.path.join(SCRIPTS_DIR, "cold-review.sh")
@@ -28,6 +35,7 @@ def run_shell(env_override=None, stdin_data="", cwd=None):
     return result
 
 
+@skip_no_bash
 class TestOffMode:
     def test_exits_zero(self):
         result = run_shell(env_override={"COLD_REVIEW_MODE": "off"})
@@ -35,12 +43,14 @@ class TestOffMode:
         assert result.stdout == ""
 
 
+@skip_no_bash
 class TestRecursionGuard:
     def test_exits_zero_when_active(self):
         result = run_shell(env_override={"COLD_REVIEW_ACTIVE": "1"})
         assert result.returncode == 0
 
 
+@skip_no_bash
 class TestNoGitRepo:
     def test_skips_outside_git(self):
         with tempfile.TemporaryDirectory() as tmpdir:

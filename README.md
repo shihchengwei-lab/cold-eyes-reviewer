@@ -10,7 +10,7 @@ Cold Eyes is a second-pass gate, not a full code review. It sees only the git di
 Claude Code session ends
        │
        ▼
-  cold-review.sh (shim — guards only, no review logic)
+  cold-review.sh (shim — guards + fail-closed result parser)
        │
        ├─ off mode / recursion / no git repo → exit
        ├─ atomic lock held by another review → exit
@@ -109,7 +109,7 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 
 Checks Python, Git, Claude CLI, deploy files, hook config, and current repo. All checks should show `"ok"`. `"info"` items are optional hints.
 
-Use `doctor --fix` to auto-repair safe issues (e.g. remove legacy helper).
+Use `doctor --fix` to auto-remove legacy helper if detected. Other failures require manual action.
 
 ### 5. Done
 
@@ -328,7 +328,7 @@ If reviews aren't running, check:
 | `cold_eyes/` | Python package: engine, git, filter, policy, review, schema, history, doctor, CLI, model adapter, override token |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
-| `pyproject.toml` | Package metadata, CLI entry point, ruff/lint config |
+| `pyproject.toml` | Package metadata and ruff/lint config (optional `pip install -e .` for `cold-eyes` CLI command) |
 | `install.sh` / `uninstall.sh` | Deploy to / remove from `~/.claude/scripts/` |
 | `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
 | `.cold-review-policy.yml` | Per-repo configuration defaults (optional, placed in project root) |
