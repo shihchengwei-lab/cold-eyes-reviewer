@@ -2,135 +2,120 @@
 
 ## 現況
 
-- **版本：** v1.3.1（master，`31cf81f`，2026-04-12）
+- **版本：** v1.3.1（master，`b5b583b`，2026-04-12）
 - **分支：** master
-- **測試：** 289 passed（coverage 82%，門檻 75%）
-- **部署：** `~/.claude/scripts/` 已同步
-- **GitHub Release：** v1.3.1 等 CI 全綠後自動建；v1.3.0、v1.2.0、v1.1.0 已有
-- **版本訊號：** `__init__.py` = 1.3.1 / CHANGELOG = v1.3.1 (289 tests) / README badge / GitHub Release ✓ 一致
-- **CI：** Tests workflow（3 OS × 2 Python + coverage + ruff + shellcheck）等最新 push 結果
+- **測試：** 297 passed（coverage 82%，門檻 75%）
+- **部署：** `~/.claude/scripts/` 需手動同步（本次未改 runtime 程式碼，不急）
+- **版本訊號：** `__init__.py` = 1.3.1 / CHANGELOG = v1.3.1 / About = 289 tests — **注意：test count 已從 289 增到 297，但版本未 bump，訊號暫不更新**
+- **CI：** 等 `b5b583b` push 結果
 
 ## 架構
 
-Claude Code Stop hook 的零上下文 code reviewer。
+同 v1.3.1，無結構變更。
 
 ```
-cold-review.sh              Stop hook shim（~158 行），guard + python resolve + fail-closed parser
+cold-review.sh              Stop hook shim
   └→ cold_eyes/cli.py       CLI entry → engine.py → 各模組
 
-cold-review-prompt.txt      系統 prompt 模板，placeholders: {language}
-.cold-review-policy.yml     Per-repo 配置（optional，放 project root）
-pyproject.toml              Package metadata + CLI entry point + ruff + pytest/coverage config
+evals/                       Evaluation framework（本次主要變更區）
+  eval_runner.py             deterministic / benchmark / sweep + validate_manifest()
+  manifest.json              24 cases 分類索引（5 categories）
+  schema.md                  case file 格式正式定義
+  cases/                     24 eval case fixtures
+    tp_* (8)                 true_positive — 應 block 的真實問題
+    ok_* (4)                 acceptable — 應 pass 的正常變更
+    fn_* (3)                 false_negative — 看起來危險但可接受
+    stress_* (5)             stress — 邊界條件
+    edge_* (4)               edge — CJK、unicode、空回應、config-only
 
-cold_eyes/                   Package（15 模組）
-  constants.py               共用常數（SCHEMA_VERSION, SEVERITY_ORDER, STATE_*, DEPLOY_FILES）
-  config.py                  Policy file loader（flat YAML，無 PyYAML 依賴，9 valid keys，50 content-line 上限）
-  git.py                     git_cmd（encoding="utf-8"）, collect_files, is_binary, build_diff（UTF-8 byte÷4 token 估算）
-  filter.py                  filter_file_list, rank_file_list
-  prompt.py                  build_prompt_text
-  claude.py                  ModelAdapter base, ClaudeCliAdapter（encoding="utf-8"）, MockAdapter, ReviewInvocation
-  review.py                  parse_review_output（含 validate_review 整合）
-  schema.py                  review output schema 定義 + validate_review()
-  policy.py                  apply_policy（truncation_policy: warn/soft-pass/fail-closed）, filter_by_confidence, format_block_reason
-  history.py                 log_to_history, aggregate_overrides, compute_stats, quality_report, prune（content hash dedup）, archive
-  override.py                arm_override, consume_override
-  doctor.py                  run_doctor（11 checks，fail 訊息含 Fix: 指引）, verify_install, run_doctor_fix, run_init
-  engine.py                  run()（file_count==0 skip + coverage visibility）, _resolve(), _skip(), _infra_review()
-  cli.py                     11 subcommands + --version
-  __init__.py                __version__ = "1.3.1"
+docs/                        文件（本次新增 3 份）
+  trust-model.md             能力邊界、信任屬性、已知缺口
+  assurance-matrix.md        per-category 偵測能力、FP/FN 方向、scope 限制
+  roadmap.md                 重寫為四階段 trust engineering plan
+  （其餘 docs 同 v1.3.1）
 
-evals/                       Evaluation framework
-  eval_runner.py             deterministic / benchmark / sweep
-  cases/                     14 eval case fixtures（6 true_positive, 4 acceptable, 4 stress）
-
-docs/                        11 份文件 + 5 份 sample + 1 legacy
-  architecture.md            三層架構、data flow、模組職責、設計決策
-  failure-modes.md           六種狀態、infra failure 分類、truncation 分析、false positive 處理
-  troubleshooting.md         8 個問題/解法對
-  release-checklist.md       Release process checklist（含 coverage gate + release workflow）
-  evaluation.md              Eval system + threshold sweep results + 預設值理由
-  scope-strategy.md          4 種 scope 的適用場景 + truncation 交互
-  history-schema.md          JSONL v2 全 field 規格 + 6 種 state 範例 + v1→v2 migration
-  tuning.md                  調參 playbook（diagnostic workflow + 何時改什麼）
-  agent-setup.md             5 步 agent 安裝指南 + troubleshooting
-  version-policy.md          SemVer 規則 + 四處版本訊號定義
-  support-policy.md          Python/OS/Shell 支援矩陣 + CI 測試範圍
-  roadmap.md                 當前優先、可能方向、明確不做
-  samples/                   pass_outcome, block_outcome, history_entry, quality_report, stats_output
-  alpha-scope.md             (legacy) v0.2.0 scope document
-
-治理文件（根目錄）
-  CONTRIBUTING.md            開發設定、code style、commit 慣例、部署模型
-  SECURITY.md                漏洞揭露、範圍、信任邊界
-  LICENSE                    MIT
-
-GitHub 模板
-  .github/workflows/test.yml      3 OS × 2 Python + ruff + shellcheck + coverage
-  .github/workflows/release.yml   tag 推送 → test + ruff + shellcheck → 驗 tag==__version__ → 自動建 GitHub Release
-  .github/ISSUE_TEMPLATE/          bug_report.yml, feature_request.yml
-  .github/PULL_REQUEST_TEMPLATE.md PR checklist
-
-tests/                       289 tests
-  test_engine.py             183 tests — engine pipeline, scope, mock adapter
-  test_shell_smoke.py        28 tests — shell shim, fail-closed parser, interpreter missing, WSL detection
-  test_eval.py               24 tests — case loading, deterministic, sweep, single case
-  test_risk_controls.py      30 tests — truncation policy, config, state reachability, zero-file skip, CLI --version, doctor Fix:
-  test_schema.py             16 tests — validate_review, parser regressions
-  test_override.py           8 tests — arm/consume override token
+SECURITY.md                  擴充 trust boundaries（6 小節 + 攻擊面表格）
 ```
 
 ## 本次會話做了什麼（2026-04-12）
 
 ### 起點
 
-接手 v1.3.0（`d28c8bd`，288 tests）。
-收到 `cold-eyes-reviewer-phase-report.md`（三階段第三方複核），綜合 9.6/10「高度可信」。
-報告列出 5 個觀察點（F-1～F-5）和 3 個邊界缺口，加上 9 項改進建議。
+接手 v1.3.1（`fb6c846`，289 tests）。收到 `cold-eyes-reviewer-trust-roadmap.md`，四階段可信度工程 roadmap。本次執行 Phase 1 材料層。
 
 ### 執行
 
 | # | 做了什麼 | 檔案 | 測試變化 | Commit |
 |---|---------|------|---------|--------|
-| P0-3 | Token 估算 `len÷4` → `len(encode("utf-8"))÷4`，中文 diff 不再低估 | `git.py:117` | 0 | `4ca6f48` |
-| P0-1 | Shell 加 python interpreter 偵測，缺失時 fail-closed | `cold-review.sh` | +2 | `4ca6f48` |
-| P1-4 | history prune dedup 從 `id()` 改為 `json.dumps` content hash | `history.py:325` | 0 | `4ca6f48` |
-| P1-5 | config parser 加 50 行上限（只計非空白非註解行），超限 stderr warning | `config.py` | 0 | `4ca6f48` |
-| P1-6 | 移除 `call_claude()` 保留函式 + 清理引用 | `claude.py`, `test_engine.py`, `architecture.md` | -1 | `4ca6f48` |
-| P1-5 | release.yml 補齊 ruff + shellcheck（與 test.yml 一致） | `release.yml` | 0 | `4ca6f48` |
-| P1-3 | README 修正「all states logged」→「engine-level exits logged」 | `README.md` | 0 | `4ca6f48` |
-| review-fix | shell python 偵測移到 off-mode guard 之後 | `cold-review.sh` | 0 | `4ca6f48` |
-| review-fix | `$PYTHON_CMD` 三處加雙引號 | `cold-review.sh` | 0 | `4ca6f48` |
-| review-fix | config parser 超限改 warn+break（保留已解析條目） | `config.py` | 0 | `4ca6f48` |
-| CI-fix | Ubuntu: bash 隔離到臨時 bin 目錄（防 `/usr/bin` 共存 python） | `test_shell_smoke.py` | 0 | `734efbe` |
-| CI-fix | Windows: `bash --version` 驗證可用性（防 WSL bash 無 distro） | `test_shell_smoke.py` | 0 | `31cf81f` |
-| release | `__init__` 1.3.0→1.3.1 + CHANGELOG v1.3.1 + tag | 版本訊號 | 0 | `ebe3f13` |
+| WP1 | 新增 10 eval cases（fn×3, edge×4, tp×2, stress×1） | `evals/cases/` | 0 | `2f72ee3` |
+| WP1 | 建立 manifest.json（24 cases, 5 categories） | `evals/manifest.json` | 0 | `2f72ee3` |
+| WP1 | 建立 schema.md（case 格式正式定義） | `evals/schema.md` | 0 | `2f72ee3` |
+| WP1 | 加 validate_manifest() 到 eval_runner.py | `evals/eval_runner.py` | 0 | `2f72ee3` |
+| WP5 | 更新 test 斷言（14→24, 3→5 categories）+ 8 新 tests | `tests/test_eval.py` | +8 | `2f72ee3` |
+| WP3 | 建立 trust-model.md | `docs/trust-model.md` | 0 | `b5b583b` |
+| WP3 | 擴充 SECURITY.md trust boundaries | `SECURITY.md` | 0 | `b5b583b` |
+| WP3 | 重寫 roadmap.md 為四階段 trust plan | `docs/roadmap.md` | 0 | `b5b583b` |
+| WP4 | 建立 assurance-matrix.md | `docs/assurance-matrix.md` | 0 | `b5b583b` |
 
-### 教訓
+### 驗證結果
 
-1. **防禦上限要計對東西**：config parser 第一版上限計全部行數（含空白和註解），Cold Eyes 自己抓到「合法 policy 含大量註解會被靜默丟棄」。改為只計有效內容行。
+- 297 tests passed
+- Deterministic eval: 24/24
+- Sweep: critical/medium F1=1.0（推薦不變）
 
-2. **新增的 guard 要放對位置**：python interpreter 偵測放在 off-mode guard 前面，導致 off mode 也被 python 缺失攔住。Cold Eyes 抓到後移到 guard 之後。
+---
 
-3. **Shell 變數要引號**：`$PYTHON_CMD` 不加引號在路徑含空白時會 word split，且加了 shellcheck CI step 就會報錯。
+## 下次 Session 要做什麼
 
-4. **Linux `/usr/bin` 共存問題**：限制 PATH 到 `bash_dir` 想排除 python，但 Linux 上 bash 和 python3 都在 `/usr/bin/`。修法：建臨時 bin 目錄只放 bash symlink。
+### 目標：完成 Phase 1 工具層 + 收尾，bump v1.4.0
 
-5. **Windows CI 的 WSL bash 陷阱**：`shutil.which("bash")` 在 `windows-latest` 找到 WSL bash，但無 Linux distro 時所有 bash 執行都 exit 1。修法：`bash --version` 驗證可用性，不可用時 skip shell tests。
+### WP2: Eval Pipeline 強化
 
-6. **v1.3.1 tag 移動兩次**：第一次 CI 失敗（Ubuntu `/usr/bin` 問題），第二次又失敗（Windows WSL 問題），tag 從 `ebe3f13` → `734efbe` → `31cf81f`。教訓同 v1.3.0：CI 全綠前不要急著打 tag。
+修改 `evals/eval_runner.py`，加四個函式：
 
-## 部署
+1. **`_make_report(mode_result)`** — 所有 mode 輸出包 envelope：`cold_eyes_version`、`timestamp`、`eval_schema_version`。套在 `run_deterministic()`（line 130）、`threshold_sweep()`��`run_benchmark()` 的 return 上。
 
-```bash
-# Option A: install script
-bash install.sh
+2. **`format_markdown(report)`** — deterministic → case table + category summary；sweep → precision/recall/F1 table。輸出 markdown string。
 
-# Option B: manual
-cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/
-python ~/.claude/scripts/cold_eyes/cli.py doctor
-```
+3. **`save_report(report, output_dir=None)`** — 預設存到 `evals/results/`，產出 `{mode}_{timestamp}.json` + `.md`。
+
+4. **`compare_reports(report_a, report_b)`** — 比對兩份 report：cases added/removed/changed、pass/fail 差異、F1 變化。回傳 dict。
+
+修改 `cold_eyes/cli.py` eval 區塊（line 96-105），加三個 CLI flag：
+
+- `--save` — 存 report 到 `evals/results/`
+- `--format json|markdown|both`（default: json）
+- `--compare <path>` — 載入前版 report JSON 比對
+
+### WP5 剩餘 Tests
+
+加到 `tests/test_eval.py`：
+
+- `TestReportMetadata` — deterministic/sweep report 含 `cold_eyes_version` + `timestamp`（~2 tests）
+- `TestFormatMarkdown` — `format_markdown()` 對 deterministic 和 sweep 產出合理 markdown（~2 tests）
+- `TestCompareReports` — 同一份 report 比對自己 → no changes（~1 test）
+- `TestSaveReport` — 用 tmp_path 驗證檔案實際存出（~1 test）
+
+### WP6: 訊號一致性 + Version Bump
+
+1. `cold_eyes/__init__.py` — `1.3.1` → `1.4.0`
+2. `CHANGELOG.md` — 加 v1.4.0 entry，寫清楚：24 eval cases、5 categories、trust-model.md、assurance-matrix.md、structured pipeline、297+ tests
+3. `README.md` — eval section 更新（14→24 cases, 3→5 categories），加 trust-model.md / assurance-matrix.md 交叉引用
+4. `docs/evaluation.md` — 更新 case count、category table、加 manifest 說明
+5. GitHub About description — 更新 test count
+6. `HANDOVER.md` — 重寫
+7. git tag `v1.4.0` + push（**CI 全綠後再打 tag**，v1.3.1 教訓）
+
+### 注意事項
+
+- `_make_report()` 會改變 `run_deterministic()` 的回傳結構（多了 `cold_eyes_version`、`timestamp`、`eval_schema_version`），既有 test 中 `report["total"]` 等欄位不受影響（envelope 是 `**` 展開），但要確認無 strict equality assertions
+- `evals/results/` 目錄需加到 `.gitignore`（eval 結果是 local artifact，不進 repo）
+- Sweep 的 `test_recommended_defaults` assert `rec["f1"] == 1.0`，新 cases 都遵守 critical/medium 邊界，不會改變推薦結果
+- 版本 bump 時跑一次六訊號驗證（`__init__`、About、CHANGELOG、pytest count、Release、tag）
 
 ## 環境變數
+
+（同 v1.3.1，無變更）
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
@@ -146,45 +131,9 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 
 ## CLI 命令
 
-| 命令 | 說明 |
-|---|---|
-| `--version` | 印出版本（`cold-eyes-reviewer 1.3.1`） |
-| `run` | 執行 review（加 `--truncation-policy` 可指定截斷策略） |
-| `doctor` | 環境健康檢查（fail 訊息含 Fix: 指引；加 `--fix` 自動修復） |
-| `verify-install` | Machine-readable 安裝驗證（3 critical checks） |
-| `init` | 在 repo 建立預設 policy + ignore |
-| `eval` | 跑 eval（`--eval-mode deterministic/benchmark/sweep`） |
-| `stats` | 歷史統計（`--last`, `--by-reason`, `--by-path`） |
-| `quality-report` | 品質報告（rates, noisy paths, categories） |
-| `aggregate-overrides` | Override 模式摘要 |
-| `arm-override` | 建立一次性 override token |
-| `history-prune` | 清理舊 history（`--keep-days`, `--keep-entries`） |
-| `history-archive` | 歸檔指定日期前的 history（`--before`） |
-
-## 後續方向
-
-### 可能的下一步
-
-- 更多 eval cases — 目前 14 個是最小可行集，隨實際使用擴充
-- Benchmark mode 實測 — `eval --eval-mode benchmark --model opus` 用真實 model 量化 accuracy
-- `line_hint` 幻覺率 — 可在 eval framework 加案例測量
-- `pip install -e .` — pyproject.toml 已就位，但部署模型是 `cp -r`，不建議改（評估過，見下方）
-
-### 不建議做的
-
-- **改部署模型** — 評估過 `pip install -e .`，結論：拿 4 行 sys.path hack 換來 Python 環境耦合 + repo 目錄綁定 + Windows 脆弱性，不值得。Stop hook 需要蠢但堅固的部署。
-- 商業化 — 個人用工具不需要
-- GUI / dashboard — 底層 eval 和 risk policy 才剛建好，先累積資料
-- Daemon / 常駐服務 — hook 架構已夠用
-- 更花俏的 prompt — 這階段上限不在 prompt
+（同 v1.3.1，下次 session 加 `--save` / `--format` / `--compare` 到 eval）
 
 ## 已知問題
 
-- `cli.py` 頂部有 `sys.path` manipulation — 部署模型所需，不是 bug（見「不建議做的」）
-- Windows Git Bash 的 `mkdir` lock 和 `kill -0` stale detection 不如原生 Unix 可靠
-- 舊 history 條目仍有 `state: "failed"`（v0.11.0 前），stats 查詢時注意
-- `line_hint` 是 LLM 估計值，block 顯示加了 `~` 前綴，幻覺率未實測
-- Token 估算為 `len(encode("utf-8"))÷4`（比舊版 `len÷4` 對中文準確，但仍為近似值）
-- Eval benchmark mode 需要 Claude CLI 可用，CI 環境跑不了
-- v1.3.1 tag 被移動兩次（CI 修正）。最終 tag 指向 `31cf81f`。
-- `windows-latest` CI 上 shell smoke tests 會被 skip（WSL bash 無 distro），Windows 覆蓋靠本機 Git Bash 環境
+- （同 v1.3.1）
+- 版本訊號暫時不一致：test count 297 但 About/CHANGELOG 仍寫 289。下次 v1.4.0 bump 時統一更新。
