@@ -1,0 +1,5 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "result": "This is not valid JSON at all, the model returned garbage text"
+}

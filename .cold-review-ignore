@@ -1,0 +1,21 @@
+# Cold Eyes Reviewer — ignore patterns
+# Lines starting with # are comments. Blank lines are ignored.
+# Patterns use fnmatch syntax (matched against both full path and basename).
+
+# Lock files
+*.lock
+package-lock.json
+pnpm-lock.yaml
+yarn.lock
+
+# Build / generated output
+dist/*
+build/*
+.next/*
+coverage/*
+vendor/*
+node_modules/*
+
+# Minified files
+*.min.js
+*.min.css

@@ -1,0 +1,5 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "result": "{\"pass\": false, \"review_status\": \"completed\", \"summary\": \"Credentials in source code\", \"issues\": [{\"severity\": \"critical\", \"confidence\": \"high\", \"category\": \"security\", \"file\": \"config.py\", \"check\": \"AWS_SECRET_KEY hardcoded on line 5\", \"verdict\": \"Credentials exposed.\", \"fix\": \"Move to environment variable\"}]}"
+}

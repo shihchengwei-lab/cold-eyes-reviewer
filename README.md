@@ -1,8 +1,8 @@
 # Cold Eyes Reviewer
 
-A zero-context code reviewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook. Catches issues before they ship.
+A zero-context code reviewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
 
-Cold Eyes sees only the git diff. It doesn't know what you asked for, doesn't know your project history, doesn't share context with the session. That's the point.
+Cold Eyes is a second-pass gate, not a full code review. It sees only the git diff — no conversation context, no project history, no requirements. It catches surface-level correctness, security, and consistency issues. It does not understand your intent.
 
 ## How it works
 
@@ -13,40 +13,47 @@ Claude Code session ends
   Stop hook fires
        │
        ├─ No git changes? → skip
+       ├─ All files ignored? → skip
        ├─ Already reviewing? → skip (prevents recursion)
+       │
+       ▼
+  Collect diff (filtered, risk-sorted, within line budget)
        │
        ▼
   Cold Eyes reviews the diff
        │
-       ├─ block mode: issues found → blocks, feeds reason back to Claude → Claude fixes → done
-       └─ report mode: logs review to ~/.claude/cold-review-history.jsonl → done
+       ├─ block mode: issues at or above threshold → block → Claude fixes → done
+       ├─ report mode: log review → done
+       └─ all states logged to ~/.claude/cold-review-history.jsonl
 ```
-
-One review, one fix, then pass. No infinite loops.
 
 ## Output format
 
-Every issue uses a three-part structure:
-
-- **Check** (what was seen)
-- **Verdict** (is it a problem — shorter = more serious)
-- **Fix** (what to do about it)
+Every issue includes severity, confidence, category, file, and a three-part structure (check / verdict / fix):
 
 ```json
 {
   "pass": false,
+  "review_status": "completed",
+  "summary": "Chinese page links to English chapter",
   "issues": [
     {
+      "severity": "major",
+      "confidence": "high",
+      "category": "reference",
+      "file": "index.html",
       "check": "index.html line 43 links to ch3-en.html but this is the Chinese page",
       "verdict": "Cross-language reference.",
       "fix": "Change to ch3.html"
     }
-  ],
-  "summary": "Chinese page links to English chapter"
+  ]
 }
 ```
 
-All reviews are saved to `~/.claude/cold-review-history.jsonl`. They don't disappear.
+**Severity levels:**
+- `critical` — production crash, data loss, or security breach
+- `major` — incorrect behavior under normal use
+- `minor` — suboptimal but functional
 
 ## Install
 
@@ -58,8 +65,6 @@ cp cold-review.sh cold-review-helper.py cold-review-prompt.txt cold-review-profi
 ```
 
 ### 2. Add Stop hook to `~/.claude/settings.json`
-
-Add an entry to the `hooks.Stop` array in your settings:
 
 ```json
 {
@@ -79,23 +84,25 @@ Add an entry to the `hooks.Stop` array in your settings:
 }
 ```
 
-If you already have other Stop hooks, just add the new object to the existing array.
-
 ### 3. Done
 
 Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will review them.
 
-## Important: token usage
+### Recommended adoption path
 
-Every review consumes tokens from your own Claude subscription. You see what it costs, you control when it runs, you decide the model.
+1. Start with `COLD_REVIEW_MODE=report` — review results are logged but nothing is blocked. Read the history to see what it catches.
+2. After a week, switch to `COLD_REVIEW_MODE=block` with `COLD_REVIEW_BLOCK_THRESHOLD=critical` (the default). Only critical issues block.
+3. If the signal-to-noise ratio is good, optionally lower the threshold to `major`.
 
-## Important: what gets reviewed
+## Token usage
+
+Every review consumes tokens from your Claude subscription. You see what it costs, you control when it runs, you decide the model.
+
+## What gets reviewed
 
 Cold Eyes reviews **all uncommitted changes** in the working tree — not just what Claude did in the current turn. It has no way to distinguish "changes Claude made" from "changes you had before opening the session."
 
-**Commit or push before starting a new session.** This keeps the diff clean and the review accurate. If you leave uncommitted changes from a previous session, the reviewer will review those too and may block Claude for things it didn't do.
-
-This is by design. The reviewer sees what git sees. No more, no less.
+**Commit or push before starting a new session.** This keeps the diff clean and the review accurate.
 
 ## Configuration
 
@@ -105,7 +112,9 @@ This is by design. The reviewer sees what git sees. No more, no less.
 |---|---|---|---|
 | `COLD_REVIEW_MODE` | `block` | `block`, `report`, `off` | Block and force fix / log only / disable |
 | `COLD_REVIEW_MODEL` | `opus` | `opus`, `sonnet`, `haiku` | Which model runs the review |
-| `COLD_REVIEW_MAX_LINES` | `500` | any integer | Max diff lines to review (large diffs get truncated) |
+| `COLD_REVIEW_MAX_LINES` | `500` | any integer | Max diff lines to review |
+| `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | `critical`, `major` | Minimum severity that triggers a block |
+| `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | Set to skip block once (logged as override) |
 
 ```bash
 # Use sonnet to save tokens
@@ -114,52 +123,84 @@ export COLD_REVIEW_MODEL=sonnet
 # Just log, don't block
 export COLD_REVIEW_MODE=report
 
-# Turn off temporarily
-export COLD_REVIEW_MODE=off
+# Block on major issues too
+export COLD_REVIEW_BLOCK_THRESHOLD=major
+
+# One-time override when blocked by a false positive
+export COLD_REVIEW_ALLOW_ONCE=1
 ```
+
+### Ignore rules
+
+Create `.cold-review-ignore` in your project root to exclude files from review. Uses fnmatch glob patterns:
+
+```
+# Lock files
+*.lock
+package-lock.json
+
+# Build output
+dist/*
+build/*
+
+# Minified
+*.min.js
+```
+
+Built-in defaults already skip common lock files, build output, and minified files. Project-level patterns are additive.
 
 ### Personality profile
 
-Edit `~/.claude/scripts/cold-review-profile.json` to customize the reviewer's character:
+Edit `~/.claude/scripts/cold-review-profile.json`:
 
 ```json
 {
   "name": "Cold Eyes",
-  "personality": "A methodical reviewer with zero context and zero mercy.",
   "language": "繁體中文（台灣）",
   "stats": {
     "RIGOR": 90,
-    "SNARK": 30,
-    "PATIENCE": 60,
     "PARANOIA": 75
   }
 }
 ```
 
-- **RIGOR** — how strictly it enforces correctness
-- **SNARK** — how sarcastic the tone is
-- **PATIENCE** — how much it explains vs. just flags
-- **PARANOIA** — how aggressively it flags minor concerns
-
 ### Review prompt
 
 Edit `~/.claude/scripts/cold-review-prompt.txt` to change what the reviewer checks for and how it responds.
 
+## Failure modes
+
+Cold Eyes logs its state to `~/.claude/cold-review-history.jsonl` at every exit path:
+
+| State | Meaning |
+|---|---|
+| `skipped` | No changes, not a git repo, all files ignored, or another review in progress |
+| `failed` | Claude CLI error, empty output, or parse failure |
+| `passed` | Review completed, no issues at or above threshold |
+| `reported` | Review completed with issues, but mode is `report` (no block) |
+| `blocked` | Review completed, issues found at or above threshold, block emitted |
+| `overridden` | Would have blocked, but `COLD_REVIEW_ALLOW_ONCE=1` was set |
+
+If reviews aren't running, check:
+1. `~/.claude/cold-review-history.jsonl` — look for recent `failed` or `skipped` entries
+2. `claude -d` — check for auth or rate limit issues
+
 ## Requirements
 
 - Claude Code CLI with an active subscription
-- Python 3.x (for JSON parsing)
-- Git (for diff collection)
-- Bash (Git Bash on Windows works)
+- Python 3.x
+- Git
+- Bash (Git Bash on Windows)
 
 ## Files
 
 | File | Purpose |
 |---|---|
 | `cold-review.sh` | Main Stop hook script |
-| `cold-review-helper.py` | JSON parsing and prompt assembly |
+| `cold-review-helper.py` | JSON parsing, prompt assembly, ignore/rank logic |
 | `cold-review-prompt.txt` | System prompt template |
 | `cold-review-profile.json` | Personality configuration |
+| `.cold-review-ignore` | Default ignore patterns |
 
 ## Background
 
@@ -171,17 +212,16 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-profile.json`** — Plain JSON. Build a UI to let users drag sliders for RIGOR/SNARK/PATIENCE/PARANOIA, pick a name, set a language.
-- **`cold-review-history.jsonl`** — One JSON object per line. Build a dashboard, filter by pass/fail, chart trends over time.
+- **`cold-review-profile.json`** — Plain JSON. Build a UI to let users configure the reviewer.
+- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`). Build a dashboard, filter by state, chart trends over time.
 - **`cold-review-prompt.txt`** — Template with `{name}`, `{language}`, `{stats_*}` placeholders. Swap in your own review criteria.
-
-The core is the hook. The shell around it is yours.
+- **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 
 ## Known limitations
 
-- **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. If you use this daily for months, the file will get large. Periodically archive or truncate it yourself. A future version may add automatic rotation.
-- **Large diffs get truncated.** Diffs over 500 lines (configurable via `COLD_REVIEW_MAX_LINES`) are cut to keep token usage reasonable. The reviewer is told the diff was truncated.
-- **Silent on auth failure.** If your Claude Code subscription is expired or rate-limited, the review silently skips. Check stderr (`claude -d`) if you suspect reviews aren't running.
+- **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. Periodically archive or truncate it yourself.
+- **Large diffs get truncated.** Diffs over the line budget (default 500) are cut. High-risk files are prioritized, but the review may be incomplete.
+- **Silent on auth failure.** If your Claude subscription is expired or rate-limited, the review logs a `failed` state. Check stderr or history.
 
 ## License
 

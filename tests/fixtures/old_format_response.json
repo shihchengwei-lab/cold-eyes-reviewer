@@ -1,0 +1,5 @@
+{
+  "type": "result",
+  "subtype": "success",
+  "result": "{\"pass\": false, \"issues\": [{\"check\": \"Line 10 has a bug\", \"verdict\": \"Logic error.\", \"fix\": \"Fix the condition\"}], \"summary\": \"Found a bug\"}"
+}
