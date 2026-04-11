@@ -57,11 +57,16 @@ DIFF=""
 STAGED=$(git diff --cached 2>/dev/null | head -n "$MAX_LINES" || true)
 DIFF+="$STAGED"
 
-REMAINING=$((MAX_LINES - $(echo "$STAGED" | wc -l)))
+STAGED_LINES=0
+[[ -n "$STAGED" ]] && STAGED_LINES=$(printf '%s' "$STAGED" | wc -l)
+REMAINING=$((MAX_LINES - STAGED_LINES))
+
 if [[ "$REMAINING" -gt 0 ]]; then
   UNSTAGED=$(git diff 2>/dev/null | head -n "$REMAINING" || true)
   DIFF+=$'\n'"$UNSTAGED"
-  REMAINING=$((REMAINING - $(echo "$UNSTAGED" | wc -l)))
+  UNSTAGED_LINES=0
+  [[ -n "$UNSTAGED" ]] && UNSTAGED_LINES=$(printf '%s' "$UNSTAGED" | wc -l)
+  REMAINING=$((REMAINING - UNSTAGED_LINES))
 fi
 
 # Include content of new untracked files (within line budget)

@@ -59,19 +59,27 @@ cp cold-review.sh cold-review-helper.py cold-review-prompt.txt cold-review-profi
 
 ### 2. Add Stop hook to `~/.claude/settings.json`
 
-Add this to your `hooks.Stop` array:
+Add an entry to the `hooks.Stop` array in your settings:
 
 ```json
 {
-  "hooks": [
-    {
-      "type": "command",
-      "command": "bash ~/.claude/scripts/cold-review.sh",
-      "timeout": 120000
-    }
-  ]
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash ~/.claude/scripts/cold-review.sh",
+            "timeout": 120000
+          }
+        ]
+      }
+    ]
+  }
 }
 ```
+
+If you already have other Stop hooks, just add the new object to the existing array.
 
 ### 3. Done
 

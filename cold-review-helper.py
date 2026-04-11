@@ -91,7 +91,11 @@ def parse_review():
             result = result_str
         print(json.dumps(result, ensure_ascii=False))
     except Exception as e:
-        print(json.dumps({"pass": True, "issues": [], "summary": f"Parse error: {e}"}, ensure_ascii=False))
+        print(json.dumps({
+            "pass": False,
+            "issues": [{"check": "parse error", "verdict": "無法解析審查結果。", "fix": "手動檢查 diff，或重新跑一次 review。"}],
+            "summary": f"Parse error: {e}"
+        }, ensure_ascii=False))
 
 
 def log_review():
