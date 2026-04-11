@@ -67,6 +67,25 @@ class TestNoGitRepo:
             assert "not a git repo" in result.stderr
 
 
+def _make_bash_only_bin(tmpdir):
+    """Create a temp bin dir containing only a bash symlink/copy.
+
+    On Linux, bash and python3 share /usr/bin/ so restricting PATH to
+    bash's parent dir still exposes python.  This helper isolates bash
+    into its own directory.
+    """
+    bin_dir = os.path.join(tmpdir, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    bash_path = shutil.which("bash")
+    dest = os.path.join(bin_dir, "bash")
+    try:
+        os.symlink(bash_path, dest)
+    except OSError:
+        # Windows or no symlink permission — copy instead
+        shutil.copy2(bash_path, dest)
+    return bin_dir
+
+
 @skip_no_bash
 class TestNoPythonInterpreter:
     """Verify fail-closed when python interpreter is missing."""
@@ -74,14 +93,13 @@ class TestNoPythonInterpreter:
     def test_block_mode_emits_block_on_missing_python(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             os.makedirs(os.path.join(tmpdir, ".claude"), exist_ok=True)
-            # PATH with only bash (no python/python3)
-            bash_dir = os.path.dirname(shutil.which("bash"))
+            bin_dir = _make_bash_only_bin(tmpdir)
             result = run_shell(
                 cwd=tmpdir,
                 env_override={
                     "COLD_REVIEW_MODE": "block",
                     "HOME": tmpdir,
-                    "PATH": bash_dir,
+                    "PATH": bin_dir,
                 },
             )
             assert result.returncode == 0
@@ -92,13 +110,13 @@ class TestNoPythonInterpreter:
     def test_report_mode_warns_on_missing_python(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             os.makedirs(os.path.join(tmpdir, ".claude"), exist_ok=True)
-            bash_dir = os.path.dirname(shutil.which("bash"))
+            bin_dir = _make_bash_only_bin(tmpdir)
             result = run_shell(
                 cwd=tmpdir,
                 env_override={
                     "COLD_REVIEW_MODE": "report",
                     "HOME": tmpdir,
-                    "PATH": bash_dir,
+                    "PATH": bin_dir,
                 },
             )
             assert result.returncode == 0
