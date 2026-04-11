@@ -3,11 +3,12 @@
 Called by cold-review.sh. Handles all JSON parsing and prompt assembly.
 
 Usage:
-  python cold-review-helper.py parse-hook       — read stdin, print stop_hook_active
-  python cold-review-helper.py build-prompt      — assemble system prompt from profile + template
-  python cold-review-helper.py parse-review      — parse claude output, print pass/fail
-  python cold-review-helper.py log-review <json> <cwd> <mode> <model>  — append to history
-  python cold-review-helper.py format-block <json>  — format block reason from review JSON
+  python cold-review-helper.py parse-hook          — read hook JSON from stdin, print stop_hook_active
+  python cold-review-helper.py build-prompt         — assemble system prompt from profile + template
+  python cold-review-helper.py parse-review         — parse claude JSON output from stdin
+  python cold-review-helper.py log-review <cwd> <mode> <model>  — read review JSON from stdin, append to history
+  python cold-review-helper.py format-block         — read review JSON from stdin, format block reason
+  python cold-review-helper.py check-pass           — read review JSON from stdin, print true/false
 """
 
 import json
@@ -94,14 +95,13 @@ def parse_review():
 
 
 def log_review():
-    """Append review to history file. Args: <review_json> <cwd> <mode> <model>"""
-    review_json = sys.argv[2]
-    cwd = sys.argv[3]
-    mode = sys.argv[4]
-    model = sys.argv[5]
+    """Append review to history file. Reads review JSON from stdin. Args: <cwd> <mode> <model>"""
+    cwd = sys.argv[2]
+    mode = sys.argv[3]
+    model = sys.argv[4]
 
     try:
-        review = json.loads(review_json)
+        review = json.load(sys.stdin)
     except Exception:
         review = {"pass": True, "issues": [], "summary": "Log parse error"}
 
@@ -119,11 +119,9 @@ def log_review():
 
 
 def format_block():
-    """Format review JSON into a block reason string. Args: <review_json>"""
-    review_json = sys.argv[2]
-
+    """Format review JSON into a block reason string. Reads review JSON from stdin."""
     try:
-        data = json.loads(review_json)
+        data = json.load(sys.stdin)
     except Exception:
         print("Cold Eyes Review found issues but failed to parse details.")
         return

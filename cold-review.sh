@@ -32,6 +32,7 @@ git rev-parse --git-dir > /dev/null 2>&1 || exit 0
 # --- Collect diff ---
 DIFF=""
 DIFF+=$(git diff --cached 2>/dev/null || true)
+DIFF+=$'\n'
 DIFF+=$(git diff 2>/dev/null || true)
 
 # Include content of new untracked files
@@ -73,7 +74,7 @@ PARSED=$(echo "$REVIEW_RAW" | python "$HELPER" parse-review)
 PASS=$(echo "$PARSED" | python "$HELPER" check-pass)
 
 # --- Log to history (both modes) ---
-python "$HELPER" log-review "$PARSED" "$(pwd)" "$MODE" "$MODEL" 2>/dev/null || true
+echo "$PARSED" | python "$HELPER" log-review "$(pwd)" "$MODE" "$MODEL" 2>/dev/null || true
 
 # --- Act based on mode ---
 if [[ "$MODE" == "report" ]]; then
@@ -82,7 +83,7 @@ fi
 
 # --- Block mode: if issues found, block ---
 if [[ "$PASS" == "false" ]]; then
-  REASON=$(python "$HELPER" format-block "$PARSED")
+  REASON=$(echo "$PARSED" | python "$HELPER" format-block)
   REASON_ESCAPED=$(python -c "import json,sys; print(json.dumps(sys.argv[1]))" "$REASON")
   echo "{\"decision\":\"block\",\"reason\":$REASON_ESCAPED}"
   exit 0
