@@ -1,0 +1,13 @@
+{
+  "id": "tp-resource-leak",
+  "category": "true_positive",
+  "description": "Database connection opened but never closed in exception path",
+  "diff": "--- a/services/data.py\n+++ b/services/data.py\n@@ -5,9 +5,9 @@ def fetch_records(db_url):\n     conn = psycopg2.connect(db_url)\n     try:\n         cursor = conn.cursor()\n         cursor.execute(\"SELECT * FROM records\")\n         return cursor.fetchall()\n     except Exception as e:\n-        conn.close()\n         logger.error(f\"Query failed: {e}\")\n+        return []\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Resource leak: DB connection not closed on error\",\"verdict\":\"conn.close() removed from except block; connection leaks on query failure\",\"fix\":\"Use context manager (with) or restore conn.close() in except/finally block\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"correctness\",\"file\":\"services/data.py\",\"line_hint\":\"11\"}],\"summary\":\"Database connection leak introduced by removing close() from error handler\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

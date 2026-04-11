@@ -1,0 +1,13 @@
+{
+  "id": "tp-dangling-import",
+  "category": "true_positive",
+  "description": "Import of deleted module still present, will crash at runtime",
+  "diff": "--- a/app/handlers.py\n+++ b/app/handlers.py\n@@ -1,5 +1,4 @@\n from app.auth import verify_token\n from app.legacy_validator import validate_input\n-from app.legacy_validator import sanitize_output\n from app.models import User\n \n@@ -20,6 +19,4 @@ def handle_request(request):\n     data = validate_input(request.body)\n-    result = process(data)\n-    return sanitize_output(result)\n+    return process(data)\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Dangling import from partially removed module\",\"verdict\":\"sanitize_output import removed but validate_input import still references legacy_validator which may be deleted\",\"fix\":\"Verify legacy_validator module still exists and validate_input is still exported, or migrate to replacement\",\"severity\":\"critical\",\"confidence\":\"medium\",\"category\":\"correctness\",\"file\":\"app/handlers.py\",\"line_hint\":\"2\"}],\"summary\":\"Partial removal of legacy module references leaves dangling import that may fail at runtime\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "major"
+  }
+}

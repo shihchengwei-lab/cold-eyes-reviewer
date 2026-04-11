@@ -1,0 +1,12 @@
+{
+  "id": "ok-comment-update",
+  "category": "acceptable",
+  "description": "Docstring update only, no code change",
+  "diff": "--- a/services/auth.py\n+++ b/services/auth.py\n@@ -5,7 +5,9 @@ class AuthService:\n \n     def verify(self, token):\n-        \"\"\"Verify a token.\"\"\"\n+        \"\"\"Verify a JWT token against the configured issuer.\n+\n+        Returns the decoded payload dict, or raises InvalidTokenError.\n+        \"\"\"\n         payload = jwt.decode(token, self.secret, algorithms=[\"HS256\"])\n         return payload\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"Docstring expanded with return type and error documentation, no functional change\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

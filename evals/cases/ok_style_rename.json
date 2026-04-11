@@ -1,0 +1,12 @@
+{
+  "id": "ok-style-rename",
+  "category": "acceptable",
+  "description": "Variable rename from single-letter to descriptive name",
+  "diff": "--- a/utils/math.py\n+++ b/utils/math.py\n@@ -3,6 +3,6 @@ def moving_average(values, window):\n     result = []\n     for i in range(len(values) - window + 1):\n-        x = sum(values[i:i+window]) / window\n-        result.append(x)\n+        avg = sum(values[i:i+window]) / window\n+        result.append(avg)\n     return result\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"Simple variable rename from x to avg, improves readability, no functional change\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

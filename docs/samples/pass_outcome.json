@@ -1,0 +1,11 @@
+{
+  "action": "pass",
+  "state": "passed",
+  "reason": "",
+  "display": "cold-review: pass",
+  "truncated": false,
+  "skipped_count": 0,
+  "reviewed_files": 3,
+  "total_files": 3,
+  "coverage_pct": 100.0
+}

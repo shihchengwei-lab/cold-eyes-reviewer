@@ -1,0 +1,13 @@
+{
+  "id": "tp-xss-unescaped",
+  "category": "true_positive",
+  "description": "User input rendered in HTML without escaping",
+  "diff": "--- a/templates/profile.py\n+++ b/templates/profile.py\n@@ -8,4 +8,4 @@ def render_profile(user):\n     return f\"\"\"\n     <div class=\"profile\">\n-        <h1>{html.escape(user.name)}</h1>\n+        <h1>{user.name}</h1>\n         <p>{html.escape(user.bio)}</p>\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"XSS via unescaped user input in HTML\",\"verdict\":\"Removed html.escape() from user.name rendering, allowing script injection\",\"fix\":\"Restore html.escape(user.name) to prevent cross-site scripting\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"templates/profile.py\",\"line_hint\":\"11\"}],\"summary\":\"XSS vulnerability introduced by removing HTML escaping from user input\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

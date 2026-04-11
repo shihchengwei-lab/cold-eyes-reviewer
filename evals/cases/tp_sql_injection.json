@@ -1,0 +1,13 @@
+{
+  "id": "tp-sql-injection",
+  "category": "true_positive",
+  "description": "SQL injection via string concatenation in query builder",
+  "diff": "--- a/db.py\n+++ b/db.py\n@@ -12,3 +12,6 @@ class UserRepo:\n     def find_by_name(self, name):\n-        return self.db.execute(\"SELECT * FROM users WHERE name = ?\", (name,))\n+        query = \"SELECT * FROM users WHERE name = '\" + name + \"'\"\n+        return self.db.execute(query)\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"SQL injection via string concatenation\",\"verdict\":\"User input directly concatenated into SQL query, replacing parameterized query\",\"fix\":\"Revert to parameterized query: execute(\\\"SELECT * FROM users WHERE name = ?\\\", (name,))\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"db.py\",\"line_hint\":\"14\"}],\"summary\":\"Critical SQL injection vulnerability introduced by replacing parameterized query with string concatenation\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

@@ -1,5 +1,37 @@
 # Changelog
 
+## v1.2.0 — Evidence & Controls (unreleased)
+
+5-phase credibility push: evaluation framework, risk controls, governance docs. 283 tests (was 234).
+
+### Evaluation (Phase 2)
+
+- **Eval framework** — 14 eval cases (6 true positive, 4 acceptable, 4 stress) with deterministic, benchmark, and sweep modes.
+- **Threshold sweep** — Compares precision/recall/F1 across threshold x confidence combinations. Data confirms default `critical/medium` achieves F1=1.0.
+- **`eval` subcommand** — `python cli.py eval --eval-mode deterministic|benchmark|sweep`.
+
+### Risk controls (Phase 3)
+
+- **Truncation policy** — New `truncation_policy` setting: `warn` (default, unchanged behavior), `soft-pass` (force pass when truncated and no issues), `fail-closed` (block if any files unreviewed).
+- **Coverage visibility** — Review outcomes now include `reviewed_files`, `total_files`, `coverage_pct`.
+- 25 new risk control tests (truncation policy, config resolution, state reachability).
+
+### Governance docs (Phase 4)
+
+- **History schema docs** — `docs/history-schema.md` with JSONL v2 field reference, examples per state, migration notes.
+- **Tuning playbook** — `docs/tuning.md` with diagnostic workflow and threshold adjustment guide.
+- **Sample artifacts** — 5 sample JSON files in `docs/samples/`.
+
+### Agent-native polish (Phase 5)
+
+- **`verify-install` subcommand** — Machine-readable install check (3 critical checks → ok/fail JSON).
+- **Agent setup guide** — `docs/agent-setup.md` with 5-step installation and troubleshooting.
+
+### Release discipline (Phase 1)
+
+- **GitHub Release** — v1.1.0 now has a proper GitHub Release with notes.
+- **Release checklist** — `docs/release-checklist.md`.
+
 ## v1.1.0 — Trust & Maturity
 
 9-patch quality push (P0 trust, P1 publishability, P2 long-term ops). 234 tests (was 197).

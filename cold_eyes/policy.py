@@ -58,7 +58,7 @@ def format_block_reason(review, truncated=False, skipped_count=0, language=None)
 
 def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
                  truncated=False, skipped_files=None, override_reason="",
-                 language=None):
+                 language=None, truncation_policy="warn"):
     """Determine final outcome. Return FinalOutcome dict.
 
     FinalOutcome keys: action, state, reason, display, truncated, skipped_count
@@ -113,6 +113,30 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
 
     should_block = max_severity >= threshold_level
     effective_pass = len(filtered_issues) == 0
+
+    # --- Truncation policy (block mode only, before override check) ---
+    if truncated and mode == "block" and not allow_once:
+        if truncation_policy == "fail-closed":
+            block_reason = format_block_reason(review, truncated, skipped_count, language)
+            block_reason += f"\n\n{override_instruction}"
+            return {
+                "action": "block",
+                "state": STATE_BLOCKED,
+                "reason": block_reason,
+                "display": f"cold-review: blocking (truncation policy: fail-closed, {skipped_count} files unreviewed)",
+                "truncated": True,
+                "skipped_count": skipped_count,
+            }
+        elif truncation_policy == "soft-pass" and effective_pass:
+            return {
+                "action": "pass",
+                "state": STATE_PASSED,
+                "reason": f"truncated ({skipped_count} files unreviewed), no issues in reviewed portion",
+                "display": f"cold-review: soft-pass (truncated, {skipped_count} files unreviewed)",
+                "truncated": True,
+                "skipped_count": skipped_count,
+            }
+        # "warn" — fall through to existing logic
 
     if mode == "report":
         state = STATE_REPORTED if not effective_pass else STATE_PASSED

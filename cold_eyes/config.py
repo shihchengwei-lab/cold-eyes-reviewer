@@ -12,7 +12,7 @@ POLICY_FILENAME = ".cold-review-policy.yml"
 _INT_KEYS = {"max_tokens"}
 _VALID_KEYS = {
     "mode", "model", "max_tokens", "block_threshold", "threshold",
-    "confidence", "language", "scope", "base",
+    "confidence", "language", "scope", "base", "truncation_policy",
 }
 
 

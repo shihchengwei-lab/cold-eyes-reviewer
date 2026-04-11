@@ -1,0 +1,12 @@
+{
+  "id": "ok-test-addition",
+  "category": "acceptable",
+  "description": "New pytest test function added",
+  "diff": "--- a/tests/test_calc.py\n+++ b/tests/test_calc.py\n@@ -10,3 +10,10 @@ def test_add():\n     assert calc.add(1, 2) == 3\n     assert calc.add(-1, 1) == 0\n     assert calc.add(0, 0) == 0\n+\n+\n+def test_multiply():\n+    calc = Calculator()\n+    assert calc.multiply(2, 3) == 6\n+    assert calc.multiply(-1, 5) == -5\n+    assert calc.multiply(0, 100) == 0\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"New test function for multiply operation, follows existing test pattern\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

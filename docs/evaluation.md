@@ -1,0 +1,103 @@
+# Evaluation System
+
+Cold Eyes includes a built-in evaluation framework to measure and tune review accuracy.
+
+## How it works
+
+The eval system has three modes:
+
+| Mode | What it does | Model calls |
+|------|-------------|-------------|
+| `deterministic` | Runs embedded mock responses through `parse_review_output` + `apply_policy` | None |
+| `benchmark` | Sends real diffs to a model, records responses | Yes |
+| `sweep` | Replays mock responses across threshold x confidence combinations | None |
+
+**Deterministic** mode tests the policy decision boundary — given a model response, does the tool make the correct block/pass decision? It uses mock responses embedded in each case file, so results are fully reproducible with no model calls.
+
+**Benchmark** mode sends actual diffs to a real model and compares the response against ground truth. Use this to evaluate model quality across different models (haiku/sonnet/opus).
+
+**Sweep** mode runs all cases against every threshold x confidence combination (2 x 3 = 6) and computes precision, recall, and F1 for each. Use this to justify default settings.
+
+## Running evals
+
+```bash
+# Deterministic (default, no model needed)
+python cold_eyes/cli.py eval --eval-mode deterministic
+
+# Threshold sweep
+python cold_eyes/cli.py eval --eval-mode sweep
+
+# Benchmark with real model
+python cold_eyes/cli.py eval --eval-mode benchmark --model opus
+```
+
+## Eval case format
+
+Each case is a JSON file in `evals/cases/`:
+
+```json
+{
+  "id": "unique-case-id",
+  "category": "true_positive | acceptable | stress",
+  "description": "What this case tests",
+  "diff": "unified diff text",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[...],\"summary\":\"...\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  },
+  "settings": {
+    "truncated": false,
+    "skipped_files": []
+  }
+}
+```
+
+### Adding a new case
+
+1. Create a JSON file in `evals/cases/` following the format above
+2. Set `mock_response` to the expected model output (Claude CLI JSON format)
+3. Set `ground_truth.should_block` based on default settings (threshold=critical, confidence=medium)
+4. Run `python cold_eyes/cli.py eval` to verify
+5. Run `pytest tests/test_eval.py` to check all tests still pass
+
+## Current eval set
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| true_positive | 6 | SQL injection, hardcoded secrets, XSS, resource leak, missing error handling, dangling import |
+| acceptable | 4 | Variable rename, docstring update, test addition, README typo |
+| stress | 4 | Large diff (truncation), binary-only, empty diff, mixed severity |
+
+## Threshold sweep results
+
+| Threshold | Confidence | Precision | Recall | F1 |
+|-----------|-----------|-----------|--------|-----|
+| critical | high | 1.00 | 0.88 | 0.93 |
+| **critical** | **medium** | **1.00** | **1.00** | **1.00** |
+| critical | low | 1.00 | 1.00 | 1.00 |
+| major | high | 1.00 | 0.88 | 0.93 |
+| major | medium | 1.00 | 1.00 | 1.00 |
+| major | low | 1.00 | 1.00 | 1.00 |
+
+### Why the defaults are `threshold=critical, confidence=medium`
+
+1. **critical threshold** — Only blocks on critical-severity issues (security vulnerabilities, data loss, crash bugs). Major issues get reported but don't block. This minimizes friction while catching the most dangerous problems.
+
+2. **medium confidence** — Includes issues the model is moderately sure about. Setting `high` drops recall from 1.00 to 0.88 because some legitimate issues (e.g., dangling imports with indirect evidence) get confidence=medium. Setting `low` adds no benefit in this eval set but in real usage may increase false positives.
+
+3. The `critical/medium` combination achieves F1=1.00 on the current eval set with zero false positives.
+
+### When to change defaults
+
+- **Too many blocks?** → Raise confidence to `high` (accepts ~12% fewer true positives but eliminates uncertain calls)
+- **Missing real issues?** → Lower threshold to `major` (blocks on major issues too, higher coverage but more friction)
+- **Different model?** → Run `--eval-mode benchmark --model <model>` to measure actual model accuracy, then re-run sweep
+
+## Limitations
+
+- The deterministic eval set (14 cases) tests the decision boundary, not model quality. Add more cases as you encounter real-world false positives or missed issues.
+- Stress cases cover truncation and edge conditions but not all combinations of scope, model, and diff size.
+- Precision/recall numbers reflect mock responses, not real model behavior. Use benchmark mode for model-specific evaluation.

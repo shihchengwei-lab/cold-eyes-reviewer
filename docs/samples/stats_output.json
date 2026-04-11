@@ -1,0 +1,13 @@
+{
+  "action": "stats",
+  "period": "last 7d",
+  "total": 42,
+  "by_state": {
+    "passed": 21,
+    "blocked": 8,
+    "overridden": 2,
+    "skipped": 9,
+    "infra_failed": 1,
+    "reported": 1
+  }
+}

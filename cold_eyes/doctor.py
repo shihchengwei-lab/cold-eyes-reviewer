@@ -157,6 +157,26 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
     return {"action": "doctor", "checks": checks, "all_ok": all_ok}
 
 
+def verify_install(scripts_dir=None, settings_path=None, repo_root=None):
+    """Machine-readable install verification.
+
+    Runs the 3 critical checks (deploy_files, settings_hook, git_repo)
+    and returns a simple pass/fail dict for scripted verification.
+    """
+    report = run_doctor(scripts_dir, settings_path, repo_root)
+    critical_checks = {"deploy_files", "settings_hook", "git_repo"}
+    failures = [
+        {"name": c["name"], "detail": c["detail"]}
+        for c in report["checks"]
+        if c["name"] in critical_checks and c["status"] == "fail"
+    ]
+    return {
+        "action": "verify-install",
+        "ok": len(failures) == 0,
+        "failures": failures,
+    }
+
+
 def run_doctor_fix(scripts_dir=None, repo_root=None):
     """Auto-fix issues that can be safely repaired. Return report dict.
 

@@ -1,0 +1,15 @@
+{
+  "id": "stress-empty-diff",
+  "category": "stress",
+  "description": "Empty diff text, no changes to review",
+  "diff": "",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"No changes detected\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  },
+  "settings": {
+    "expect_skip": true
+  }
+}

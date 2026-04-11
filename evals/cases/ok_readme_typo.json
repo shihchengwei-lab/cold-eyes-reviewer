@@ -1,0 +1,12 @@
+{
+  "id": "ok-readme-typo",
+  "category": "acceptable",
+  "description": "Fix typo in README documentation",
+  "diff": "--- a/README.md\n+++ b/README.md\n@@ -12,4 +12,4 @@ ## Installation\n \n-1. Clone the reposiotry\n+1. Clone the repository\n 2. Run `pip install -e .`\n 3. Configure your settings\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"Typo fix in README: reposiotry -> repository\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

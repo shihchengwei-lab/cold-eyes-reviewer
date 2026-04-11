@@ -1,0 +1,13 @@
+{
+  "id": "stress-mixed-severity",
+  "category": "stress",
+  "description": "One critical issue and one minor issue in same diff",
+  "diff": "--- a/api/routes.py\n+++ b/api/routes.py\n@@ -8,6 +8,8 @@ def handle_upload(request):\n     filename = request.form['filename']\n-    path = os.path.join(UPLOAD_DIR, secure_filename(filename))\n+    path = os.path.join(UPLOAD_DIR, filename)\n     with open(path, 'wb') as f:\n         f.write(request.data)\n+    # todo: add logging\n     return {'status': 'ok'}\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Path traversal via unsanitized filename\",\"verdict\":\"Removed secure_filename(), allowing ../../../etc/passwd style path traversal\",\"fix\":\"Restore secure_filename(filename) or validate filename does not contain path separators\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"api/routes.py\",\"line_hint\":\"10\"},{\"check\":\"TODO comment left in production code\",\"verdict\":\"Placeholder comment suggests incomplete implementation\",\"fix\":\"Add actual logging or remove the TODO comment\",\"severity\":\"minor\",\"confidence\":\"medium\",\"category\":\"code_quality\",\"file\":\"api/routes.py\",\"line_hint\":\"13\"}],\"summary\":\"Path traversal vulnerability from removing filename sanitization; also contains TODO placeholder\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

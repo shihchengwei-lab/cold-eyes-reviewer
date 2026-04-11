@@ -1,0 +1,35 @@
+{
+  "version": 2,
+  "timestamp": "2026-04-11T08:31:12Z",
+  "cwd": "/home/user/project",
+  "mode": "block",
+  "model": "opus",
+  "state": "blocked",
+  "min_confidence": "medium",
+  "scope": "staged",
+  "schema_version": 1,
+  "diff_stats": {
+    "files": 1,
+    "lines": 8,
+    "tokens": 120,
+    "truncated": false
+  },
+  "review": {
+    "schema_version": 1,
+    "review_status": "completed",
+    "pass": false,
+    "issues": [
+      {
+        "check": "Hardcoded API key in source",
+        "verdict": "AWS secret key stored as string literal",
+        "fix": "Use environment variable or secrets manager",
+        "severity": "critical",
+        "confidence": "high",
+        "category": "security",
+        "file": "config.py",
+        "line_hint": "5"
+      }
+    ],
+    "summary": "Hardcoded AWS credentials exposed in source code"
+  }
+}

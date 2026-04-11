@@ -1,0 +1,15 @@
+{
+  "id": "stress-binary-only",
+  "category": "stress",
+  "description": "Only binary files changed, nothing to review",
+  "diff": "",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"No reviewable text content\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  },
+  "settings": {
+    "expect_skip": true
+  }
+}

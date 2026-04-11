@@ -25,6 +25,7 @@ def main():
     parser.add_argument("command", choices=[
         "run", "doctor", "init", "aggregate-overrides", "stats", "quality-report",
         "arm-override", "history-prune", "history-archive",
+        "eval", "verify-install",
     ])
     parser.add_argument("--mode", default=None)
     parser.add_argument("--model", default=None)
@@ -55,6 +56,14 @@ def main():
                         help="Keep most recent N entries (for history-prune)")
     parser.add_argument("--before", default=None,
                         help="Archive entries before date YYYY-MM-DD (for history-archive)")
+    parser.add_argument("--truncation-policy", default=None,
+                        choices=["warn", "soft-pass", "fail-closed"],
+                        help="How to handle truncated diffs (default: warn)")
+    parser.add_argument("--eval-mode", default="deterministic",
+                        choices=["deterministic", "benchmark", "sweep"],
+                        help="Eval mode: deterministic (mock), benchmark (real model), sweep")
+    parser.add_argument("--cases-dir", default=None,
+                        help="Path to eval cases directory (default: evals/cases/)")
     args = parser.parse_args()
 
     if args.command == "init":
@@ -81,12 +90,26 @@ def main():
             repo_root = os.getcwd()
         reason = args.reason or args.override_reason or ""
         result = arm_override(repo_root, reason, ttl_minutes=args.ttl)
+    elif args.command == "eval":
+        from evals.eval_runner import run_deterministic, run_benchmark, threshold_sweep
+        cases_dir = args.cases_dir or os.path.join(_root, "evals", "cases")
+        if args.eval_mode == "deterministic":
+            result = run_deterministic(cases_dir, threshold=args.threshold or "critical",
+                                       confidence=args.confidence or "medium")
+        elif args.eval_mode == "benchmark":
+            result = run_benchmark(cases_dir, model=args.model or "opus")
+        elif args.eval_mode == "sweep":
+            result = threshold_sweep(cases_dir)
+    elif args.command == "verify-install":
+        from cold_eyes.doctor import verify_install
+        result = verify_install()
     else:
         result = run(mode=args.mode, model=args.model,
                      max_tokens=args.max_tokens, threshold=args.threshold,
                      confidence=args.confidence, language=args.language,
                      scope=args.scope, base=args.base,
-                     override_reason=args.override_reason)
+                     override_reason=args.override_reason,
+                     truncation_policy=args.truncation_policy)
     print(json.dumps(result, ensure_ascii=False))
 
 

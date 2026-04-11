@@ -1,0 +1,17 @@
+{
+  "id": "stress-large-diff",
+  "category": "stress",
+  "description": "Large diff that triggers truncation, but reviewed portion contains a critical issue",
+  "diff": "--- a/core/handler.py\n+++ b/core/handler.py\n@@ -1,5 +1,6 @@\n import os\n+import subprocess\n \n def run_command(user_input):\n-    return os.popen(f'echo {user_input}').read()\n+    return subprocess.check_output(f'echo {user_input}', shell=True).decode()\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Command injection via shell=True with user input\",\"verdict\":\"User input passed to subprocess with shell=True allows arbitrary command execution\",\"fix\":\"Use subprocess.check_output(['echo', user_input], shell=False) to avoid shell injection\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"core/handler.py\",\"line_hint\":\"5\"}],\"summary\":\"Command injection vulnerability: user input in subprocess with shell=True\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  },
+  "settings": {
+    "truncated": true,
+    "skipped_files": ["generated/large_data.py", "vendor/lib.py", "assets/bundle.js"]
+  }
+}

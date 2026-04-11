@@ -29,11 +29,12 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
 
 def run(mode=None, model=None, max_tokens=None, threshold=None,
         confidence=None, language=None, scope=None, override_reason=None,
-        adapter=None, base=None):
+        adapter=None, base=None, truncation_policy=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
     base: base branch for pr-diff scope (e.g. 'main').
+    truncation_policy: 'warn' (default), 'soft-pass', or 'fail-closed'.
     """
     cwd = os.getcwd()
     try:
@@ -56,6 +57,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     scope = _resolve(scope, "COLD_REVIEW_SCOPE", policy, "scope", "working")
     base = _resolve(base, "COLD_REVIEW_BASE", policy, "base", None)
     language = _resolve(language, "COLD_REVIEW_LANGUAGE", policy, "language", None)
+    truncation_policy = _resolve(truncation_policy, "COLD_REVIEW_TRUNCATION_POLICY",
+                                 policy, "truncation_policy", "warn")
 
     # mode=off: skip immediately (normally caught by shell, but policy file may set it)
     if mode == "off":
@@ -126,6 +129,12 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     skipped_files = (diff_meta["partial_files"] + diff_meta["skipped_budget"]
                      + diff_meta["skipped_binary"] + diff_meta["skipped_unreadable"])
 
+    # Coverage visibility
+    total_candidates = len(ranked)
+    reviewed_count = file_count
+    coverage_pct = (round(reviewed_count / total_candidates * 100, 1)
+                    if total_candidates > 0 else 100.0)
+
     if not diff_text.strip():
         log_to_history(cwd, mode, model, STATE_SKIPPED, "no diff content",
                        min_confidence=min_confidence, scope=scope)
@@ -169,7 +178,13 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     # 9-10. Apply policy (with truncation context)
     outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
                            truncated=truncated, skipped_files=skipped_files,
-                           override_reason=override_reason, language=language)
+                           override_reason=override_reason, language=language,
+                           truncation_policy=truncation_policy)
+
+    # Add coverage visibility
+    outcome["reviewed_files"] = reviewed_count
+    outcome["total_files"] = total_candidates
+    outcome["coverage_pct"] = coverage_pct
 
     # 11. Log
     diff_line_count = diff_text.count("\n") + 1

@@ -1,0 +1,13 @@
+{
+  "id": "tp-missing-error-handling",
+  "category": "true_positive",
+  "description": "File operation without error handling in production data pipeline",
+  "diff": "--- a/pipeline/ingest.py\n+++ b/pipeline/ingest.py\n@@ -15,8 +15,5 @@ def process_batch(input_dir):\n     for fname in os.listdir(input_dir):\n-        try:\n-            with open(os.path.join(input_dir, fname)) as f:\n-                data = json.load(f)\n-                results.append(transform(data))\n-        except (IOError, json.JSONDecodeError) as e:\n-            logger.warning(f\"Skipping {fname}: {e}\")\n+        f = open(os.path.join(input_dir, fname))\n+        data = json.load(f)\n+        results.append(transform(data))\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Removed error handling from batch file processing\",\"verdict\":\"Single corrupt or missing file now crashes entire batch pipeline instead of being skipped\",\"fix\":\"Restore try/except with graceful skip, or at minimum use context manager for file handle\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"correctness\",\"file\":\"pipeline/ingest.py\",\"line_hint\":\"16\"}],\"summary\":\"Removed error handling from data pipeline batch processor, single file failure crashes entire batch\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "major"
+  }
+}
