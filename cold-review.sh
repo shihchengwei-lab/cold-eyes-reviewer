@@ -21,8 +21,8 @@ set -uo pipefail
 export PYTHONIOENCODING=utf-8
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-HELPER="$SCRIPTS_DIR/cold-review-helper.py"
-ENGINE="$SCRIPTS_DIR/cold_review_engine.py"
+HELPER="$SCRIPTS_DIR/cold_eyes/helper.py"
+ENGINE="$SCRIPTS_DIR/cold_eyes/cli.py"
 LOCKFILE="$HOME/.claude/.cold-review-lock"
 
 MODE="${COLD_REVIEW_MODE:-block}"

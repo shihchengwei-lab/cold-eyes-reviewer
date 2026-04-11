@@ -2,23 +2,35 @@
 
 ## 現況
 
-- **版本：** v0.7.0
+- **版本：** v0.8.0
 - **分支：** master
-- **測試：** 152 passed
-- **部署：** `~/.claude/scripts/` 4 個檔案，doctor 全綠
+- **測試：** 110 passed
+- **部署：** `cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/`
 
 ## 架構
 
 Claude Code Stop hook 的零上下文 code reviewer。
 
 ```
-cold-review.sh              Stop hook 入口（~122 行），只跑 guard checks
-  ├→ cold-review-helper.py  Shell-facing utilities（parse-hook、log-state）
-  └→ cold_review_engine.py  核心（~620 行）：diff 建構、scope、Claude CLI、policy、history、doctor
+cold-review.sh              Stop hook 入口（~125 行），只跑 guard checks
+  ├→ cold_eyes/helper.py    Shell-facing（parse-hook、log-state）
+  └→ cold_eyes/cli.py       CLI entry → engine.py → 各模組
 cold-review-prompt.txt      系統 prompt 模板，placeholders: {language}
-```
 
-engine 是主路徑，shell 是入口，helper 是 shell 呼叫的工具函式。
+cold_eyes/                   Package（12 模組）
+  constants.py               共用常數
+  git.py                     git 操作、diff 建構
+  filter.py                  檔案過濾、風險排序
+  prompt.py                  prompt 模板載入
+  claude.py                  Claude CLI 呼叫
+  review.py                  review JSON 解析
+  policy.py                  apply_policy、confidence filter、block reason
+  history.py                 log_to_history、aggregate_overrides
+  doctor.py                  環境健康檢查
+  engine.py                  run() 主管線
+  cli.py                     argparse + dispatch
+  helper.py                  shell-facing 指令
+```
 
 ## 本次會話做了什麼
 
@@ -121,11 +133,22 @@ Block messages（review block 和 infra block）尾部加：
 - `schema_version`：README 加 bump 規則（breaking change = bump，optional field = 不 bump）
 - 1 new test
 
+### v0.8.0 — Package Restructure
+
+將 `cold_review_engine.py`（739 行）拆為 `cold_eyes/` package（12 模組）。
+
+- `cold_review_engine.py` → `cold_eyes/`（constants, git, filter, prompt, claude, review, policy, history, doctor, engine, cli, helper）
+- `cold-review-helper.py` 刪除，12 命令砍到只剩 shell 實際呼叫的 2 個（parse-hook, log-state），移到 `cold_eyes/helper.py`
+- 所有共用常數合併到 `cold_eyes/constants.py`，消除 engine/helper 重複
+- Shell 路徑改為 `cold_eyes/cli.py` 和 `cold_eyes/helper.py`
+- Deploy 改為 `cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt`
+- Tests 110（engine 95 + helper 5 + smoke 10），helper 測試從 42 降到 5（engine tests 已覆蓋重複邏輯）
+
 ## 部署
 
 ```bash
-cp cold-review.sh cold-review-helper.py cold_review_engine.py cold-review-prompt.txt ~/.claude/scripts/
-python ~/.claude/scripts/cold_review_engine.py doctor   # 驗證
+cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/
+python ~/.claude/scripts/cold_eyes/cli.py doctor   # 驗證
 ```
 
 ## 環境變數
@@ -162,11 +185,10 @@ Phase 1+ 計畫在 `~/Desktop/cold-eyes-phase1-plan.md`。
 
 ### 架構演進時機
 
-目前扁平結構（4 檔案 cp 部署）。當 engine 超過 ~800 行或需要 `pip install` 時，轉為 package 結構（`cold_eyes/` 目錄 + `pyproject.toml`）。目前 ~620 行，還有空間。
+已完成 package 轉型（`cold_eyes/` 12 模組）。下一步：需要 `pip install` 時加 `pyproject.toml`。目前直接 cp -r 部署。
 
 ## 待辦 / 已知問題
 
-- feedback loop（Phase 1.4）未做
-- Helper 的 parse-review、filter-files、rank-files 等指令仍有與 engine 重複的常數和邏輯。build-prompt 已去重，其餘未動
-- line_hint 的 LLM 幻覺率未實測。prompt 已限制「不確定就留空」，需要真實 diff 驗證
-- 產品化路線圖建議的多項重構（模組拆分、adapter 抽象、category-specific threshold、reason code）尚未進行，屬 Phase 2 前的架構準備
+- line_hint 的 LLM 幻覺率未實測。prompt 已限制「不確定就留空」，block 顯示加了 `~` 前綴，需要真實 diff 驗證
+- Phase 2 功能：stats CLI、policy file、model adapter、CI/PR mode
+- 產品化路線圖建議的 adapter 抽象、category-specific threshold、reason code 屬 Phase 2

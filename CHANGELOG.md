@@ -1,5 +1,26 @@
 # Changelog
 
+## v0.8.0 — Package Restructure
+
+Monolithic `cold_review_engine.py` (739 lines) split into `cold_eyes/` package (12 modules). Helper duplication eliminated.
+
+### Breaking changes
+
+- **Deploy command changed:** `cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/`
+- **CLI entry point moved:** `python cold_eyes/cli.py` replaces `python cold_review_engine.py`
+- **Legacy files removed:** `cold_review_engine.py` and `cold-review-helper.py` deleted
+
+### Architecture
+
+- `cold_eyes/` package: constants, git, filter, prompt, claude, review, policy, history, doctor, engine, cli, helper (12 modules)
+- Helper consolidated from 12 commands to 2 (`parse-hook`, `log-state`) — the only ones the shell actually calls
+- All shared constants in `cold_eyes/constants.py` — single source of truth
+- No circular dependencies: constants → git/filter/review → policy/history → engine → cli
+
+### Tests
+
+110 tests (engine 95 + helper 5 + shell smoke 10). Helper test count reduced from 42 to 5 because engine tests now cover all previously-duplicated logic.
+
 ## v0.7.0 — Phase 1.4 Feedback Loop
 
 ### New features

@@ -66,7 +66,7 @@ Every issue includes severity, confidence, category, file, line_hint, and a thre
 
 ```bash
 mkdir -p ~/.claude/scripts
-cp cold-review.sh cold-review-helper.py cold_review_engine.py cold-review-prompt.txt ~/.claude/scripts/
+cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/
 ```
 
 ### 2. Add Stop hook to `~/.claude/settings.json`
@@ -92,7 +92,7 @@ cp cold-review.sh cold-review-helper.py cold_review_engine.py cold-review-prompt
 ### 3. Verify installation
 
 ```bash
-python ~/.claude/scripts/cold_review_engine.py doctor
+python ~/.claude/scripts/cold_eyes/cli.py doctor
 ```
 
 Checks Python, Git, Claude CLI, deploy files, hook config, and current repo. All checks should show `"ok"`. `"info"` items are optional hints.
@@ -173,7 +173,7 @@ When overriding a block, set `COLD_REVIEW_OVERRIDE_REASON` to explain why. Any f
 Override reasons are logged to history and can be aggregated:
 
 ```bash
-python ~/.claude/scripts/cold_review_engine.py aggregate-overrides
+python ~/.claude/scripts/cold_eyes/cli.py aggregate-overrides
 ```
 
 ### Strategy presets
@@ -256,11 +256,10 @@ If reviews aren't running, check:
 
 | File | Purpose |
 |---|---|
-| `cold_review_engine.py` | Core: diff building, Claude call, policy engine, confidence filter, history logging, doctor |
-| `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls engine |
-| `cold-review-helper.py` | Shell-facing utilities: hook parsing, state logging, ignore/rank (called by shell; prompt delegates to engine) |
+| `cold_eyes/` | Package: engine, policy, review parsing, history, doctor, CLI (12 modules) |
+| `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls `cold_eyes/cli.py` |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
-| `.cold-review-ignore` | Default ignore patterns |
+| `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
 
 ## Background
 
@@ -279,7 +278,7 @@ Cold Eyes is a hook and a set of JSON files. Everything is designed to be readab
 ## Diagnostics
 
 ```bash
-python ~/.claude/scripts/cold_review_engine.py doctor
+python ~/.claude/scripts/cold_eyes/cli.py doctor
 ```
 
 Outputs a JSON report checking 7 items:
@@ -289,7 +288,7 @@ Outputs a JSON report checking 7 items:
 | `python` | Python version |
 | `git` | Git CLI available |
 | `claude_cli` | Claude Code CLI available |
-| `deploy_files` | All 4 script files exist in `~/.claude/scripts/` |
+| `deploy_files` | Sentinel files exist in `~/.claude/scripts/` |
 | `settings_hook` | `settings.json` has a Stop hook referencing `cold-review.sh` |
 | `git_repo` | Current directory is a git repository |
 | `ignore_file` | `.cold-review-ignore` exists in repo root (info only, not required) |
@@ -299,7 +298,7 @@ If reviews aren't running, `doctor` is the first thing to check.
 ### Override aggregation
 
 ```bash
-python ~/.claude/scripts/cold_review_engine.py aggregate-overrides
+python ~/.claude/scripts/cold_eyes/cli.py aggregate-overrides
 ```
 
 Returns a JSON summary of all override entries in history: total count, reasons grouped by frequency, and recent override entries. Use this to identify false-positive patterns and tune thresholds or prompts.

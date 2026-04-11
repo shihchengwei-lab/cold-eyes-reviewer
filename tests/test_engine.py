@@ -1,6 +1,5 @@
-"""Tests for cold_review_engine.py — policy, parsing, diff building, binary detection."""
+"""Tests for cold_eyes package — policy, parsing, diff building, binary detection."""
 
-import importlib.util
 import json
 import os
 import sys
@@ -9,21 +8,49 @@ import tempfile
 import pytest
 
 # ---------------------------------------------------------------------------
-# Import engine via importlib (underscore name, but keep it explicit)
+# Import from cold_eyes package
 # ---------------------------------------------------------------------------
 
-PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-ENGINE_PATH = os.path.join(PROJECT_ROOT, "cold_review_engine.py")
+from cold_eyes import constants
+from cold_eyes import engine as _engine_mod
+from cold_eyes import git as _git_mod
+from cold_eyes.review import parse_review_output
+from cold_eyes.policy import apply_policy, filter_by_confidence, format_block_reason
+from cold_eyes.filter import filter_file_list, rank_file_list
+from cold_eyes.git import build_diff, is_binary, collect_files, git_cmd
+from cold_eyes.prompt import build_prompt_text
+from cold_eyes.history import log_to_history, aggregate_overrides
+from cold_eyes.doctor import run_doctor
 
 
-def load_engine():
-    spec = importlib.util.spec_from_file_location("cold_review_engine", ENGINE_PATH)
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+# Compatibility shim: tests reference `engine.X` throughout
+class _EngineCompat:
+    """Proxy that exposes all functions from the package as engine.X."""
+    SCHEMA_VERSION = constants.SCHEMA_VERSION
+    SEVERITY_ORDER = constants.SEVERITY_ORDER
+    CONFIDENCE_ORDER = constants.CONFIDENCE_ORDER
+    BUILTIN_IGNORE = constants.BUILTIN_IGNORE
+    RISK_PATTERN = constants.RISK_PATTERN
+    DEPLOY_FILES = constants.DEPLOY_FILES
+    HISTORY_FILE = constants.HISTORY_FILE
 
+    parse_review_output = staticmethod(parse_review_output)
+    apply_policy = staticmethod(apply_policy)
+    filter_by_confidence = staticmethod(filter_by_confidence)
+    format_block_reason = staticmethod(format_block_reason)
+    filter_file_list = staticmethod(filter_file_list)
+    rank_file_list = staticmethod(rank_file_list)
+    build_diff = staticmethod(build_diff)
+    is_binary = staticmethod(is_binary)
+    collect_files = staticmethod(collect_files)
+    git_cmd = staticmethod(git_cmd)
+    build_prompt_text = staticmethod(build_prompt_text)
+    log_to_history = staticmethod(log_to_history)
+    aggregate_overrides = staticmethod(aggregate_overrides)
+    run_doctor = staticmethod(run_doctor)
+    _infra_review = staticmethod(_engine_mod._infra_review)
 
-engine = load_engine()
+engine = _EngineCompat()
 
 
 # ===========================================================================
@@ -415,7 +442,7 @@ class TestHistory:
     def test_log_review_writes_v2(self, tmp_path):
         history = tmp_path / "history.jsonl"
         original = engine.HISTORY_FILE
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         try:
             review = {"pass": True, "review_status": "completed", "issues": [], "summary": "ok"}
             engine.log_to_history("/tmp", "block", "opus", "passed",
@@ -434,7 +461,7 @@ class TestHistory:
     def test_log_state_writes_reason(self, tmp_path):
         history = tmp_path / "history.jsonl"
         original = engine.HISTORY_FILE
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         try:
             engine.log_to_history("/tmp", "block", "opus", "infra_failed",
                                  reason="claude exit 1")
@@ -448,7 +475,7 @@ class TestHistory:
     def test_log_review_includes_min_confidence(self, tmp_path):
         history = tmp_path / "history.jsonl"
         original = engine.HISTORY_FILE
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         try:
             review = {"pass": True, "review_status": "completed", "issues": [], "summary": "ok"}
             engine.log_to_history("/tmp", "block", "opus", "passed",
@@ -463,7 +490,7 @@ class TestHistory:
     def test_log_state_includes_min_confidence(self, tmp_path):
         history = tmp_path / "history.jsonl"
         original = engine.HISTORY_FILE
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         try:
             engine.log_to_history("/tmp", "block", "opus", "skipped",
                                  reason="no changes", min_confidence="low")
@@ -572,7 +599,9 @@ class TestDoctor:
 
     def test_deploy_files_present(self, tmp_path):
         for f in engine.DEPLOY_FILES:
-            (tmp_path / f).write_text("x")
+            p = tmp_path / f
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text("x")
         result = engine.run_doctor(
             scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
         )
@@ -632,13 +661,13 @@ class TestCollectFilesScope:
 
     def test_default_scope_is_working(self, monkeypatch):
         calls = []
-        original = engine.git_cmd
+        original = _git_mod.git_cmd
 
         def spy(*args):
             calls.append(args)
             return original(*args)
 
-        monkeypatch.setattr(engine, "git_cmd", spy)
+        monkeypatch.setattr(_git_mod, "git_cmd", spy)
         engine.collect_files()
         # working scope calls diff --cached, diff, and ls-files
         cmd_args = [c[0] for c in calls]
@@ -652,7 +681,7 @@ class TestCollectFilesScope:
             calls.append(args)
             return ""
 
-        monkeypatch.setattr(engine, "git_cmd", spy)
+        monkeypatch.setattr(_git_mod, "git_cmd", spy)
         files, untracked = engine.collect_files("staged")
         assert untracked == set()
         # Should only call diff --cached
@@ -667,7 +696,7 @@ class TestCollectFilesScope:
             calls.append(args)
             return ""
 
-        monkeypatch.setattr(engine, "git_cmd", spy)
+        monkeypatch.setattr(_git_mod, "git_cmd", spy)
         files, untracked = engine.collect_files("head")
         assert untracked == set()
 
@@ -683,7 +712,7 @@ class TestBuildDiffScope:
                 return "diff --git a/x.py\n+added"
             return ""
 
-        monkeypatch.setattr(engine, "git_cmd", mock_git)
+        monkeypatch.setattr(_git_mod, "git_cmd", mock_git)
         diff, fc, tc, trunc, skip = engine.build_diff(
             ["x.py"], set(), 12000, scope="staged"
         )
@@ -701,7 +730,7 @@ class TestBuildDiffScope:
                 return "diff --git a/x.py\n+added"
             return ""
 
-        monkeypatch.setattr(engine, "git_cmd", mock_git)
+        monkeypatch.setattr(_git_mod, "git_cmd", mock_git)
         diff, fc, tc, trunc, skip = engine.build_diff(
             ["x.py"], set(), 12000, scope="head"
         )
@@ -716,7 +745,7 @@ class TestBuildDiffScope:
             calls.append(args)
             return "some diff"
 
-        monkeypatch.setattr(engine, "git_cmd", mock_git)
+        monkeypatch.setattr(_git_mod, "git_cmd", mock_git)
         engine.build_diff(["x.py"], set(), 12000, scope="working")
         diff_calls = [c for c in calls if c[0] == "diff"]
         has_cached = any("--cached" in c for c in diff_calls)
@@ -729,7 +758,7 @@ class TestHistoryScope:
 
     def test_log_history_includes_scope(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         engine.log_to_history("/tmp", "block", "opus", "passed",
                               min_confidence="medium", scope="staged")
         entry = json.loads(history.read_text().strip())
@@ -737,7 +766,7 @@ class TestHistoryScope:
 
     def test_log_history_default_scope(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         engine.log_to_history("/tmp", "block", "opus", "passed")
         entry = json.loads(history.read_text().strip())
         assert entry["scope"] == "working"
@@ -827,7 +856,7 @@ class TestSchemaVersion:
 
     def test_history_includes_schema_version(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         review = {"schema_version": 1, "pass": True, "review_status": "completed",
                   "issues": [], "summary": "ok"}
         engine.log_to_history("/tmp", "block", "opus", "passed", review=review)
@@ -836,7 +865,7 @@ class TestSchemaVersion:
 
     def test_history_state_log_includes_schema_version(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         engine.log_to_history("/tmp", "block", "opus", "skipped", reason="no changes")
         entry = json.loads(history.read_text().strip())
         assert entry["schema_version"] == engine.SCHEMA_VERSION
@@ -914,7 +943,7 @@ class TestHistoryOverrideReason:
 
     def test_log_with_override_reason(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         engine.log_to_history("/tmp", "block", "opus", "overridden",
                               override_reason="false_positive")
         entry = json.loads(history.read_text().strip())
@@ -922,14 +951,14 @@ class TestHistoryOverrideReason:
 
     def test_log_without_override_reason(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         engine.log_to_history("/tmp", "block", "opus", "passed")
         entry = json.loads(history.read_text().strip())
         assert "override_reason" not in entry
 
     def test_log_empty_override_reason_not_written(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        engine.HISTORY_FILE = str(history)
+        constants.HISTORY_FILE = str(history)
         engine.log_to_history("/tmp", "block", "opus", "overridden",
                               override_reason="")
         entry = json.loads(history.read_text().strip())
