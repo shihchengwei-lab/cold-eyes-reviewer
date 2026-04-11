@@ -26,6 +26,8 @@ LOCKFILE="$HOME/.claude/.cold-review-lock"
 MODE="${COLD_REVIEW_MODE:-block}"
 MODEL="${COLD_REVIEW_MODEL:-opus}"
 THRESHOLD="${COLD_REVIEW_BLOCK_THRESHOLD:-critical}"
+CONFIDENCE="${COLD_REVIEW_CONFIDENCE:-medium}"
+LANGUAGE="${COLD_REVIEW_LANGUAGE:-}"
 
 # Token budget: prefer MAX_TOKENS, fallback to MAX_LINES×4
 if [[ -n "${COLD_REVIEW_MAX_LINES:-}" ]]; then
@@ -85,9 +87,9 @@ echo $$ > "$LOCKFILE"
 trap 'rm -f "$LOCKFILE"' EXIT
 
 # --- Run engine ---
-RESULT=$(python "$ENGINE" run \
-  --mode "$MODE" --model "$MODEL" \
-  --max-tokens "$MAX_TOKENS" --threshold "$THRESHOLD" 2>&2) || true
+ENGINE_ARGS=(run --mode "$MODE" --model "$MODEL" --max-tokens "$MAX_TOKENS" --threshold "$THRESHOLD" --confidence "$CONFIDENCE")
+[[ -n "$LANGUAGE" ]] && ENGINE_ARGS+=(--language "$LANGUAGE")
+RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>&2) || true
 
 # --- Release lock early ---
 rm -f "$LOCKFILE"

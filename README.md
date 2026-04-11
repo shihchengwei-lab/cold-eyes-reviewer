@@ -205,14 +205,14 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`). Build a dashboard, filter by state, chart trends over time.
+- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`). Build a dashboard, filter by state, chart trends over time.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 
 ## Known limitations
 
 - **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. Periodically archive or truncate it yourself.
-- **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized, but the review may be incomplete.
+- **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. When truncation causes files to be skipped, block messages include a warning with the count of unreviewed files.
 - **Silent on auth failure.** If your Claude subscription is expired or rate-limited, the review logs a `failed` state. Check stderr or history.
 
 ## License

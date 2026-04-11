@@ -1,5 +1,45 @@
 # Changelog
 
+## v0.4.0 — Confidence Hard Filter
+
+Replaced soft prompt steering with deterministic confidence filtering.
+
+### New features
+
+- **Confidence hard filter** — `COLD_REVIEW_CONFIDENCE` env var (high / medium / low, default: medium). Issues below the threshold are dropped by Python code, not LLM interpretation. Predictable and testable.
+- **Language env var** — `COLD_REVIEW_LANGUAGE` replaces profile.json's language field. Default: `繁體中文（台灣）`.
+- **"Cold Eyes" hardcoded in prompt** — Name has semantic function (cold = uncompromising, eyes = scrutiny). Not configurable by design.
+
+### Breaking changes
+
+- **`cold-review-profile.json` deleted** — With stats removed, only name and language remained. Name is hardcoded; language moved to env var. File no longer needed.
+- **RIGOR / PARANOIA stats removed from prompt** — Soft steering replaced by hard confidence filter. Prompt no longer contains `{statistics}` placeholder.
+
+### Tests
+
+90 tests (8 new: confidence filter + prompt assembly).
+
+## v0.3.0 — Credibility Overhaul
+
+Moved all review logic from shell to testable Python engine.
+
+### New features
+
+- **Python review engine** — `cold_review_engine.py` handles diff building, Claude CLI call, policy enforcement, and history logging. Shell reduced to thin orchestrator with guard checks only.
+- **Infrastructure failure blocking** — Block mode now blocks on CLI errors, empty output, and parse failures (instead of silently passing). State: `infra_failed`.
+- **Binary detection** — Untracked binary files are skipped instead of included in diff.
+- **Truncation-aware prompt** — Prompt explains `[Cold Eyes: diff truncated...]` marker to the reviewer.
+- **Token budget in engine** — `build_diff()` manages token budget internally with per-file truncation and skip tracking.
+
+### Changes
+
+- **Shell thinned** — `cold-review.sh` reduced from ~215 to ~95 lines. Only runs guard checks (off mode, recursion, lockfile, git repo) before delegating to engine.
+- **Dead config removed** — `SNARK`, `PATIENCE`, personality fields removed from profile.json. Line budget (`MAX_LINES`) replaced with token budget (`MAX_TOKENS`) as primary setting.
+
+### Tests
+
+77 tests (33 new: engine policy, parsing, diff building, binary detection).
+
 ## v0.2.0 — Alpha
 
 14-phase refactoring from "working prototype" to "trusted alpha."

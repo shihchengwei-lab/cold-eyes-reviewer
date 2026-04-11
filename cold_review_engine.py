@@ -267,7 +267,7 @@ def filter_by_confidence(issues, min_confidence="medium"):
     return [i for i in issues if CONFIDENCE_ORDER.get(i.get("confidence", "medium"), 2) >= threshold]
 
 
-def format_block_reason(review):
+def format_block_reason(review, truncated=False, skipped_count=0):
     """Format review into human-readable block reason."""
     summary = review.get("summary", "")
     issues = review.get("issues", [])
@@ -280,15 +280,21 @@ def format_block_reason(review):
         lines.append(f"  - [{sev}] \u6aa2\u67e5\uff1a{check}")
         lines.append(f"    \u5224\u6c7a\uff1a{verdict}")
         lines.append(f"    \u6307\u793a\uff1a{fix}")
+    if truncated:
+        lines.append(f"  \u26a0 \u5be9\u67e5\u4e0d\u5b8c\u6574\uff1adiff \u8d85\u904e token \u9810\u7b97\uff0c{skipped_count} \u500b\u6a94\u6848\u672a\u5be9\u67e5\u3002")
     return "\n".join(lines)
 
 
-def apply_policy(review, mode, threshold, allow_once, min_confidence="medium"):
+def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
+                 truncated=False, skipped_files=None):
     """Determine final outcome. Return FinalOutcome dict.
 
-    FinalOutcome keys: action, state, reason, display, review
+    FinalOutcome keys: action, state, reason, display, truncated, skipped_count
     The review in the outcome has issues filtered by confidence.
     """
+    if skipped_files is None:
+        skipped_files = []
+    skipped_count = len(skipped_files)
     engine_ok = review.get("review_status") != "failed"
 
     # --- Infrastructure failure ---
@@ -354,8 +360,10 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium"):
         return {
             "action": "block",
             "state": "blocked",
-            "reason": format_block_reason(review),
+            "reason": format_block_reason(review, truncated, skipped_count),
             "display": f"cold-review: blocking (issues at or above {threshold})",
+            "truncated": truncated,
+            "skipped_count": skipped_count,
         }
 
     return {
@@ -363,6 +371,8 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium"):
         "state": "passed",
         "reason": "",
         "display": "cold-review: pass",
+        "truncated": truncated,
+        "skipped_count": skipped_count,
     }
 
 
@@ -371,7 +381,8 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium"):
 # ---------------------------------------------------------------------------
 
 def log_to_history(cwd, mode, model, state, reason="", review=None,
-                   file_count=0, line_count=0, truncated=False, token_count=0):
+                   file_count=0, line_count=0, truncated=False, token_count=0,
+                   min_confidence="medium"):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -380,6 +391,7 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
         "mode": mode,
         "model": model,
         "state": state,
+        "min_confidence": min_confidence,
     }
 
     if review is not None:
@@ -403,24 +415,26 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
 # Main pipeline
 # ---------------------------------------------------------------------------
 
-def run(mode, model, max_tokens, threshold):
+def run(mode, model, max_tokens, threshold, confidence=None, language=None):
     """Execute full review pipeline. Return FinalOutcome dict."""
     cwd = os.getcwd()
     allow_once = os.environ.get("COLD_REVIEW_ALLOW_ONCE") == "1"
-    min_confidence = os.environ.get("COLD_REVIEW_CONFIDENCE", "medium").lower()
+    min_confidence = confidence or os.environ.get("COLD_REVIEW_CONFIDENCE", "medium").lower()
     repo_root = git_cmd("rev-parse", "--show-toplevel")
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
 
     # 1. Collect files
     all_files, untracked = collect_files()
     if not all_files:
-        log_to_history(cwd, mode, model, "skipped", "no changes")
+        log_to_history(cwd, mode, model, "skipped", "no changes",
+                       min_confidence=min_confidence)
         return _skip("no changes")
 
     # 2. Filter
     filtered = filter_file_list(all_files, ignore_file)
     if not filtered:
-        log_to_history(cwd, mode, model, "skipped", "all files ignored")
+        log_to_history(cwd, mode, model, "skipped", "all files ignored",
+                       min_confidence=min_confidence)
         return _skip("all files ignored")
 
     # 3. Rank
@@ -432,11 +446,12 @@ def run(mode, model, max_tokens, threshold):
     )
 
     if not diff_text.strip():
-        log_to_history(cwd, mode, model, "skipped", "no diff content")
+        log_to_history(cwd, mode, model, "skipped", "no diff content",
+                       min_confidence=min_confidence)
         return _skip("no diff content")
 
     # 5. Build prompt
-    prompt_text = build_prompt_text()
+    prompt_text = build_prompt_text(language)
     prompt_fd = tempfile.NamedTemporaryFile(
         mode="w", suffix=".txt", delete=False, encoding="utf-8"
     )
@@ -451,20 +466,23 @@ def run(mode, model, max_tokens, threshold):
         if exit_code != 0:
             review = _infra_review(f"claude exit {exit_code}")
             outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
-            log_to_history(cwd, mode, model, outcome["state"], reason=review["summary"])
+            log_to_history(cwd, mode, model, outcome["state"],
+                           reason=review["summary"], min_confidence=min_confidence)
             return outcome
 
         if not raw_output:
             review = _infra_review("empty output")
             outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
-            log_to_history(cwd, mode, model, outcome["state"], reason=review["summary"])
+            log_to_history(cwd, mode, model, outcome["state"],
+                           reason=review["summary"], min_confidence=min_confidence)
             return outcome
 
         # 8. Parse review
         review = parse_review_output(raw_output)
 
-        # 9–10. Apply policy
-        outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
+        # 9–10. Apply policy (with truncation context)
+        outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
+                               truncated=truncated, skipped_files=skipped)
 
         # 11. Log
         diff_line_count = diff_text.count("\n") + 1
@@ -472,7 +490,7 @@ def run(mode, model, max_tokens, threshold):
             cwd, mode, model, outcome["state"],
             review=review, file_count=file_count,
             line_count=diff_line_count, truncated=truncated,
-            token_count=token_count,
+            token_count=token_count, min_confidence=min_confidence,
         )
 
         return outcome
@@ -510,7 +528,10 @@ if __name__ == "__main__":
     parser.add_argument("--model", default="opus")
     parser.add_argument("--max-tokens", type=int, default=12000)
     parser.add_argument("--threshold", default="critical")
+    parser.add_argument("--confidence", default=None)
+    parser.add_argument("--language", default=None)
     args = parser.parse_args()
 
-    result = run(args.mode, args.model, args.max_tokens, args.threshold)
+    result = run(args.mode, args.model, args.max_tokens, args.threshold,
+                 confidence=args.confidence, language=args.language)
     print(json.dumps(result, ensure_ascii=False))

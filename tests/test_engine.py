@@ -443,3 +443,80 @@ class TestHistory:
             assert entry["review"] is None
         finally:
             engine.HISTORY_FILE = original
+
+    def test_log_review_includes_min_confidence(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        original = engine.HISTORY_FILE
+        engine.HISTORY_FILE = str(history)
+        try:
+            review = {"pass": True, "review_status": "completed", "issues": [], "summary": "ok"}
+            engine.log_to_history("/tmp", "block", "opus", "passed",
+                                 review=review, file_count=3, line_count=100,
+                                 truncated=False, token_count=800,
+                                 min_confidence="high")
+            entry = json.loads(history.read_text().strip())
+            assert entry["min_confidence"] == "high"
+        finally:
+            engine.HISTORY_FILE = original
+
+    def test_log_state_includes_min_confidence(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        original = engine.HISTORY_FILE
+        engine.HISTORY_FILE = str(history)
+        try:
+            engine.log_to_history("/tmp", "block", "opus", "skipped",
+                                 reason="no changes", min_confidence="low")
+            entry = json.loads(history.read_text().strip())
+            assert entry["min_confidence"] == "low"
+        finally:
+            engine.HISTORY_FILE = original
+
+
+# ===========================================================================
+# Truncation visibility in block messages
+# ===========================================================================
+
+class TestTruncationVisibility:
+    def _review(self, severity="critical", confidence="high"):
+        return {
+            "pass": False, "review_status": "completed",
+            "issues": [{"severity": severity, "confidence": confidence,
+                        "check": "x", "verdict": "y", "fix": "z"}],
+            "summary": "test",
+        }
+
+    def test_block_reason_includes_truncation_warning(self):
+        review = self._review()
+        reason = engine.format_block_reason(review, truncated=True, skipped_count=3)
+        assert "\u5be9\u67e5\u4e0d\u5b8c\u6574" in reason
+        assert "3" in reason
+
+    def test_block_reason_no_warning_when_not_truncated(self):
+        review = self._review()
+        reason = engine.format_block_reason(review, truncated=False, skipped_count=0)
+        assert "\u5be9\u67e5\u4e0d\u5b8c\u6574" not in reason
+
+    def test_policy_passes_truncation_to_block_reason(self):
+        review = self._review()
+        outcome = engine.apply_policy(
+            review, "block", "critical", False, "medium",
+            truncated=True, skipped_files=["a.py", "b.py"]
+        )
+        assert outcome["action"] == "block"
+        assert "\u5be9\u67e5\u4e0d\u5b8c\u6574" in outcome["reason"]
+        assert "2" in outcome["reason"]
+
+    def test_outcome_includes_truncation_fields(self):
+        review = self._review()
+        outcome = engine.apply_policy(
+            review, "block", "critical", False, "medium",
+            truncated=True, skipped_files=["a.py"]
+        )
+        assert outcome["truncated"] is True
+        assert outcome["skipped_count"] == 1
+
+    def test_outcome_no_truncation_by_default(self):
+        review = {"pass": True, "review_status": "completed", "issues": [], "summary": "ok"}
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        assert outcome["truncated"] is False
+        assert outcome["skipped_count"] == 0

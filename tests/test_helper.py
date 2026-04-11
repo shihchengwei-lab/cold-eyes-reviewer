@@ -56,6 +56,18 @@ class TestBuildPrompt:
         assert "correctness" in stdout
         assert "security" in stdout
 
+    def test_matches_engine_output(self):
+        """Helper build-prompt should produce the same output as engine's build_prompt_text()."""
+        import importlib.util
+        engine_path = os.path.join(SCRIPTS_DIR, "cold_review_engine.py")
+        spec = importlib.util.spec_from_file_location("cold_review_engine", engine_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        engine_output = mod.build_prompt_text()
+        helper_stdout, _, rc = run_helper("build-prompt")
+        assert rc == 0
+        assert helper_stdout == engine_output.strip()
+
 
 # --- parse-review ---
 

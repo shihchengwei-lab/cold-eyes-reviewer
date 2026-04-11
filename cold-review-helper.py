@@ -39,8 +39,24 @@ def parse_hook():
 
 
 def build_prompt():
-    """Assemble system prompt from template + language env var. Print to stdout."""
-    language = os.environ.get("COLD_REVIEW_LANGUAGE", "繁體中文（台灣）")
+    """Assemble system prompt from template + language env var. Print to stdout.
+
+    Delegates to engine's build_prompt_text() when available, falls back to
+    local logic if engine cannot be imported (deployment resilience).
+    """
+    try:
+        import importlib.util
+        engine_path = os.path.join(SCRIPTS_DIR, "cold_review_engine.py")
+        spec = importlib.util.spec_from_file_location("cold_review_engine", engine_path)
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        print(mod.build_prompt_text())
+        return
+    except Exception:
+        pass
+
+    # Fallback: local logic (kept for deployment resilience)
+    language = os.environ.get("COLD_REVIEW_LANGUAGE", "\u7e41\u9ad4\u4e2d\u6587\uff08\u53f0\u7063\uff09")
 
     try:
         with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
