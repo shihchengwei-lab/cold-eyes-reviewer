@@ -10,6 +10,8 @@
 #   COLD_REVIEW_MAX_TOKENS      — token budget for diff (default: 12000)
 #   COLD_REVIEW_MAX_LINES       — backward compat: converted to tokens via ×4
 #   COLD_REVIEW_BLOCK_THRESHOLD — critical (default), major
+#   COLD_REVIEW_CONFIDENCE      — minimum confidence to keep: high, medium (default), low
+#   COLD_REVIEW_LANGUAGE        — output language (default: 繁體中文（台灣）)
 #   COLD_REVIEW_ALLOW_ONCE      — set to 1 to bypass block once (logged)
 
 set -uo pipefail

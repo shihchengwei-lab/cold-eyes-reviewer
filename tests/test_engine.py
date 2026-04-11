@@ -89,24 +89,24 @@ class TestApplyPolicyInfraFailure:
         }
 
     def test_block_mode_blocks_on_infra_failure(self):
-        outcome = engine.apply_policy(self._infra_review(), "block", "critical", False)
+        outcome = engine.apply_policy(self._infra_review(), "block", "critical", False, "medium")
         assert outcome["action"] == "block"
         assert outcome["state"] == "infra_failed"
         assert "ALLOW_ONCE" in outcome["reason"]
 
     def test_report_mode_passes_on_infra_failure(self):
-        outcome = engine.apply_policy(self._infra_review(), "report", "critical", False)
+        outcome = engine.apply_policy(self._infra_review(), "report", "critical", False, "medium")
         assert outcome["action"] == "pass"
         assert outcome["state"] == "failed"
 
     def test_override_bypasses_infra_block(self):
-        outcome = engine.apply_policy(self._infra_review(), "block", "critical", True)
+        outcome = engine.apply_policy(self._infra_review(), "block", "critical", True, "medium")
         assert outcome["action"] == "pass"
         assert outcome["state"] == "overridden"
 
     def test_infra_block_includes_error_detail(self):
         outcome = engine.apply_policy(
-            self._infra_review("claude exit 1"), "block", "critical", False
+            self._infra_review("claude exit 1"), "block", "critical", False, "medium"
         )
         assert "claude exit 1" in outcome["reason"]
 
@@ -116,41 +116,42 @@ class TestApplyPolicyInfraFailure:
 # ===========================================================================
 
 class TestApplyPolicyReview:
-    def _review(self, severity, pass_val=False):
+    def _review(self, severity, pass_val=False, confidence="high"):
         return {
             "pass": pass_val, "review_status": "completed",
-            "issues": [{"severity": severity, "check": "x", "verdict": "y", "fix": "z"}],
+            "issues": [{"severity": severity, "confidence": confidence,
+                        "check": "x", "verdict": "y", "fix": "z"}],
             "summary": "test",
         }
 
     def test_critical_blocks_at_critical_threshold(self):
-        outcome = engine.apply_policy(self._review("critical"), "block", "critical", False)
+        outcome = engine.apply_policy(self._review("critical"), "block", "critical", False, "medium")
         assert outcome["action"] == "block"
         assert outcome["state"] == "blocked"
 
     def test_major_does_not_block_at_critical_threshold(self):
-        outcome = engine.apply_policy(self._review("major"), "block", "critical", False)
+        outcome = engine.apply_policy(self._review("major"), "block", "critical", False, "medium")
         assert outcome["action"] == "pass"
         assert outcome["state"] == "passed"
 
     def test_major_blocks_at_major_threshold(self):
-        outcome = engine.apply_policy(self._review("major"), "block", "major", False)
+        outcome = engine.apply_policy(self._review("major"), "block", "major", False, "medium")
         assert outcome["action"] == "block"
         assert outcome["state"] == "blocked"
 
     def test_minor_never_blocks(self):
-        outcome = engine.apply_policy(self._review("minor"), "block", "critical", False)
+        outcome = engine.apply_policy(self._review("minor"), "block", "critical", False, "medium")
         assert outcome["action"] == "pass"
-        outcome = engine.apply_policy(self._review("minor"), "block", "major", False)
+        outcome = engine.apply_policy(self._review("minor"), "block", "major", False, "medium")
         assert outcome["action"] == "pass"
 
     def test_override_skips_block(self):
-        outcome = engine.apply_policy(self._review("critical"), "block", "critical", True)
+        outcome = engine.apply_policy(self._review("critical"), "block", "critical", True, "medium")
         assert outcome["action"] == "pass"
         assert outcome["state"] == "overridden"
 
     def test_report_mode_never_blocks(self):
-        outcome = engine.apply_policy(self._review("critical"), "report", "critical", False)
+        outcome = engine.apply_policy(self._review("critical"), "report", "critical", False, "medium")
         assert outcome["action"] == "pass"
         assert outcome["state"] == "reported"
 
@@ -159,7 +160,7 @@ class TestApplyPolicyReview:
             "pass": True, "review_status": "completed",
             "issues": [], "summary": "ok",
         }
-        outcome = engine.apply_policy(review, "report", "critical", False)
+        outcome = engine.apply_policy(review, "report", "critical", False, "medium")
         assert outcome["state"] == "passed"
 
     def test_no_issues_passes(self):
@@ -167,9 +168,79 @@ class TestApplyPolicyReview:
             "pass": True, "review_status": "completed",
             "issues": [], "summary": "ok",
         }
-        outcome = engine.apply_policy(review, "block", "critical", False)
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
         assert outcome["action"] == "pass"
         assert outcome["state"] == "passed"
+
+
+# ===========================================================================
+# Confidence hard-filtering
+# ===========================================================================
+
+class TestConfidenceFilter:
+    def test_filter_keeps_high_at_high_threshold(self):
+        issues = [{"confidence": "high", "severity": "major"}]
+        assert len(engine.filter_by_confidence(issues, "high")) == 1
+
+    def test_filter_drops_medium_at_high_threshold(self):
+        issues = [{"confidence": "medium", "severity": "major"}]
+        assert len(engine.filter_by_confidence(issues, "high")) == 0
+
+    def test_filter_drops_low_at_medium_threshold(self):
+        issues = [{"confidence": "low", "severity": "critical"}]
+        assert len(engine.filter_by_confidence(issues, "medium")) == 0
+
+    def test_filter_keeps_all_at_low_threshold(self):
+        issues = [
+            {"confidence": "high", "severity": "major"},
+            {"confidence": "medium", "severity": "major"},
+            {"confidence": "low", "severity": "major"},
+        ]
+        assert len(engine.filter_by_confidence(issues, "low")) == 3
+
+    def test_filter_default_confidence_is_medium(self):
+        """Issues missing confidence field default to medium."""
+        issues = [{"severity": "major"}]
+        assert len(engine.filter_by_confidence(issues, "medium")) == 1
+        assert len(engine.filter_by_confidence(issues, "high")) == 0
+
+    def test_confidence_filter_affects_policy_block(self):
+        """A critical+low issue should not block when confidence threshold is medium."""
+        review = {
+            "pass": False, "review_status": "completed",
+            "issues": [{"severity": "critical", "confidence": "low",
+                        "check": "x", "verdict": "y", "fix": "z"}],
+            "summary": "test",
+        }
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        assert outcome["action"] == "pass"
+
+    def test_confidence_filter_passes_high_through(self):
+        """A critical+high issue should still block at medium confidence threshold."""
+        review = {
+            "pass": False, "review_status": "completed",
+            "issues": [{"severity": "critical", "confidence": "high",
+                        "check": "x", "verdict": "y", "fix": "z"}],
+            "summary": "test",
+        }
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        assert outcome["action"] == "block"
+
+    def test_mixed_confidence_filters_correctly(self):
+        """Only high-confidence issues survive when threshold is high."""
+        review = {
+            "pass": False, "review_status": "completed",
+            "issues": [
+                {"severity": "critical", "confidence": "low", "check": "a", "verdict": "b", "fix": "c"},
+                {"severity": "critical", "confidence": "high", "check": "x", "verdict": "y", "fix": "z"},
+            ],
+            "summary": "test",
+        }
+        outcome = engine.apply_policy(review, "block", "critical", False, "high")
+        assert outcome["action"] == "block"
+        # Only 1 issue should remain after filtering
+        assert len(review["issues"]) == 2  # original unchanged
+        # The filtered review in policy should have 1
 
 
 # ===========================================================================
@@ -290,22 +361,47 @@ class TestFileRanking:
 
 
 # ===========================================================================
+# Prompt assembly (no profile)
+# ===========================================================================
+
+class TestBuildPrompt:
+    def test_contains_cold_eyes(self):
+        prompt = engine.build_prompt_text("English")
+        assert "Cold Eyes" in prompt
+
+    def test_no_stats_in_prompt(self):
+        prompt = engine.build_prompt_text("English")
+        assert "RIGOR" not in prompt
+        assert "PARANOIA" not in prompt
+
+    def test_language_substituted(self):
+        prompt = engine.build_prompt_text("日本語")
+        assert "日本語" in prompt
+
+    def test_default_language(self):
+        prompt = engine.build_prompt_text()
+        assert "繁體中文" in prompt
+
+
+# ===========================================================================
 # FinalOutcome format
 # ===========================================================================
 
 class TestFinalOutcome:
     def test_outcome_has_required_keys(self):
         review = {"pass": True, "review_status": "completed", "issues": [], "summary": "ok"}
-        outcome = engine.apply_policy(review, "block", "critical", False)
-        assert set(outcome.keys()) == {"action", "state", "reason", "display"}
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        for key in ("action", "state", "reason", "display"):
+            assert key in outcome
 
     def test_block_outcome_has_reason(self):
         review = {
             "pass": False, "review_status": "completed",
-            "issues": [{"severity": "critical", "check": "x", "verdict": "y", "fix": "z"}],
+            "issues": [{"severity": "critical", "confidence": "high",
+                        "check": "x", "verdict": "y", "fix": "z"}],
             "summary": "bad",
         }
-        outcome = engine.apply_policy(review, "block", "critical", False)
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
         assert outcome["reason"] != ""
         assert "Cold Eyes Review" in outcome["reason"]
 

@@ -17,7 +17,7 @@ Claude Code session ends
        ├─ Already reviewing? → skip (prevents recursion)
        │
        ▼
-  Collect diff (filtered, risk-sorted, within line budget)
+  Collect diff (filtered, risk-sorted, within token budget)
        │
        ▼
   Cold Eyes reviews the diff
@@ -61,7 +61,7 @@ Every issue includes severity, confidence, category, file, and a three-part stru
 
 ```bash
 mkdir -p ~/.claude/scripts
-cp cold-review.sh cold-review-helper.py cold-review-prompt.txt cold-review-profile.json ~/.claude/scripts/
+cp cold-review.sh cold-review-helper.py cold_review_engine.py cold-review-prompt.txt ~/.claude/scripts/
 ```
 
 ### 2. Add Stop hook to `~/.claude/settings.json`
@@ -112,8 +112,10 @@ Cold Eyes reviews **all uncommitted changes** in the working tree — not just w
 |---|---|---|---|
 | `COLD_REVIEW_MODE` | `block` | `block`, `report`, `off` | Block and force fix / log only / disable |
 | `COLD_REVIEW_MODEL` | `opus` | `opus`, `sonnet`, `haiku` | Which model runs the review |
-| `COLD_REVIEW_MAX_LINES` | `500` | any integer | Max diff lines to review |
+| `COLD_REVIEW_MAX_TOKENS` | `12000` | any integer | Token budget for diff (len÷4 estimation) |
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | `critical`, `major` | Minimum severity that triggers a block |
+| `COLD_REVIEW_CONFIDENCE` | `medium` | `high`, `medium`, `low` | Minimum confidence to keep (hard filter) |
+| `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | Set to skip block once (logged as override) |
 
 ```bash
@@ -125,6 +127,12 @@ export COLD_REVIEW_MODE=report
 
 # Block on major issues too
 export COLD_REVIEW_BLOCK_THRESHOLD=major
+
+# Only keep high-confidence issues
+export COLD_REVIEW_CONFIDENCE=high
+
+# Review in English
+export COLD_REVIEW_LANGUAGE=English
 
 # One-time override when blocked by a false positive
 export COLD_REVIEW_ALLOW_ONCE=1
@@ -148,21 +156,6 @@ build/*
 ```
 
 Built-in defaults already skip common lock files, build output, and minified files. Project-level patterns are additive.
-
-### Personality profile
-
-Edit `~/.claude/scripts/cold-review-profile.json`:
-
-```json
-{
-  "name": "Cold Eyes",
-  "language": "繁體中文（台灣）",
-  "stats": {
-    "RIGOR": 90,
-    "PARANOIA": 75
-  }
-}
-```
 
 ### Review prompt
 
@@ -196,10 +189,10 @@ If reviews aren't running, check:
 
 | File | Purpose |
 |---|---|
-| `cold-review.sh` | Main Stop hook script |
+| `cold-review.sh` | Main Stop hook script (thin orchestrator) |
+| `cold_review_engine.py` | Review pipeline: diff building, Claude call, policy, confidence filter |
 | `cold-review-helper.py` | JSON parsing, prompt assembly, ignore/rank logic |
 | `cold-review-prompt.txt` | System prompt template |
-| `cold-review-profile.json` | Personality configuration |
 | `.cold-review-ignore` | Default ignore patterns |
 
 ## Background
@@ -212,15 +205,14 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-profile.json`** — Plain JSON. Build a UI to let users configure the reviewer.
 - **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`). Build a dashboard, filter by state, chart trends over time.
-- **`cold-review-prompt.txt`** — Template with `{name}`, `{language}`, `{stats_*}` placeholders. Swap in your own review criteria.
+- **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 
 ## Known limitations
 
 - **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. Periodically archive or truncate it yourself.
-- **Large diffs get truncated.** Diffs over the line budget (default 500) are cut. High-risk files are prioritized, but the review may be incomplete.
+- **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized, but the review may be incomplete.
 - **Silent on auth failure.** If your Claude subscription is expired or rate-limited, the review logs a `failed` state. Check stderr or history.
 
 ## License

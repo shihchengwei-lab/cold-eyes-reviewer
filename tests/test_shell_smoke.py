@@ -7,7 +7,7 @@ import tempfile
 
 SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SHELL_SCRIPT = os.path.join(SCRIPTS_DIR, "cold-review.sh")
-PROFILE_PATH = os.path.join(SCRIPTS_DIR, "cold-review-profile.json")
+PROMPT_TEMPLATE = os.path.join(SCRIPTS_DIR, "cold-review-prompt.txt")
 
 
 def run_shell(env_override=None, stdin_data="", cwd=None):
@@ -52,25 +52,22 @@ class TestNoGitRepo:
             assert "not a git repo" in result.stderr
 
 
-class TestProfileSanity:
-    """Verify profile.json has no dead fields."""
+class TestPromptTemplateSanity:
+    """Verify prompt template has no dead fields."""
 
-    def test_no_dead_config_fields(self):
-        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-            profile = json.load(f)
+    def test_no_stats_placeholders(self):
+        with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "{stats_rigor}" not in content, "stats_rigor placeholder is dead code"
+        assert "{stats_paranoia}" not in content, "stats_paranoia placeholder is dead code"
+        assert "{name}" not in content, "name placeholder is dead code — should be hardcoded"
 
-        # These fields were identified as dead code and should be removed
-        assert "personality" not in profile, "personality is dead code"
-        stats = profile.get("stats", {})
-        assert "SNARK" not in stats, "SNARK is dead code"
-        assert "PATIENCE" not in stats, "PATIENCE is dead code"
+    def test_has_language_placeholder(self):
+        with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "{language}" in content
 
-    def test_required_fields_present(self):
-        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-            profile = json.load(f)
-
-        assert "name" in profile
-        assert "language" in profile
-        stats = profile.get("stats", {})
-        assert "RIGOR" in stats
-        assert "PARANOIA" in stats
+    def test_has_cold_eyes_hardcoded(self):
+        with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "Cold Eyes" in content

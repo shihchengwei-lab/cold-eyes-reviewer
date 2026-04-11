@@ -24,7 +24,6 @@ from datetime import datetime, timezone
 
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROFILE_PATH = os.path.join(SCRIPTS_DIR, "cold-review-profile.json")
 PROMPT_TEMPLATE = os.path.join(SCRIPTS_DIR, "cold-review-prompt.txt")
 HISTORY_FILE = os.path.join(os.path.expanduser("~"), ".claude", "cold-review-history.jsonl")
 
@@ -40,32 +39,17 @@ def parse_hook():
 
 
 def build_prompt():
-    """Assemble system prompt from profile + template. Print to stdout."""
-    try:
-        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-            profile = json.load(f)
-    except FileNotFoundError:
-        profile = {
-            "name": "Cold Eyes",
-            "language": "English",
-            "stats": {}
-        }
+    """Assemble system prompt from template + language env var. Print to stdout."""
+    language = os.environ.get("COLD_REVIEW_LANGUAGE", "繁體中文（台灣）")
 
     try:
         with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
             template = f.read()
     except FileNotFoundError:
-        print("You are a cold-eyes reviewer. Review the diff. Output JSON: {pass, issues, summary}.")
+        print("You are Cold Eyes, a zero-context reviewer. Review the diff. Output JSON: {pass, issues, summary}.")
         return
 
-    stats = profile.get("stats", {})
-    result = template
-    result = result.replace("{name}", profile.get("name", "Cold Eyes"))
-    result = result.replace("{language}", profile.get("language", "English"))
-    result = result.replace("{stats_rigor}", str(stats.get("RIGOR", 50)))
-    result = result.replace("{stats_paranoia}", str(stats.get("PARANOIA", 50)))
-
-    print(result)
+    print(template.replace("{language}", language))
 
 
 def parse_review():

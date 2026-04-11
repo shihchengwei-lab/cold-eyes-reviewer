@@ -18,13 +18,13 @@ import tempfile
 from datetime import datetime, timezone
 
 SCRIPTS_DIR = os.path.dirname(os.path.abspath(__file__))
-PROFILE_PATH = os.path.join(SCRIPTS_DIR, "cold-review-profile.json")
 PROMPT_TEMPLATE = os.path.join(SCRIPTS_DIR, "cold-review-prompt.txt")
 HISTORY_FILE = os.path.join(
     os.path.expanduser("~"), ".claude", "cold-review-history.jsonl"
 )
 
 SEVERITY_ORDER = {"critical": 3, "major": 2, "minor": 1}
+CONFIDENCE_ORDER = {"high": 3, "medium": 2, "low": 1}
 
 BUILTIN_IGNORE = [
     "*.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
@@ -178,27 +178,18 @@ def build_diff(ranked_files, untracked, max_tokens=12000):
 # Prompt assembly
 # ---------------------------------------------------------------------------
 
-def build_prompt_text():
-    """Assemble system prompt from profile + template. Return string."""
-    try:
-        with open(PROFILE_PATH, "r", encoding="utf-8") as f:
-            profile = json.load(f)
-    except FileNotFoundError:
-        profile = {"name": "Cold Eyes", "language": "English", "stats": {}}
+def build_prompt_text(language=None):
+    """Assemble system prompt from template + language env var. Return string."""
+    if language is None:
+        language = os.environ.get("COLD_REVIEW_LANGUAGE", "繁體中文（台灣）")
 
     try:
         with open(PROMPT_TEMPLATE, "r", encoding="utf-8") as f:
             template = f.read()
     except FileNotFoundError:
-        return "You are a cold-eyes reviewer. Review the diff. Output JSON: {pass, issues, summary}."
+        return "You are Cold Eyes, a zero-context reviewer. Review the diff. Output JSON: {pass, issues, summary}."
 
-    stats = profile.get("stats", {})
-    result = template
-    result = result.replace("{name}", profile.get("name", "Cold Eyes"))
-    result = result.replace("{language}", profile.get("language", "English"))
-    result = result.replace("{stats_rigor}", str(stats.get("RIGOR", 50)))
-    result = result.replace("{stats_paranoia}", str(stats.get("PARANOIA", 50)))
-    return result
+    return template.replace("{language}", language)
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +261,12 @@ def parse_review_output(raw_json_str):
 # Policy
 # ---------------------------------------------------------------------------
 
+def filter_by_confidence(issues, min_confidence="medium"):
+    """Remove issues below the confidence threshold. Deterministic hard filter."""
+    threshold = CONFIDENCE_ORDER.get(min_confidence, 2)
+    return [i for i in issues if CONFIDENCE_ORDER.get(i.get("confidence", "medium"), 2) >= threshold]
+
+
 def format_block_reason(review):
     """Format review into human-readable block reason."""
     summary = review.get("summary", "")
@@ -286,10 +283,11 @@ def format_block_reason(review):
     return "\n".join(lines)
 
 
-def apply_policy(review, mode, threshold, allow_once):
+def apply_policy(review, mode, threshold, allow_once, min_confidence="medium"):
     """Determine final outcome. Return FinalOutcome dict.
 
-    FinalOutcome keys: action, state, reason, display
+    FinalOutcome keys: action, state, reason, display, review
+    The review in the outcome has issues filtered by confidence.
     """
     engine_ok = review.get("review_status") != "failed"
 
@@ -321,10 +319,14 @@ def apply_policy(review, mode, threshold, allow_once):
             "display": f"cold-review: report logged (infra failure: {error_detail})",
         }
 
+    # --- Confidence filter (hard gate) ---
+    filtered_issues = filter_by_confidence(review.get("issues", []), min_confidence)
+    review = {**review, "issues": filtered_issues}
+
     # --- Review completed ---
     threshold_level = SEVERITY_ORDER.get(threshold, 3)
     max_severity = 0
-    for issue in review.get("issues", []):
+    for issue in filtered_issues:
         level = SEVERITY_ORDER.get(issue.get("severity", "major"), 2)
         max_severity = max(max_severity, level)
 
@@ -405,6 +407,7 @@ def run(mode, model, max_tokens, threshold):
     """Execute full review pipeline. Return FinalOutcome dict."""
     cwd = os.getcwd()
     allow_once = os.environ.get("COLD_REVIEW_ALLOW_ONCE") == "1"
+    min_confidence = os.environ.get("COLD_REVIEW_CONFIDENCE", "medium").lower()
     repo_root = git_cmd("rev-parse", "--show-toplevel")
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
 
@@ -447,13 +450,13 @@ def run(mode, model, max_tokens, threshold):
         # 7. Handle CLI errors
         if exit_code != 0:
             review = _infra_review(f"claude exit {exit_code}")
-            outcome = apply_policy(review, mode, threshold, allow_once)
+            outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
             log_to_history(cwd, mode, model, outcome["state"], reason=review["summary"])
             return outcome
 
         if not raw_output:
             review = _infra_review("empty output")
-            outcome = apply_policy(review, mode, threshold, allow_once)
+            outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
             log_to_history(cwd, mode, model, outcome["state"], reason=review["summary"])
             return outcome
 
@@ -461,7 +464,7 @@ def run(mode, model, max_tokens, threshold):
         review = parse_review_output(raw_output)
 
         # 9–10. Apply policy
-        outcome = apply_policy(review, mode, threshold, allow_once)
+        outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
 
         # 11. Log
         diff_line_count = diff_text.count("\n") + 1
