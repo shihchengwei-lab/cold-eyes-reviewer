@@ -9,7 +9,23 @@ import tempfile
 
 import pytest
 
-_HAS_BASH = shutil.which("bash") is not None
+def _check_bash():
+    """Return True only if bash can actually execute scripts.
+
+    shutil.which("bash") may find WSL bash on Windows CI, which fails
+    with 'no installed distributions' when there's no Linux distro.
+    """
+    if not shutil.which("bash"):
+        return False
+    try:
+        r = subprocess.run(
+            ["bash", "--version"], capture_output=True, timeout=5,
+        )
+        return r.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+_HAS_BASH = _check_bash()
 skip_no_bash = pytest.mark.skipif(not _HAS_BASH, reason="bash not available")
 
 SCRIPTS_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
