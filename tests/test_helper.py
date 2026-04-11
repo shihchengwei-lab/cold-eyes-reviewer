@@ -288,7 +288,7 @@ class TestFormatBlock:
                         "check": "bad", "verdict": "wrong", "fix": "fix it"}]
         }
         stdout, _, _ = run_helper("format-block", stdin_data=json.dumps(review))
-        assert "(L42)" in stdout
+        assert "(~L42)" in stdout
 
     def test_format_block_no_parens_when_no_hint(self):
         review = {
@@ -415,4 +415,15 @@ class TestLogReview:
 class TestLogState:
     def test_runs_without_error(self):
         _, _, rc = run_helper("log-state", extra_args=[".", "block", "opus", "skipped", "no changes"])
+        assert rc == 0
+
+    def test_override_reason_arg(self):
+        _, _, rc = run_helper("log-state", extra_args=[".", "block", "opus", "overridden", "bypass", "false_positive"])
+        assert rc == 0
+
+
+class TestLogReviewOverrideReason:
+    def test_override_reason_arg(self):
+        review = json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "OK"})
+        _, _, rc = run_helper("log-review", stdin_data=review, extra_args=[".", "block", "opus", "overridden", "3", "150", "false", "false_positive"])
         assert rc == 0

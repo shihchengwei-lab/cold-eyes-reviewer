@@ -1,5 +1,23 @@
 # Changelog
 
+## v0.7.0 — Phase 1.4 Feedback Loop
+
+### New features
+
+- **Override reason tracking** — `COLD_REVIEW_OVERRIDE_REASON` env var records why a block was overridden. Stored in history as `override_reason` field on `state: "overridden"` entries. Free-text; suggested values documented (false_positive, acceptable_risk, unclear, infrastructure).
+- **Override hint in block messages** — Block messages now show how to override with a reason: `COLD_REVIEW_ALLOW_ONCE=1 COLD_REVIEW_OVERRIDE_REASON='<reason>'`.
+- **`aggregate-overrides` command** — `python cold_review_engine.py aggregate-overrides` summarises override patterns from history (total count, reason breakdown, recent entries).
+
+### Fixes
+
+- **`line_hint` marked as approximate** — Block messages now display line hints with `~` prefix (e.g., `(~L42)`) to indicate they are estimates. README updated with guidance to verify before acting in block mode.
+- **`.cold-review-ignore` documentation** — README now lists all 12 built-in ignore patterns, explains that `.cold-review-ignore` is a per-repo file (not deployed to scripts/), and clarifies how per-repo patterns layer on top of built-in patterns.
+- **`schema_version` bump rules** — README now defines when `schema_version` is bumped (breaking changes only) and when it is not (optional field additions).
+
+### Tests
+
+152 tests (17 new: override reason 8, history override 3, aggregation 3, helper 2, README 1).
+
 ## v0.6.0 — Phase 1 Alpha
 
 Phase 1 implementation based on the productization roadmap. Five features targeting single-developer daily use.

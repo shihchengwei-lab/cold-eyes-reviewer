@@ -306,7 +306,7 @@ def format_block_reason(review, truncated=False, skipped_count=0):
         check = issue.get("check", "")
         verdict = issue.get("verdict", "")
         fix = issue.get("fix", "")
-        hint_part = f" ({line_hint})" if line_hint else ""
+        hint_part = f" (~{line_hint})" if line_hint else ""
         lines.append(f"  - [{sev}]{hint_part} \u6aa2\u67e5\uff1a{check}")
         lines.append(f"    \u5224\u6c7a\uff1a{verdict}")
         lines.append(f"    \u6307\u793a\uff1a{fix}")
@@ -316,7 +316,7 @@ def format_block_reason(review, truncated=False, skipped_count=0):
 
 
 def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
-                 truncated=False, skipped_files=None):
+                 truncated=False, skipped_files=None, override_reason=""):
     """Determine final outcome. Return FinalOutcome dict.
 
     FinalOutcome keys: action, state, reason, display, truncated, skipped_count
@@ -332,18 +332,19 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
         error_detail = review.get("summary", "unknown error")
         if mode == "block":
             if allow_once:
+                reason_suffix = f" [{override_reason}]" if override_reason else ""
                 return {
                     "action": "pass",
                     "state": "overridden",
-                    "reason": "",
-                    "display": "cold-review: override \u2014 infra failure bypass (ALLOW_ONCE)",
+                    "reason": override_reason,
+                    "display": f"cold-review: override \u2014 infra failure bypass (ALLOW_ONCE){reason_suffix}",
                 }
             return {
                 "action": "block",
                 "state": "infra_failed",
                 "reason": (
-                    f"Cold Eyes Review \u2014 infrastructure failure: {error_detail}. "
-                    "Use COLD_REVIEW_ALLOW_ONCE=1 to bypass."
+                    f"Cold Eyes Review \u2014 infrastructure failure: {error_detail}.\n"
+                    "To override: COLD_REVIEW_ALLOW_ONCE=1 COLD_REVIEW_OVERRIDE_REASON='<reason>'"
                 ),
                 "display": "cold-review: blocking (infrastructure failure)",
             }
@@ -381,16 +382,22 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
     # block mode
     if should_block:
         if allow_once:
+            reason_suffix = f" [{override_reason}]" if override_reason else ""
             return {
                 "action": "pass",
                 "state": "overridden",
-                "reason": "",
-                "display": "cold-review: override \u2014 block skipped (ALLOW_ONCE)",
+                "reason": override_reason,
+                "display": f"cold-review: override \u2014 block skipped (ALLOW_ONCE){reason_suffix}",
             }
+        block_reason = format_block_reason(review, truncated, skipped_count)
+        block_reason += (
+            "\n\nTo override: COLD_REVIEW_ALLOW_ONCE=1 "
+            "COLD_REVIEW_OVERRIDE_REASON='<reason>'"
+        )
         return {
             "action": "block",
             "state": "blocked",
-            "reason": format_block_reason(review, truncated, skipped_count),
+            "reason": block_reason,
             "display": f"cold-review: blocking (issues at or above {threshold})",
             "truncated": truncated,
             "skipped_count": skipped_count,
@@ -412,7 +419,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
 
 def log_to_history(cwd, mode, model, state, reason="", review=None,
                    file_count=0, line_count=0, truncated=False, token_count=0,
-                   min_confidence="medium", scope="working"):
+                   min_confidence="medium", scope="working", override_reason=""):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -425,6 +432,8 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
         "scope": scope,
         "schema_version": review.get("schema_version", SCHEMA_VERSION) if review else SCHEMA_VERSION,
     }
+    if override_reason:
+        entry["override_reason"] = override_reason
 
     if review is not None:
         entry["diff_stats"] = {
@@ -448,10 +457,11 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
 # ---------------------------------------------------------------------------
 
 def run(mode, model, max_tokens, threshold, confidence=None, language=None,
-        scope="working"):
+        scope="working", override_reason=None):
     """Execute full review pipeline. Return FinalOutcome dict."""
     cwd = os.getcwd()
     allow_once = os.environ.get("COLD_REVIEW_ALLOW_ONCE") == "1"
+    override_reason = override_reason or os.environ.get("COLD_REVIEW_OVERRIDE_REASON", "")
     min_confidence = confidence or os.environ.get("COLD_REVIEW_CONFIDENCE", "medium").lower()
     repo_root = git_cmd("rev-parse", "--show-toplevel")
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
@@ -498,18 +508,20 @@ def run(mode, model, max_tokens, threshold, confidence=None, language=None,
         # 7. Handle CLI errors
         if exit_code != 0:
             review = _infra_review(f"claude exit {exit_code}")
-            outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
+            outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
+                                   override_reason=override_reason)
             log_to_history(cwd, mode, model, outcome["state"],
                            reason=review["summary"], min_confidence=min_confidence,
-                           scope=scope)
+                           scope=scope, override_reason=override_reason)
             return outcome
 
         if not raw_output:
             review = _infra_review("empty output")
-            outcome = apply_policy(review, mode, threshold, allow_once, min_confidence)
+            outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
+                                   override_reason=override_reason)
             log_to_history(cwd, mode, model, outcome["state"],
                            reason=review["summary"], min_confidence=min_confidence,
-                           scope=scope)
+                           scope=scope, override_reason=override_reason)
             return outcome
 
         # 8. Parse review
@@ -517,7 +529,8 @@ def run(mode, model, max_tokens, threshold, confidence=None, language=None,
 
         # 9–10. Apply policy (with truncation context)
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               truncated=truncated, skipped_files=skipped)
+                               truncated=truncated, skipped_files=skipped,
+                               override_reason=override_reason)
 
         # 11. Log
         diff_line_count = diff_text.count("\n") + 1
@@ -526,7 +539,7 @@ def run(mode, model, max_tokens, threshold, confidence=None, language=None,
             review=review, file_count=file_count,
             line_count=diff_line_count, truncated=truncated,
             token_count=token_count, min_confidence=min_confidence,
-            scope=scope,
+            scope=scope, override_reason=override_reason,
         )
 
         return outcome
@@ -551,6 +564,47 @@ def _infra_review(summary):
         "review_status": "failed",
         "issues": [],
         "summary": summary,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Aggregate overrides
+# ---------------------------------------------------------------------------
+
+def aggregate_overrides(history_path=None, limit=50):
+    """Summarise override patterns from history.
+
+    Returns dict with total_overrides, reasons (grouped by count desc), recent.
+    """
+    path = history_path or HISTORY_FILE
+    overrides = []
+    if os.path.isfile(path):
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("state") == "overridden":
+                    overrides.append(entry)
+
+    counts = {}
+    for entry in overrides:
+        reason = entry.get("override_reason", "")
+        counts[reason] = counts.get(reason, 0) + 1
+    reasons = sorted(
+        [{"reason": r, "count": c} for r, c in counts.items()],
+        key=lambda x: x["count"], reverse=True,
+    )
+    recent = overrides[-limit:] if overrides else []
+    return {
+        "action": "aggregate-overrides",
+        "total_overrides": len(overrides),
+        "reasons": reasons,
+        "recent": recent,
     }
 
 
@@ -661,7 +715,7 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Cold Eyes Reviewer engine")
-    parser.add_argument("command", choices=["run", "doctor"])
+    parser.add_argument("command", choices=["run", "doctor", "aggregate-overrides"])
     parser.add_argument("--mode", default="block")
     parser.add_argument("--model", default="opus")
     parser.add_argument("--max-tokens", type=int, default=12000)
@@ -670,12 +724,16 @@ if __name__ == "__main__":
     parser.add_argument("--language", default=None)
     parser.add_argument("--scope", default="working",
                         choices=["working", "staged", "head"])
+    parser.add_argument("--override-reason", default=None)
     args = parser.parse_args()
 
     if args.command == "doctor":
         result = run_doctor()
+    elif args.command == "aggregate-overrides":
+        result = aggregate_overrides()
     else:
         result = run(args.mode, args.model, args.max_tokens, args.threshold,
                      confidence=args.confidence, language=args.language,
-                     scope=args.scope)
+                     scope=args.scope,
+                     override_reason=args.override_reason)
     print(json.dumps(result, ensure_ascii=False))

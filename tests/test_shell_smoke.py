@@ -91,3 +91,9 @@ class TestReadmeSanity:
         with open(readme, "r", encoding="utf-8") as f:
             content = f.read()
         assert "Strategy presets" in content
+
+    def test_has_override_reason(self):
+        readme = os.path.join(SCRIPTS_DIR, "README.md")
+        with open(readme, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "COLD_REVIEW_OVERRIDE_REASON" in content

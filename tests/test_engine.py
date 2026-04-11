@@ -779,7 +779,7 @@ class TestLineHint:
                         "check": "bad", "verdict": "wrong", "fix": "fix it"}]
         }
         reason = engine.format_block_reason(review)
-        assert "(L42)" in reason
+        assert "(~L42)" in reason
         assert "[CRITICAL]" in reason
 
     def test_block_reason_no_parens_when_empty(self):
@@ -840,3 +840,132 @@ class TestSchemaVersion:
         engine.log_to_history("/tmp", "block", "opus", "skipped", reason="no changes")
         entry = json.loads(history.read_text().strip())
         assert entry["schema_version"] == engine.SCHEMA_VERSION
+
+
+# ===========================================================================
+# override_reason
+# ===========================================================================
+
+class TestOverrideReason:
+
+    def _review(self, severity="critical", confidence="high"):
+        return {
+            "pass": False, "review_status": "completed",
+            "issues": [{"severity": severity, "confidence": confidence,
+                        "check": "x", "verdict": "y", "fix": "z"}],
+            "summary": "test",
+        }
+
+    def _infra_review(self):
+        return {"pass": True, "review_status": "failed",
+                "issues": [], "summary": "parse error"}
+
+    # -- override paths --
+
+    def test_override_with_reason_records_reason(self):
+        outcome = engine.apply_policy(
+            self._review(), "block", "critical", True, "medium",
+            override_reason="false_positive")
+        assert outcome["reason"] == "false_positive"
+
+    def test_override_without_reason_empty(self):
+        outcome = engine.apply_policy(
+            self._review(), "block", "critical", True, "medium")
+        assert outcome["reason"] == ""
+
+    def test_override_reason_in_display(self):
+        outcome = engine.apply_policy(
+            self._review(), "block", "critical", True, "medium",
+            override_reason="false_positive")
+        assert "[false_positive]" in outcome["display"]
+
+    def test_override_empty_reason_no_brackets(self):
+        outcome = engine.apply_policy(
+            self._review(), "block", "critical", True, "medium")
+        assert "[" not in outcome["display"]
+
+    def test_infra_override_with_reason(self):
+        outcome = engine.apply_policy(
+            self._infra_review(), "block", "critical", True, "medium",
+            override_reason="infrastructure")
+        assert outcome["reason"] == "infrastructure"
+        assert "[infrastructure]" in outcome["display"]
+
+    # -- block paths --
+
+    def test_block_includes_override_hint(self):
+        outcome = engine.apply_policy(
+            self._review(), "block", "critical", False, "medium")
+        assert "COLD_REVIEW_OVERRIDE_REASON" in outcome["reason"]
+
+    def test_infra_block_includes_override_hint(self):
+        outcome = engine.apply_policy(
+            self._infra_review(), "block", "critical", False, "medium")
+        assert "COLD_REVIEW_OVERRIDE_REASON" in outcome["reason"]
+
+    def test_pass_no_override_hint(self):
+        review = {"pass": True, "review_status": "completed",
+                  "issues": [], "summary": "ok"}
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        assert "OVERRIDE_REASON" not in outcome["reason"]
+
+
+class TestHistoryOverrideReason:
+
+    def test_log_with_override_reason(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        engine.HISTORY_FILE = str(history)
+        engine.log_to_history("/tmp", "block", "opus", "overridden",
+                              override_reason="false_positive")
+        entry = json.loads(history.read_text().strip())
+        assert entry["override_reason"] == "false_positive"
+
+    def test_log_without_override_reason(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        engine.HISTORY_FILE = str(history)
+        engine.log_to_history("/tmp", "block", "opus", "passed")
+        entry = json.loads(history.read_text().strip())
+        assert "override_reason" not in entry
+
+    def test_log_empty_override_reason_not_written(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        engine.HISTORY_FILE = str(history)
+        engine.log_to_history("/tmp", "block", "opus", "overridden",
+                              override_reason="")
+        entry = json.loads(history.read_text().strip())
+        assert "override_reason" not in entry
+
+
+class TestAggregateOverrides:
+
+    def _write_entry(self, path, state, override_reason=None):
+        entry = {"version": 2, "state": state, "mode": "block", "model": "opus"}
+        if override_reason is not None:
+            entry["override_reason"] = override_reason
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def test_empty_history(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        history.write_text("")
+        result = engine.aggregate_overrides(str(history))
+        assert result["total_overrides"] == 0
+        assert result["reasons"] == []
+        assert result["recent"] == []
+
+    def test_counts_overrides(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        self._write_entry(str(history), "overridden", "false_positive")
+        self._write_entry(str(history), "passed")
+        self._write_entry(str(history), "overridden", "acceptable_risk")
+        result = engine.aggregate_overrides(str(history))
+        assert result["total_overrides"] == 2
+
+    def test_groups_by_reason(self, tmp_path):
+        history = tmp_path / "history.jsonl"
+        self._write_entry(str(history), "overridden", "false_positive")
+        self._write_entry(str(history), "overridden", "false_positive")
+        self._write_entry(str(history), "overridden", "acceptable_risk")
+        result = engine.aggregate_overrides(str(history))
+        assert result["reasons"][0] == {"reason": "false_positive", "count": 2}
+        assert result["reasons"][1] == {"reason": "acceptable_risk", "count": 1}

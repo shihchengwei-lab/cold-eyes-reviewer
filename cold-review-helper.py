@@ -117,7 +117,7 @@ def parse_review():
 def log_review():
     """Append review to history file. Reads review JSON from stdin.
 
-    Args: <cwd> <mode> <model> <state> [file_count] [line_count] [truncated]
+    Args: <cwd> <mode> <model> <state> [file_count] [line_count] [truncated] [override_reason]
 
     State is determined by the shell script after the should-block decision,
     not inferred from the review's pass field.
@@ -129,6 +129,7 @@ def log_review():
     file_count = int(sys.argv[6]) if len(sys.argv) > 6 else 0
     line_count = int(sys.argv[7]) if len(sys.argv) > 7 else 0
     truncated = sys.argv[8].lower() == "true" if len(sys.argv) > 8 else False
+    override_reason = sys.argv[9] if len(sys.argv) > 9 else ""
 
     try:
         review = json.load(sys.stdin)
@@ -149,6 +150,8 @@ def log_review():
         },
         "review": review
     }
+    if override_reason:
+        entry["override_reason"] = override_reason
 
     os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:
@@ -173,7 +176,7 @@ def format_block():
         check = issue.get("check", "")
         verdict = issue.get("verdict", "")
         fix = issue.get("fix", "")
-        hint_part = f" ({line_hint})" if line_hint else ""
+        hint_part = f" (~{line_hint})" if line_hint else ""
         lines.append(f"  - [{severity}]{hint_part} 檢查：{check}")
         lines.append(f"    判決：{verdict}")
         lines.append(f"    指示：{fix}")
@@ -182,12 +185,13 @@ def format_block():
 
 
 def log_state():
-    """Log a non-review state to history. Args: <cwd> <mode> <model> <state> [reason]"""
+    """Log a non-review state to history. Args: <cwd> <mode> <model> <state> [reason] [override_reason]"""
     cwd = sys.argv[2]
     mode = sys.argv[3]
     model = sys.argv[4]
     state = sys.argv[5]
     reason = sys.argv[6] if len(sys.argv) > 6 else ""
+    override_reason = sys.argv[7] if len(sys.argv) > 7 else ""
 
     entry = {
         "version": 2,
@@ -199,6 +203,8 @@ def log_state():
         "reason": reason,
         "review": None
     }
+    if override_reason:
+        entry["override_reason"] = override_reason
 
     os.makedirs(os.path.dirname(HISTORY_FILE), exist_ok=True)
     with open(HISTORY_FILE, "a", encoding="utf-8") as f:

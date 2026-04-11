@@ -14,6 +14,7 @@
 #   COLD_REVIEW_LANGUAGE        — output language (default: 繁體中文（台灣）)
 #   COLD_REVIEW_SCOPE           — diff scope: working (default), staged, head
 #   COLD_REVIEW_ALLOW_ONCE      — set to 1 to bypass block once (logged)
+#   COLD_REVIEW_OVERRIDE_REASON — reason text when overriding with ALLOW_ONCE
 
 set -uo pipefail
 
@@ -30,6 +31,7 @@ THRESHOLD="${COLD_REVIEW_BLOCK_THRESHOLD:-critical}"
 CONFIDENCE="${COLD_REVIEW_CONFIDENCE:-medium}"
 LANGUAGE="${COLD_REVIEW_LANGUAGE:-}"
 SCOPE="${COLD_REVIEW_SCOPE:-working}"
+OVERRIDE_REASON="${COLD_REVIEW_OVERRIDE_REASON:-}"
 
 # Token budget: prefer MAX_TOKENS, fallback to MAX_LINES×4
 if [[ -n "${COLD_REVIEW_MAX_LINES:-}" ]]; then
@@ -91,6 +93,7 @@ trap 'rm -f "$LOCKFILE"' EXIT
 # --- Run engine ---
 ENGINE_ARGS=(run --mode "$MODE" --model "$MODEL" --max-tokens "$MAX_TOKENS" --threshold "$THRESHOLD" --confidence "$CONFIDENCE" --scope "$SCOPE")
 [[ -n "$LANGUAGE" ]] && ENGINE_ARGS+=(--language "$LANGUAGE")
+[[ -n "$OVERRIDE_REASON" ]] && ENGINE_ARGS+=(--override-reason "$OVERRIDE_REASON")
 RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>&2) || true
 
 # --- Release lock early ---

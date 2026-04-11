@@ -52,8 +52,8 @@ Every issue includes severity, confidence, category, file, line_hint, and a thre
 }
 ```
 
-- `schema_version` — output schema version (currently `1`). Consumers can branch on this for forward compatibility.
-- `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain.
+- `schema_version` — output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
+- `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain. Displayed with `~` prefix (e.g., `(~L42)`) to indicate it is an estimate, not a precise location. In block mode, verify the line number before acting on it.
 
 **Severity levels:**
 - `critical` — production crash, data loss, or security breach
@@ -135,6 +135,7 @@ Other scopes:
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |
 | `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head` | Diff scope: all uncommitted / staged only / vs HEAD |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | Set to skip block once (logged as override) |
+| `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override when using ALLOW_ONCE |
 
 ```bash
 # Use sonnet to save tokens
@@ -157,6 +158,22 @@ export COLD_REVIEW_SCOPE=staged
 
 # One-time override when blocked by a false positive
 export COLD_REVIEW_ALLOW_ONCE=1
+export COLD_REVIEW_OVERRIDE_REASON="false_positive"
+```
+
+### Override reasons
+
+When overriding a block, set `COLD_REVIEW_OVERRIDE_REASON` to explain why. Any free text works. Common values:
+
+- `false_positive` — the reviewer flagged something that is not actually a problem
+- `acceptable_risk` — the issue is real but acceptable in this context
+- `unclear` — the reviewer's concern is ambiguous, needs investigation later
+- `infrastructure` — overriding an infra failure, not a review finding
+
+Override reasons are logged to history and can be aggregated:
+
+```bash
+python ~/.claude/scripts/cold_review_engine.py aggregate-overrides
 ```
 
 ### Strategy presets
@@ -187,22 +204,25 @@ export COLD_REVIEW_CONFIDENCE=low
 
 ### Ignore rules
 
-Create `.cold-review-ignore` in your project root to exclude files from review. Uses fnmatch glob patterns:
+**Built-in patterns** (always active, no configuration needed):
 
 ```
-# Lock files
-*.lock
-package-lock.json
-
-# Build output
-dist/*
-build/*
-
-# Minified
-*.min.js
+*.lock  package-lock.json  pnpm-lock.yaml  yarn.lock
+dist/*  build/*  .next/*  coverage/*  vendor/*
+node_modules/*  *.min.js  *.min.css
 ```
 
-Built-in defaults already skip common lock files, build output, and minified files. Project-level patterns are additive.
+**Per-repo patterns:** Create `.cold-review-ignore` in your project root to add project-specific exclusions. Uses fnmatch glob patterns, one per line. Lines starting with `#` are comments. This file lives in the repo, not in `~/.claude/scripts/`.
+
+```
+# Test fixtures
+tests/fixtures/*
+
+# Generated code
+src/generated/*
+```
+
+Per-repo patterns are additive on top of the built-in list. `doctor` check 7 reports whether this file exists (info level, not required).
 
 ### Review prompt
 
@@ -219,7 +239,7 @@ Cold Eyes logs its state to `~/.claude/cold-review-history.jsonl` at every exit 
 | `passed` | Review completed, no issues at or above threshold |
 | `reported` | Review completed with issues, but mode is `report` (no block) |
 | `blocked` | Review completed, issues found at or above threshold, block emitted |
-| `overridden` | Would have blocked, but `COLD_REVIEW_ALLOW_ONCE=1` was set |
+| `overridden` | Would have blocked, but `COLD_REVIEW_ALLOW_ONCE=1` was set. Override reason (if provided via `COLD_REVIEW_OVERRIDE_REASON`) is recorded in history. |
 
 If reviews aren't running, check:
 1. `~/.claude/cold-review-history.jsonl` — look for recent `failed` or `skipped` entries
@@ -252,7 +272,7 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`). Build a dashboard, filter by state, chart trends over time.
+- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`). Build a dashboard, filter by state, chart trends over time. Override entries include `override_reason` when provided.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 
@@ -276,12 +296,20 @@ Outputs a JSON report checking 7 items:
 
 If reviews aren't running, `doctor` is the first thing to check.
 
+### Override aggregation
+
+```bash
+python ~/.claude/scripts/cold_review_engine.py aggregate-overrides
+```
+
+Returns a JSON summary of all override entries in history: total count, reasons grouped by frequency, and recent override entries. Use this to identify false-positive patterns and tune thresholds or prompts.
+
 ## Known limitations
 
 - **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. Periodically archive or truncate it yourself.
 - **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. When truncation causes files to be skipped, block messages include a warning with the count of unreviewed files.
 - **Silent on auth failure.** If your Claude subscription is expired or rate-limited, the review logs a `failed` state. Check stderr or history.
-- **`line_hint` may be inaccurate.** Line references are extracted by the LLM from diff hunk headers. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible.
+- **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
 
 ## License
 
