@@ -15,6 +15,14 @@ SCHEMA_VERSION = 1
 SEVERITY_ORDER = {"critical": 3, "major": 2, "minor": 1}
 CONFIDENCE_ORDER = {"high": 3, "medium": 2, "low": 1}
 
+# Review outcome states — single source of truth for all modules.
+STATE_PASSED = "passed"
+STATE_BLOCKED = "blocked"
+STATE_OVERRIDDEN = "overridden"
+STATE_SKIPPED = "skipped"
+STATE_INFRA_FAILED = "infra_failed"
+STATE_REPORTED = "reported"
+
 BUILTIN_IGNORE = [
     "*.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
     "dist/*", "build/*", ".next/*", "coverage/*", "vendor/*",
@@ -32,4 +40,5 @@ DEPLOY_FILES = [
     "cold_eyes/prompt.py", "cold_eyes/claude.py", "cold_eyes/review.py",
     "cold_eyes/policy.py", "cold_eyes/history.py", "cold_eyes/config.py",
     "cold_eyes/override.py", "cold_eyes/doctor.py",
+    "cold_eyes/schema.py",
 ]

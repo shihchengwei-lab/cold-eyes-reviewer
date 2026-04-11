@@ -3,6 +3,7 @@
 import json
 
 from cold_eyes.constants import SCHEMA_VERSION
+from cold_eyes.schema import validate_review
 
 
 def parse_review_output(raw_json_str):
@@ -30,6 +31,9 @@ def parse_review_output(raw_json_str):
             issue.setdefault("category", "correctness")
             issue.setdefault("file", "unknown")
             issue.setdefault("line_hint", "")
+        ok, errors = validate_review(result)
+        if not ok:
+            result["validation_errors"] = errors
         return result
     except Exception as e:
         return {

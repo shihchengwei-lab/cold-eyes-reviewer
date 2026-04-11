@@ -62,9 +62,13 @@ Every issue includes severity, confidence, category, file, line_hint, and a thre
 
 ## Install
 
-### 1. Copy scripts
+### 1. Deploy scripts
 
 ```bash
+# Option A: use the install script
+bash install.sh
+
+# Option B: manual copy
 mkdir -p ~/.claude/scripts
 cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/
 ```
@@ -89,7 +93,15 @@ cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/
 }
 ```
 
-### 3. Verify installation
+### 3. Initialize repo (optional)
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py init
+```
+
+Creates default `.cold-review-policy.yml` and `.cold-review-ignore` in the current repo if they don't exist.
+
+### 4. Verify installation
 
 ```bash
 python ~/.claude/scripts/cold_eyes/cli.py doctor
@@ -97,7 +109,9 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 
 Checks Python, Git, Claude CLI, deploy files, hook config, and current repo. All checks should show `"ok"`. `"info"` items are optional hints.
 
-### 4. Done
+Use `doctor --fix` to auto-repair safe issues (e.g. remove legacy helper).
+
+### 5. Done
 
 Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will review them.
 
@@ -303,7 +317,7 @@ If reviews aren't running, check:
 ## Requirements
 
 - Claude Code CLI with an active subscription
-- Python 3.x
+- Python 3.10+
 - Git
 - Bash (Git Bash on Windows)
 
@@ -311,9 +325,11 @@ If reviews aren't running, check:
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package: engine, git, filter, policy, review, history, doctor, CLI, model adapter, override token |
-| `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls `cold_eyes/cli.py` |
+| `cold_eyes/` | Python package: engine, git, filter, policy, review, schema, history, doctor, CLI, model adapter, override token |
+| `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
+| `pyproject.toml` | Package metadata, CLI entry point, ruff/lint config |
+| `install.sh` / `uninstall.sh` | Deploy to / remove from `~/.claude/scripts/` |
 | `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
 | `.cold-review-policy.yml` | Per-repo configuration defaults (optional, placed in project root) |
 
@@ -379,13 +395,43 @@ Returns a JSON summary of review activity from history:
 - **`--by-reason`** — override reasons grouped by frequency
 - **`--by-path`** — per-repo breakdown with total, blocked, and overridden counts (sorted by blocked descending)
 
+### Quality report
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py quality-report
+python ~/.claude/scripts/cold_eyes/cli.py quality-report --last 7d
+```
+
+Extended analysis: block rate, override rate, infra failure rate, top noisy paths, and top issue categories.
+
+### History management
+
+```bash
+# Keep only last 90 days
+python ~/.claude/scripts/cold_eyes/cli.py history-prune --keep-days 90
+
+# Keep only last 500 entries
+python ~/.claude/scripts/cold_eyes/cli.py history-prune --keep-entries 500
+
+# Archive entries before a date
+python ~/.claude/scripts/cold_eyes/cli.py history-archive --before 2026-01-01
+```
+
 ## Known limitations
 
-- **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. Periodically archive or truncate it yourself.
+- **Review history is append-only.** Use `history-prune` and `history-archive` to manage growth (see Diagnostics).
 - **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. Truncation metadata tracks partial files, budget-skipped files, binary files, and unreadable files separately. Block messages include a warning listing what was not reviewed.
 - **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. Check history for patterns.
 - **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
 - **Windows (Git Bash) lock caveats.** The atomic `mkdir` lock and `kill -0` stale PID check work in Git Bash but are less reliable than on native Unix. Concurrent Claude Code sessions on Windows may occasionally bypass the lock.
+
+## Uninstall
+
+```bash
+bash uninstall.sh
+```
+
+Then remove the Stop hook entry from `~/.claude/settings.json`.
 
 ## License
 

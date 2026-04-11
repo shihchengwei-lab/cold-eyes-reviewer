@@ -1,5 +1,31 @@
 # Changelog
 
+## v1.1.0 — Trust & Maturity
+
+9-patch quality push (P0 trust, P1 publishability, P2 long-term ops). 225 tests (was 197).
+
+### Trust (P0)
+
+- **Shell fail-closed** — Empty output, invalid JSON, and missing action field no longer silently pass. Block mode emits infra failure decision; report mode warns to stderr.
+- **Review state constants** — All 6 states (`passed`, `blocked`, `overridden`, `skipped`, `infra_failed`, `reported`) defined once in `constants.py`, consumed everywhere. No more hardcoded strings.
+- **Shell parser integration tests** — 12 new tests extract and run the inline parser from `cold-review.sh` with controlled inputs.
+
+### Publishability (P1)
+
+- **`pyproject.toml`** — Package metadata, `cold-eyes` CLI entry point, ruff lint config.
+- **`install.sh` / `uninstall.sh`** — Scripted deploy and removal.
+- **`init` subcommand** — Creates default `.cold-review-policy.yml` and `.cold-review-ignore` in current repo.
+- **`doctor --fix`** — Auto-repairs safe issues (e.g. removes legacy helper).
+- **CI matrix** — GitHub Actions tests on 3 OS (ubuntu, macos, windows) x 2 Python (3.10, 3.12) + ruff lint + shellcheck.
+- **Version bump** — `__version__` set to `1.1.0`.
+
+### Long-term ops (P2)
+
+- **`history-prune`** — Remove old entries by `--keep-days` or `--keep-entries`.
+- **`history-archive`** — Move entries before a date to a separate archive file.
+- **Formal review schema** — `cold_eyes/schema.py` defines required fields, valid values, and `validate_review()`. Parser now attaches `validation_errors` to malformed output. 16 schema regression tests.
+- **`quality-report`** — Block rate, override rate, infra failure rate, top noisy paths, top issue categories.
+
 ## v1.0.0 — Stable Release
 
 Remove deprecated `helper.py` (shell no longer uses it). No functional changes from v0.11.0. This version marks API stability: history JSONL v2 schema, CLI subcommands, env vars, policy file keys, and hook JSON output are now stable.

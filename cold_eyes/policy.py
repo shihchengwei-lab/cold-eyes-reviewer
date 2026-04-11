@@ -1,6 +1,9 @@
 """Policy enforcement: confidence filter, block decision, formatting."""
 
-from cold_eyes.constants import SEVERITY_ORDER, CONFIDENCE_ORDER
+from cold_eyes.constants import (
+    SEVERITY_ORDER, CONFIDENCE_ORDER,
+    STATE_PASSED, STATE_BLOCKED, STATE_OVERRIDDEN, STATE_INFRA_FAILED, STATE_REPORTED,
+)
 
 
 def filter_by_confidence(issues, min_confidence="medium"):
@@ -22,7 +25,10 @@ def format_block_reason(review, truncated=False, skipped_count=0, language=None)
     use_zh = _is_chinese(language)
     if use_zh:
         check_l, verdict_l, fix_l = "\u6aa2\u67e5", "\u5224\u6c7a", "\u6307\u793a"
-        trunc_msg = f"\u26a0 \u5be9\u67e5\u4e0d\u5b8c\u6574\uff1adiff \u8d85\u904e token \u9810\u7b97\uff0c{skipped_count} \u500b\u6a94\u6848\u672a\u5be9\u67e5\u3002"
+        trunc_msg = (
+            f"\u26a0 \u5be9\u67e5\u4e0d\u5b8c\u6574\uff1adiff \u8d85\u904e token \u9810\u7b97\uff0c"
+            f"{skipped_count} \u500b\u6a94\u6848\u672a\u5be9\u67e5\u3002"
+        )
     else:
         check_l, verdict_l, fix_l = "Check", "Verdict", "Fix"
         trunc_msg = f"\u26a0 Incomplete review: diff exceeded token budget, {skipped_count} files not reviewed."
@@ -73,13 +79,13 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
                 reason_suffix = f" [{override_reason}]" if override_reason else ""
                 return {
                     "action": "pass",
-                    "state": "overridden",
+                    "state": STATE_OVERRIDDEN,
                     "reason": override_reason,
                     "display": f"cold-review: override \u2014 infra failure bypass{reason_suffix}",
                 }
             return {
                 "action": "block",
-                "state": "infra_failed",
+                "state": STATE_INFRA_FAILED,
                 "reason": (
                     f"Cold Eyes Review \u2014 infrastructure failure: {error_detail}.\n"
                     f"{override_instruction}"
@@ -89,7 +95,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
         # report mode — log but pass; state is infra_failed (consistent)
         return {
             "action": "pass",
-            "state": "infra_failed",
+            "state": STATE_INFRA_FAILED,
             "reason": error_detail,
             "display": f"cold-review: report logged (infra failure: {error_detail})",
         }
@@ -109,7 +115,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
     effective_pass = len(filtered_issues) == 0
 
     if mode == "report":
-        state = "reported" if not effective_pass else "passed"
+        state = STATE_REPORTED if not effective_pass else STATE_PASSED
         return {
             "action": "pass",
             "state": state,
@@ -123,7 +129,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
             reason_suffix = f" [{override_reason}]" if override_reason else ""
             return {
                 "action": "pass",
-                "state": "overridden",
+                "state": STATE_OVERRIDDEN,
                 "reason": override_reason,
                 "display": f"cold-review: override \u2014 block skipped{reason_suffix}",
             }
@@ -131,7 +137,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
         block_reason += f"\n\n{override_instruction}"
         return {
             "action": "block",
-            "state": "blocked",
+            "state": STATE_BLOCKED,
             "reason": block_reason,
             "display": f"cold-review: blocking (issues at or above {threshold})",
             "truncated": truncated,
@@ -140,7 +146,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
 
     return {
         "action": "pass",
-        "state": "passed",
+        "state": STATE_PASSED,
         "reason": "",
         "display": "cold-review: pass",
         "truncated": truncated,

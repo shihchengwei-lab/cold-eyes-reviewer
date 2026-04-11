@@ -13,14 +13,19 @@ import argparse
 import json
 
 from cold_eyes.engine import run
-from cold_eyes.doctor import run_doctor
-from cold_eyes.history import aggregate_overrides, compute_stats
+from cold_eyes.doctor import run_doctor, run_doctor_fix, run_init
+from cold_eyes.history import (
+    aggregate_overrides, compute_stats, prune_history, archive_history, quality_report,
+)
 from cold_eyes.override import arm_override
 
 
-if __name__ == "__main__":
+def main():
     parser = argparse.ArgumentParser(description="Cold Eyes Reviewer engine")
-    parser.add_argument("command", choices=["run", "doctor", "aggregate-overrides", "stats", "arm-override"])
+    parser.add_argument("command", choices=[
+        "run", "doctor", "init", "aggregate-overrides", "stats", "quality-report",
+        "arm-override", "history-prune", "history-archive",
+    ])
     parser.add_argument("--mode", default=None)
     parser.add_argument("--model", default=None)
     parser.add_argument("--max-tokens", type=int, default=None)
@@ -42,15 +47,32 @@ if __name__ == "__main__":
                         help="Override reason for arm-override")
     parser.add_argument("--ttl", type=int, default=10,
                         help="Token TTL in minutes for arm-override (default: 10)")
+    parser.add_argument("--fix", action="store_true",
+                        help="Auto-fix safe issues (for doctor command)")
+    parser.add_argument("--keep-days", type=int, default=None,
+                        help="Keep entries from last N days (for history-prune)")
+    parser.add_argument("--keep-entries", type=int, default=None,
+                        help="Keep most recent N entries (for history-prune)")
+    parser.add_argument("--before", default=None,
+                        help="Archive entries before date YYYY-MM-DD (for history-archive)")
     args = parser.parse_args()
 
-    if args.command == "doctor":
-        result = run_doctor()
+    if args.command == "init":
+        result = run_init()
+    elif args.command == "doctor":
+        result = run_doctor_fix() if args.fix else run_doctor()
     elif args.command == "aggregate-overrides":
         result = aggregate_overrides()
     elif args.command == "stats":
         result = compute_stats(last=args.last, by_reason=args.by_reason,
                                by_path=args.by_path)
+    elif args.command == "quality-report":
+        result = quality_report(last=args.last)
+    elif args.command == "history-prune":
+        result = prune_history(keep_days=args.keep_days,
+                               keep_entries=args.keep_entries)
+    elif args.command == "history-archive":
+        result = archive_history(before=args.before)
     elif args.command == "arm-override":
         from cold_eyes.git import git_cmd, GitCommandError
         try:
@@ -66,3 +88,7 @@ if __name__ == "__main__":
                      scope=args.scope, base=args.base,
                      override_reason=args.override_reason)
     print(json.dumps(result, ensure_ascii=False))
+
+
+if __name__ == "__main__":
+    main()

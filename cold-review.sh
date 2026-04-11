@@ -100,13 +100,36 @@ RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>/dev/null) || true
 release_lock
 trap - EXIT
 
-# --- Parse result and act ---
-[[ -z "$RESULT" ]] && exit 0
-
+# --- Parse result and act (fail-closed) ---
+# Any failure to get valid engine output is an infrastructure failure.
+# Block mode: emit block decision.  Report mode: warn to stderr only.
 echo "$RESULT" | python -c "
 import json, sys
-d = json.load(sys.stdin)
-action = d.get('action', 'pass')
+
+mode = '$MODE'
+raw = sys.stdin.read().strip()
+
+def infra_fail(detail):
+    msg = f'Cold Eyes Review — infrastructure failure: {detail}'
+    print(f'cold-review: infrastructure failure — {detail}', file=sys.stderr)
+    if mode == 'block':
+        print(json.dumps({'decision': 'block', 'reason': msg}))
+
+if not raw:
+    infra_fail('engine produced no output')
+    sys.exit(0)
+
+try:
+    d = json.loads(raw)
+except Exception:
+    infra_fail('invalid JSON from engine')
+    sys.exit(0)
+
+if not isinstance(d, dict) or 'action' not in d:
+    infra_fail('malformed engine output (missing action)')
+    sys.exit(0)
+
+action = d['action']
 display = d.get('display', '')
 reason = d.get('reason', '')
 print(display, file=sys.stderr)

@@ -86,7 +86,7 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
 
     # 6. Git repo
     try:
-        git_dir = git_cmd("rev-parse", "--git-dir")
+        git_cmd("rev-parse", "--git-dir")
         checks.append({"name": "git_repo", "status": "ok", "detail": "in git repo"})
     except GitCommandError:
         checks.append({"name": "git_repo", "status": "fail",
@@ -155,3 +155,83 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
 
     all_ok = all(c["status"] != "fail" for c in checks)
     return {"action": "doctor", "checks": checks, "all_ok": all_ok}
+
+
+def run_doctor_fix(scripts_dir=None, repo_root=None):
+    """Auto-fix issues that can be safely repaired. Return report dict.
+
+    Fixable:
+      - legacy_helper: remove cold-review-helper.py from scripts_dir
+    Not auto-fixed (manual decision required):
+      - deploy_files: re-run install.sh
+      - settings_hook: edit settings.json manually
+      - shell_version: re-run install.sh
+    """
+    if scripts_dir is None:
+        scripts_dir = os.path.join(os.path.expanduser("~"), ".claude", "scripts")
+    if repo_root is None:
+        try:
+            repo_root = git_cmd("rev-parse", "--show-toplevel")
+        except GitCommandError:
+            repo_root = ""
+
+    fixed = []
+    skipped = []
+
+    # Fix: remove legacy helper
+    helper_path = os.path.join(scripts_dir, "cold-review-helper.py")
+    if os.path.isfile(helper_path):
+        os.remove(helper_path)
+        fixed.append("legacy_helper: removed cold-review-helper.py")
+
+    # Report: items that need manual action
+    report = run_doctor(scripts_dir=scripts_dir, repo_root=repo_root)
+    for check in report["checks"]:
+        if check["status"] == "fail" and check["name"] not in ("legacy_helper",):
+            skipped.append(f"{check['name']}: {check['detail']} (manual fix required)")
+
+    return {"action": "doctor-fix", "fixed": fixed, "skipped": skipped,
+            "doctor": report}
+
+
+def run_init(repo_root=None):
+    """Initialize Cold Eyes Reviewer in a git repository.
+
+    Creates default policy and ignore files if they don't exist.
+    Returns report dict.
+    """
+    if repo_root is None:
+        try:
+            repo_root = git_cmd("rev-parse", "--show-toplevel")
+        except GitCommandError:
+            return {"action": "init", "ok": False,
+                    "error": "not in a git repository"}
+
+    created = []
+
+    # Create default policy file
+    policy_path = os.path.join(repo_root, POLICY_FILENAME)
+    if not os.path.isfile(policy_path):
+        with open(policy_path, "w", encoding="utf-8") as f:
+            f.write(
+                "# Cold Eyes Reviewer — per-repo configuration\n"
+                "# See README.md for all options.\n"
+                "mode: block\n"
+                "block_threshold: critical\n"
+                "confidence: medium\n"
+            )
+        created.append(POLICY_FILENAME)
+
+    # Create default ignore file
+    ignore_path = os.path.join(repo_root, ".cold-review-ignore")
+    if not os.path.isfile(ignore_path):
+        with open(ignore_path, "w", encoding="utf-8") as f:
+            f.write(
+                "# Cold Eyes Reviewer — additional files to skip\n"
+                "# One pattern per line (glob syntax).\n"
+                "# Built-in ignores (*.lock, dist/*, node_modules/*, etc.) are always active.\n"
+            )
+        created.append(".cold-review-ignore")
+
+    return {"action": "init", "ok": True, "repo_root": repo_root,
+            "created": created}

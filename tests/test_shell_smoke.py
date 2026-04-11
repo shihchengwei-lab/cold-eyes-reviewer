@@ -103,6 +103,123 @@ class TestReadmeSanity:
 # PATCH 9 — Shell shim hardening checks
 # ===========================================================================
 
+# ===========================================================================
+# Shell fail-closed verification (Patch 1 + 4)
+# ===========================================================================
+
+class TestShellFailClosedPatterns:
+    """Static verification that shell script has no silent-pass patterns."""
+
+    def test_no_silent_pass_on_empty_output(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert '[[ -z "$RESULT" ]] && exit 0' not in content
+
+    def test_has_json_error_handling(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "except" in content
+
+    def test_no_default_pass_on_missing_action(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "d.get('action', 'pass')" not in content
+
+    def test_has_infra_failure_handler(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "infra_fail" in content
+
+
+class TestShellParserFailClosed:
+    """Run the shell's inline Python parser with controlled inputs.
+
+    Extracts the parser code from cold-review.sh, substitutes $MODE,
+    and verifies fail-closed behaviour for each failure scenario.
+    """
+
+    @staticmethod
+    def _extract_parser_code():
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            lines = f.readlines()
+        in_block = False
+        in_python = False
+        parser_lines = []
+        for line in lines:
+            if "Parse result and act" in line:
+                in_block = True
+                continue
+            if in_block and 'python -c "' in line:
+                in_python = True
+                continue
+            if in_python:
+                if line.strip() == '"':
+                    break
+                parser_lines.append(line)
+        assert parser_lines, "Failed to extract parser code from shell script"
+        return "".join(parser_lines)
+
+    def _run_parser(self, mode, stdin_data):
+        code = self._extract_parser_code().replace("'$MODE'", f"'{mode}'")
+        return subprocess.run(
+            ["python", "-c", code],
+            input=stdin_data, capture_output=True, text=True, timeout=10,
+        )
+
+    # --- Block mode: must block on failures ---
+
+    def test_block_on_empty_output(self):
+        r = self._run_parser("block", "")
+        assert "infrastructure failure" in r.stderr
+        out = json.loads(r.stdout)
+        assert out["decision"] == "block"
+
+    def test_block_on_invalid_json(self):
+        r = self._run_parser("block", "not json at all")
+        assert "infrastructure failure" in r.stderr
+        out = json.loads(r.stdout)
+        assert out["decision"] == "block"
+
+    def test_block_on_missing_action(self):
+        r = self._run_parser("block", json.dumps({"display": "x"}))
+        assert "infrastructure failure" in r.stderr
+        out = json.loads(r.stdout)
+        assert out["decision"] == "block"
+
+    def test_block_on_non_dict_json(self):
+        r = self._run_parser("block", json.dumps([1, 2, 3]))
+        assert "infrastructure failure" in r.stderr
+        out = json.loads(r.stdout)
+        assert out["decision"] == "block"
+
+    # --- Report mode: warn but do not block ---
+
+    def test_report_warns_on_empty_output(self):
+        r = self._run_parser("report", "")
+        assert "infrastructure failure" in r.stderr
+        assert r.stdout.strip() == ""
+
+    def test_report_warns_on_invalid_json(self):
+        r = self._run_parser("report", "not json")
+        assert "infrastructure failure" in r.stderr
+        assert r.stdout.strip() == ""
+
+    # --- Normal operation ---
+
+    def test_pass_action_no_block_output(self):
+        data = json.dumps({"action": "pass", "display": "cold-review: pass", "reason": ""})
+        r = self._run_parser("block", data)
+        assert "cold-review: pass" in r.stderr
+        assert r.stdout.strip() == ""
+
+    def test_block_action_emits_decision(self):
+        data = json.dumps({"action": "block", "display": "blocking", "reason": "test reason"})
+        r = self._run_parser("block", data)
+        out = json.loads(r.stdout)
+        assert out["decision"] == "block"
+        assert out["reason"] == "test reason"
+
+
 class TestShellShimIntegrity:
     """Verify cold-review.sh has no legacy patterns."""
 

@@ -2,7 +2,7 @@
 
 import os
 
-from cold_eyes.constants import SCHEMA_VERSION
+from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED
 from cold_eyes.git import git_cmd, collect_files, build_diff, GitCommandError, ConfigError
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.prompt import build_prompt_text
@@ -93,14 +93,14 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        scope=scope, override_reason=override_reason)
         return outcome
     if not all_files:
-        log_to_history(cwd, mode, model, "skipped", "no changes",
+        log_to_history(cwd, mode, model, STATE_SKIPPED, "no changes",
                        min_confidence=min_confidence, scope=scope)
         return _skip("no changes")
 
     # 2. Filter
     filtered = filter_file_list(all_files, ignore_file)
     if not filtered:
-        log_to_history(cwd, mode, model, "skipped", "all files ignored",
+        log_to_history(cwd, mode, model, STATE_SKIPPED, "all files ignored",
                        min_confidence=min_confidence, scope=scope)
         return _skip("all files ignored")
 
@@ -127,7 +127,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                      + diff_meta["skipped_binary"] + diff_meta["skipped_unreadable"])
 
     if not diff_text.strip():
-        log_to_history(cwd, mode, model, "skipped", "no diff content",
+        log_to_history(cwd, mode, model, STATE_SKIPPED, "no diff content",
                        min_confidence=min_confidence, scope=scope)
         return _skip("no diff content")
 
@@ -187,7 +187,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
 def _skip(reason):
     return {
         "action": "pass",
-        "state": "skipped",
+        "state": STATE_SKIPPED,
         "reason": reason,
         "display": f"cold-review: skipped ({reason})",
     }

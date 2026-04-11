@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "cold-eyes-reviewer"
+dynamic = ["version"]
+description = "Zero-context code review engine for Claude Code Stop hooks"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+
+[project.scripts]
+cold-eyes = "cold_eyes.cli:main"
+
+[tool.setuptools.dynamic]
+version = {attr = "cold_eyes.__version__"}
+
+[tool.setuptools.packages.find]
+include = ["cold_eyes*"]
+
+[tool.ruff]
+line-length = 130
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = ["E741"]
+
+[tool.ruff.lint.per-file-ignores]
+"cold_eyes/cli.py" = ["E402"]
+"cold_eyes/git.py" = ["F401"]
+"tests/*" = ["F401", "F841"]

@@ -12,6 +12,10 @@ import pytest
 # ---------------------------------------------------------------------------
 
 from cold_eyes import constants
+from cold_eyes.constants import (
+    STATE_PASSED, STATE_BLOCKED, STATE_OVERRIDDEN, STATE_SKIPPED,
+    STATE_INFRA_FAILED, STATE_REPORTED,
+)
 from cold_eyes import engine as _engine_mod
 from cold_eyes import git as _git_mod
 from cold_eyes.review import parse_review_output
@@ -125,18 +129,18 @@ class TestApplyPolicyInfraFailure:
     def test_block_mode_blocks_on_infra_failure(self):
         outcome = engine.apply_policy(self._infra_review(), "block", "critical", False, "medium")
         assert outcome["action"] == "block"
-        assert outcome["state"] == "infra_failed"
+        assert outcome["state"] == STATE_INFRA_FAILED
         assert "arm-override" in outcome["reason"]
 
     def test_report_mode_passes_on_infra_failure(self):
         outcome = engine.apply_policy(self._infra_review(), "report", "critical", False, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == "infra_failed"
+        assert outcome["state"] == STATE_INFRA_FAILED
 
     def test_override_bypasses_infra_block(self):
         outcome = engine.apply_policy(self._infra_review(), "block", "critical", True, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == "overridden"
+        assert outcome["state"] == STATE_OVERRIDDEN
 
     def test_infra_block_includes_error_detail(self):
         outcome = engine.apply_policy(
@@ -161,17 +165,17 @@ class TestApplyPolicyReview:
     def test_critical_blocks_at_critical_threshold(self):
         outcome = engine.apply_policy(self._review("critical"), "block", "critical", False, "medium")
         assert outcome["action"] == "block"
-        assert outcome["state"] == "blocked"
+        assert outcome["state"] == STATE_BLOCKED
 
     def test_major_does_not_block_at_critical_threshold(self):
         outcome = engine.apply_policy(self._review("major"), "block", "critical", False, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == "passed"
+        assert outcome["state"] == STATE_PASSED
 
     def test_major_blocks_at_major_threshold(self):
         outcome = engine.apply_policy(self._review("major"), "block", "major", False, "medium")
         assert outcome["action"] == "block"
-        assert outcome["state"] == "blocked"
+        assert outcome["state"] == STATE_BLOCKED
 
     def test_minor_never_blocks(self):
         outcome = engine.apply_policy(self._review("minor"), "block", "critical", False, "medium")
@@ -182,12 +186,12 @@ class TestApplyPolicyReview:
     def test_override_skips_block(self):
         outcome = engine.apply_policy(self._review("critical"), "block", "critical", True, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == "overridden"
+        assert outcome["state"] == STATE_OVERRIDDEN
 
     def test_report_mode_never_blocks(self):
         outcome = engine.apply_policy(self._review("critical"), "report", "critical", False, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == "reported"
+        assert outcome["state"] == STATE_REPORTED
 
     def test_report_mode_pass_true_gives_passed_state(self):
         review = {
@@ -195,7 +199,7 @@ class TestApplyPolicyReview:
             "issues": [], "summary": "ok",
         }
         outcome = engine.apply_policy(review, "report", "critical", False, "medium")
-        assert outcome["state"] == "passed"
+        assert outcome["state"] == STATE_PASSED
 
     def test_no_issues_passes(self):
         review = {
@@ -204,7 +208,7 @@ class TestApplyPolicyReview:
         }
         outcome = engine.apply_policy(review, "block", "critical", False, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == "passed"
+        assert outcome["state"] == STATE_PASSED
 
 
 # ===========================================================================
@@ -451,14 +455,14 @@ class TestHistory:
         constants.HISTORY_FILE = str(history)
         try:
             review = {"pass": True, "review_status": "completed", "issues": [], "summary": "ok"}
-            engine.log_to_history("/tmp", "block", "opus", "passed",
+            engine.log_to_history("/tmp", "block", "opus", STATE_PASSED,
                                  review=review, file_count=3, line_count=100,
                                  truncated=False, token_count=800)
             lines = history.read_text().strip().split("\n")
             assert len(lines) == 1
             entry = json.loads(lines[0])
             assert entry["version"] == 2
-            assert entry["state"] == "passed"
+            assert entry["state"] == STATE_PASSED
             assert entry["diff_stats"]["tokens"] == 800
             assert entry["review"]["pass"] is True
         finally:
@@ -469,10 +473,10 @@ class TestHistory:
         original = engine.HISTORY_FILE
         constants.HISTORY_FILE = str(history)
         try:
-            engine.log_to_history("/tmp", "block", "opus", "infra_failed",
+            engine.log_to_history("/tmp", "block", "opus", STATE_INFRA_FAILED,
                                  reason="claude exit 1")
             entry = json.loads(history.read_text().strip())
-            assert entry["state"] == "infra_failed"
+            assert entry["state"] == STATE_INFRA_FAILED
             assert entry["reason"] == "claude exit 1"
             assert entry["review"] is None
         finally:
@@ -484,7 +488,7 @@ class TestHistory:
         constants.HISTORY_FILE = str(history)
         try:
             review = {"pass": True, "review_status": "completed", "issues": [], "summary": "ok"}
-            engine.log_to_history("/tmp", "block", "opus", "passed",
+            engine.log_to_history("/tmp", "block", "opus", STATE_PASSED,
                                  review=review, file_count=3, line_count=100,
                                  truncated=False, token_count=800,
                                  min_confidence="high")
@@ -498,7 +502,7 @@ class TestHistory:
         original = engine.HISTORY_FILE
         constants.HISTORY_FILE = str(history)
         try:
-            engine.log_to_history("/tmp", "block", "opus", "skipped",
+            engine.log_to_history("/tmp", "block", "opus", STATE_SKIPPED,
                                  reason="no changes", min_confidence="low")
             entry = json.loads(history.read_text().strip())
             assert entry["min_confidence"] == "low"
@@ -841,7 +845,7 @@ class TestHistoryScope:
     def test_log_history_includes_scope(self, tmp_path):
         history = tmp_path / "history.jsonl"
         constants.HISTORY_FILE = str(history)
-        engine.log_to_history("/tmp", "block", "opus", "passed",
+        engine.log_to_history("/tmp", "block", "opus", STATE_PASSED,
                               min_confidence="medium", scope="staged")
         entry = json.loads(history.read_text().strip())
         assert entry["scope"] == "staged"
@@ -849,7 +853,7 @@ class TestHistoryScope:
     def test_log_history_default_scope(self, tmp_path):
         history = tmp_path / "history.jsonl"
         constants.HISTORY_FILE = str(history)
-        engine.log_to_history("/tmp", "block", "opus", "passed")
+        engine.log_to_history("/tmp", "block", "opus", STATE_PASSED)
         entry = json.loads(history.read_text().strip())
         assert entry["scope"] == "working"
 
@@ -941,14 +945,14 @@ class TestSchemaVersion:
         constants.HISTORY_FILE = str(history)
         review = {"schema_version": 1, "pass": True, "review_status": "completed",
                   "issues": [], "summary": "ok"}
-        engine.log_to_history("/tmp", "block", "opus", "passed", review=review)
+        engine.log_to_history("/tmp", "block", "opus", STATE_PASSED, review=review)
         entry = json.loads(history.read_text().strip())
         assert entry["schema_version"] == 1
 
     def test_history_state_log_includes_schema_version(self, tmp_path):
         history = tmp_path / "history.jsonl"
         constants.HISTORY_FILE = str(history)
-        engine.log_to_history("/tmp", "block", "opus", "skipped", reason="no changes")
+        engine.log_to_history("/tmp", "block", "opus", STATE_SKIPPED, reason="no changes")
         entry = json.loads(history.read_text().strip())
         assert entry["schema_version"] == engine.SCHEMA_VERSION
 
@@ -1026,7 +1030,7 @@ class TestHistoryOverrideReason:
     def test_log_with_override_reason(self, tmp_path):
         history = tmp_path / "history.jsonl"
         constants.HISTORY_FILE = str(history)
-        engine.log_to_history("/tmp", "block", "opus", "overridden",
+        engine.log_to_history("/tmp", "block", "opus", STATE_OVERRIDDEN,
                               override_reason="false_positive")
         entry = json.loads(history.read_text().strip())
         assert entry["override_reason"] == "false_positive"
@@ -1034,14 +1038,14 @@ class TestHistoryOverrideReason:
     def test_log_without_override_reason(self, tmp_path):
         history = tmp_path / "history.jsonl"
         constants.HISTORY_FILE = str(history)
-        engine.log_to_history("/tmp", "block", "opus", "passed")
+        engine.log_to_history("/tmp", "block", "opus", STATE_PASSED)
         entry = json.loads(history.read_text().strip())
         assert "override_reason" not in entry
 
     def test_log_empty_override_reason_not_written(self, tmp_path):
         history = tmp_path / "history.jsonl"
         constants.HISTORY_FILE = str(history)
-        engine.log_to_history("/tmp", "block", "opus", "overridden",
+        engine.log_to_history("/tmp", "block", "opus", STATE_OVERRIDDEN,
                               override_reason="")
         entry = json.loads(history.read_text().strip())
         assert "override_reason" not in entry
@@ -1066,17 +1070,17 @@ class TestAggregateOverrides:
 
     def test_counts_overrides(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        self._write_entry(str(history), "overridden", "false_positive")
-        self._write_entry(str(history), "passed")
-        self._write_entry(str(history), "overridden", "acceptable_risk")
+        self._write_entry(str(history), STATE_OVERRIDDEN, "false_positive")
+        self._write_entry(str(history), STATE_PASSED)
+        self._write_entry(str(history), STATE_OVERRIDDEN, "acceptable_risk")
         result = engine.aggregate_overrides(str(history))
         assert result["total_overrides"] == 2
 
     def test_groups_by_reason(self, tmp_path):
         history = tmp_path / "history.jsonl"
-        self._write_entry(str(history), "overridden", "false_positive")
-        self._write_entry(str(history), "overridden", "false_positive")
-        self._write_entry(str(history), "overridden", "acceptable_risk")
+        self._write_entry(str(history), STATE_OVERRIDDEN, "false_positive")
+        self._write_entry(str(history), STATE_OVERRIDDEN, "false_positive")
+        self._write_entry(str(history), STATE_OVERRIDDEN, "acceptable_risk")
         result = engine.aggregate_overrides(str(history))
         assert result["reasons"][0] == {"reason": "false_positive", "count": 2}
         assert result["reasons"][1] == {"reason": "acceptable_risk", "count": 1}
@@ -1116,19 +1120,19 @@ class TestComputeStats:
 
     def test_state_counts(self, tmp_path):
         h = str(tmp_path / "history.jsonl")
-        self._write_entry(h, "passed")
-        self._write_entry(h, "passed")
-        self._write_entry(h, "blocked")
-        self._write_entry(h, "overridden", override_reason="fp")
-        self._write_entry(h, "skipped")
-        self._write_entry(h, "infra_failed")
+        self._write_entry(h, STATE_PASSED)
+        self._write_entry(h, STATE_PASSED)
+        self._write_entry(h, STATE_BLOCKED)
+        self._write_entry(h, STATE_OVERRIDDEN, override_reason="fp")
+        self._write_entry(h, STATE_SKIPPED)
+        self._write_entry(h, STATE_INFRA_FAILED)
         result = engine.compute_stats(h)
         assert result["total"] == 6
-        assert result["by_state"]["passed"] == 2
-        assert result["by_state"]["blocked"] == 1
-        assert result["by_state"]["overridden"] == 1
-        assert result["by_state"]["skipped"] == 1
-        assert result["by_state"]["infra_failed"] == 1
+        assert result["by_state"][STATE_PASSED] == 2
+        assert result["by_state"][STATE_BLOCKED] == 1
+        assert result["by_state"][STATE_OVERRIDDEN] == 1
+        assert result["by_state"][STATE_SKIPPED] == 1
+        assert result["by_state"][STATE_INFRA_FAILED] == 1
 
     def test_time_filter_last(self, tmp_path):
         from datetime import datetime, timezone, timedelta
@@ -1136,11 +1140,11 @@ class TestComputeStats:
         old = (datetime.now(timezone.utc) - timedelta(days=10)).strftime(
             "%Y-%m-%dT%H:%M:%SZ")
         recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self._write_entry(h, "passed", timestamp=old)
-        self._write_entry(h, "blocked", timestamp=recent)
+        self._write_entry(h, STATE_PASSED, timestamp=old)
+        self._write_entry(h, STATE_BLOCKED, timestamp=recent)
         result = engine.compute_stats(h, last="7d")
         assert result["total"] == 1
-        assert result["by_state"]["blocked"] == 1
+        assert result["by_state"][STATE_BLOCKED] == 1
         assert result["period"] == "last 7d"
 
     def test_time_filter_hours(self, tmp_path):
@@ -1149,8 +1153,8 @@ class TestComputeStats:
         old = (datetime.now(timezone.utc) - timedelta(hours=48)).strftime(
             "%Y-%m-%dT%H:%M:%SZ")
         recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self._write_entry(h, "passed", timestamp=old)
-        self._write_entry(h, "blocked", timestamp=recent)
+        self._write_entry(h, STATE_PASSED, timestamp=old)
+        self._write_entry(h, STATE_BLOCKED, timestamp=recent)
         result = engine.compute_stats(h, last="24h")
         assert result["total"] == 1
 
@@ -1160,25 +1164,25 @@ class TestComputeStats:
         old = (datetime.now(timezone.utc) - timedelta(weeks=3)).strftime(
             "%Y-%m-%dT%H:%M:%SZ")
         recent = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        self._write_entry(h, "passed", timestamp=old)
-        self._write_entry(h, "blocked", timestamp=recent)
+        self._write_entry(h, STATE_PASSED, timestamp=old)
+        self._write_entry(h, STATE_BLOCKED, timestamp=recent)
         result = engine.compute_stats(h, last="2w")
         assert result["total"] == 1
 
     def test_invalid_last_ignored(self, tmp_path):
         h = str(tmp_path / "history.jsonl")
-        self._write_entry(h, "passed")
-        self._write_entry(h, "blocked")
+        self._write_entry(h, STATE_PASSED)
+        self._write_entry(h, STATE_BLOCKED)
         result = engine.compute_stats(h, last="xyz")
         assert result["total"] == 2
         assert result["period"] == "all"
 
     def test_by_reason(self, tmp_path):
         h = str(tmp_path / "history.jsonl")
-        self._write_entry(h, "overridden", override_reason="false_positive")
-        self._write_entry(h, "overridden", override_reason="false_positive")
-        self._write_entry(h, "overridden", override_reason="acceptable_risk")
-        self._write_entry(h, "passed")
+        self._write_entry(h, STATE_OVERRIDDEN, override_reason="false_positive")
+        self._write_entry(h, STATE_OVERRIDDEN, override_reason="false_positive")
+        self._write_entry(h, STATE_OVERRIDDEN, override_reason="acceptable_risk")
+        self._write_entry(h, STATE_PASSED)
         result = engine.compute_stats(h, by_reason=True)
         assert "by_reason" in result
         assert result["by_reason"][0] == {"reason": "false_positive", "count": 2}
@@ -1186,17 +1190,17 @@ class TestComputeStats:
 
     def test_by_reason_not_included_by_default(self, tmp_path):
         h = str(tmp_path / "history.jsonl")
-        self._write_entry(h, "passed")
+        self._write_entry(h, STATE_PASSED)
         result = engine.compute_stats(h)
         assert "by_reason" not in result
 
     def test_by_path(self, tmp_path):
         h = str(tmp_path / "history.jsonl")
-        self._write_entry(h, "blocked", cwd="/repo/a")
-        self._write_entry(h, "blocked", cwd="/repo/a")
-        self._write_entry(h, "passed", cwd="/repo/a")
-        self._write_entry(h, "blocked", cwd="/repo/b")
-        self._write_entry(h, "overridden", cwd="/repo/b", override_reason="fp")
+        self._write_entry(h, STATE_BLOCKED, cwd="/repo/a")
+        self._write_entry(h, STATE_BLOCKED, cwd="/repo/a")
+        self._write_entry(h, STATE_PASSED, cwd="/repo/a")
+        self._write_entry(h, STATE_BLOCKED, cwd="/repo/b")
+        self._write_entry(h, STATE_OVERRIDDEN, cwd="/repo/b", override_reason="fp")
         result = engine.compute_stats(h, by_path=True)
         assert "by_path" in result
         a = next(p for p in result["by_path"] if p["path"] == "/repo/a")
@@ -1211,14 +1215,14 @@ class TestComputeStats:
 
     def test_by_path_not_included_by_default(self, tmp_path):
         h = str(tmp_path / "history.jsonl")
-        self._write_entry(h, "passed")
+        self._write_entry(h, STATE_PASSED)
         result = engine.compute_stats(h)
         assert "by_path" not in result
 
     def test_combined_flags(self, tmp_path):
         h = str(tmp_path / "history.jsonl")
-        self._write_entry(h, "overridden", cwd="/repo/x", override_reason="fp")
-        self._write_entry(h, "blocked", cwd="/repo/x")
+        self._write_entry(h, STATE_OVERRIDDEN, cwd="/repo/x", override_reason="fp")
+        self._write_entry(h, STATE_BLOCKED, cwd="/repo/x")
         result = engine.compute_stats(h, by_reason=True, by_path=True)
         assert "by_reason" in result
         assert "by_path" in result
@@ -1507,7 +1511,7 @@ class TestGitCommandError:
         monkeypatch.setattr(_engine_mod, "collect_files", raise_git)
         monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "h.jsonl"))
         result = _engine_mod.run(mode="block", adapter=MockAdapter())
-        assert result["state"] == "infra_failed"
+        assert result["state"] == STATE_INFRA_FAILED
         assert result["action"] == "block"
 
     def test_engine_config_error_is_infra_failed(self, monkeypatch, tmp_path):
@@ -1518,7 +1522,7 @@ class TestGitCommandError:
         monkeypatch.setattr(_engine_mod, "collect_files", raise_config)
         monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "h.jsonl"))
         result = _engine_mod.run(mode="block", adapter=MockAdapter())
-        assert result["state"] == "infra_failed"
+        assert result["state"] == STATE_INFRA_FAILED
         assert "pr-diff" in result["reason"]
 
 
@@ -1550,7 +1554,7 @@ class TestHistoryFailureKind:
 
     def test_failure_kind_in_history(self, tmp_path):
         hfile = str(tmp_path / "h.jsonl")
-        log_to_history("/tmp", "block", "opus", "infra_failed",
+        log_to_history("/tmp", "block", "opus", STATE_INFRA_FAILED,
                        reason="claude exit -1",
                        failure_kind="timeout", stderr_excerpt="timed out",
                        min_confidence="medium", scope="working")
@@ -1559,7 +1563,7 @@ class TestHistoryFailureKind:
         orig = c.HISTORY_FILE
         c.HISTORY_FILE = hfile
         try:
-            log_to_history("/tmp", "block", "opus", "infra_failed",
+            log_to_history("/tmp", "block", "opus", STATE_INFRA_FAILED,
                            reason="claude exit -1",
                            failure_kind="timeout", stderr_excerpt="timed out")
         finally:
@@ -1575,7 +1579,7 @@ class TestHistoryFailureKind:
         orig = c.HISTORY_FILE
         c.HISTORY_FILE = hfile
         try:
-            log_to_history("/tmp", "block", "opus", "passed")
+            log_to_history("/tmp", "block", "opus", STATE_PASSED)
         finally:
             c.HISTORY_FILE = orig
         with open(hfile) as f:
@@ -1689,12 +1693,12 @@ class TestPolicyStateMachine:
         """If confidence filter removes all issues, report mode → passed, not reported."""
         review = self._review_with_issues(confidence="low")
         outcome = engine.apply_policy(review, "report", "critical", False, "high")
-        assert outcome["state"] == "passed"
+        assert outcome["state"] == STATE_PASSED
 
     def test_report_with_remaining_issues_is_reported(self):
         review = self._review_with_issues(confidence="high")
         outcome = engine.apply_policy(review, "report", "critical", False, "medium")
-        assert outcome["state"] == "reported"
+        assert outcome["state"] == STATE_REPORTED
 
     def test_block_reason_includes_file(self):
         review = self._review_with_issues()
@@ -1724,5 +1728,5 @@ class TestPolicyStateMachine:
         infra = {"pass": True, "review_status": "failed", "issues": [], "summary": "err"}
         block_outcome = engine.apply_policy(infra, "block", "critical", False, "medium")
         report_outcome = engine.apply_policy(infra, "report", "critical", False, "medium")
-        assert block_outcome["state"] == "infra_failed"
-        assert report_outcome["state"] == "infra_failed"
+        assert block_outcome["state"] == STATE_INFRA_FAILED
+        assert report_outcome["state"] == STATE_INFRA_FAILED
