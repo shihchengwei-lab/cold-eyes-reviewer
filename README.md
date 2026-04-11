@@ -359,7 +359,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 | `cold_eyes/` | Python package: engine, git, filter, policy, review, schema, history, doctor, CLI, model adapter, override token |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
-| `evals/` | Evaluation framework: 14 case fixtures + eval runner (deterministic/benchmark/sweep) |
+| `evals/` | Evaluation framework: 24 case fixtures (5 categories) + eval runner (deterministic/benchmark/sweep) + structured pipeline |
 | `docs/` | Architecture, failure modes, troubleshooting, evaluation, scope strategy, history schema, tuning, support policy, roadmap, version policy, agent setup, release checklist, sample outputs |
 | `pyproject.toml` | Package metadata and ruff/lint config (optional `pip install -e .` for `cold-eyes` CLI command) |
 | `install.sh` / `uninstall.sh` | Deploy to / remove from `~/.claude/scripts/` |
@@ -416,7 +416,7 @@ Returns `{"action": "verify-install", "ok": true, "failures": []}` if the 3 crit
 ### Evaluation
 
 ```bash
-# Deterministic eval — 14 cases, no model calls
+# Deterministic eval — 24 cases, no model calls
 python cold_eyes/cli.py eval --eval-mode deterministic
 
 # Threshold sweep — precision/recall/F1 for all threshold x confidence combos
@@ -424,9 +424,15 @@ python cold_eyes/cli.py eval --eval-mode sweep
 
 # Benchmark with real model
 python cold_eyes/cli.py eval --eval-mode benchmark --model opus
+
+# Save report to evals/results/
+python cold_eyes/cli.py eval --save --format both
+
+# Compare against a previous report
+python cold_eyes/cli.py eval --save --compare evals/results/deterministic_prev.json
 ```
 
-The eval framework tests the decision boundary (`parse_review_output` + `apply_policy`) against 14 cases: 6 true positives (SQL injection, hardcoded secrets, XSS, resource leak, missing error handling, dangling import), 4 acceptable changes, and 4 stress cases (truncation, binary-only, empty diff, mixed severity). See `docs/evaluation.md` for details and threshold sweep results.
+The eval framework tests the decision boundary (`parse_review_output` + `apply_policy`) against 24 cases across 5 categories: 8 true positives, 4 acceptable changes, 3 false negatives, 5 stress cases, and 4 edge cases. Reports include version metadata and can be saved as JSON/markdown and compared across runs. See `docs/evaluation.md` and `docs/trust-model.md` for details.
 
 ### Override aggregation
 

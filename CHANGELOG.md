@@ -1,5 +1,28 @@
 # Changelog
 
+## v1.4.0 — Trust Engineering Phase 1
+
+Eval corpus expansion (14→24 cases, 3→5 categories), structured eval pipeline, trust documentation. 303 tests (was 297).
+
+### Evaluation
+
+- **Eval corpus expanded** — 24 cases across 5 categories: true_positive (8), acceptable (4), false_negative (3), stress (5), edge (4). Added path traversal, eval injection, CJK comments, unicode identifiers, empty response, config-only changes, all-minor issues.
+- **manifest.json** — case index with per-category counts and `validate_manifest()` integrity check.
+- **schema.md** — formal case file format definition.
+- **Structured eval pipeline** — `_make_report()` wraps all eval output with `cold_eyes_version`, `timestamp`, `eval_schema_version`. `format_markdown()` renders case tables and category summaries. `save_report()` persists to `evals/results/` as JSON and/or markdown. `compare_reports()` diffs two reports (cases added/removed/changed, F1 delta).
+- **CLI eval flags** — `--save` (persist report), `--format json|markdown|both`, `--compare <path>` (diff against previous report).
+
+### Documentation
+
+- **trust-model.md** — capability boundaries, trust attributes, known gaps.
+- **assurance-matrix.md** — per-category detection ability, FP/FN direction, scope limits.
+- **SECURITY.md** — expanded trust boundaries (6 sections + attack surface table).
+- **roadmap.md** — rewritten as four-stage trust engineering plan.
+
+### Tests
+
+- 303 tests (+6): report metadata (2), markdown formatting (2), report comparison (1), report saving (1).
+
 ## v1.3.1 — Phase Report Hardening
 
 Third-party audit fixes: shell fail-closed, token estimation, config guard, dedup robustness. 289 tests (was 288).

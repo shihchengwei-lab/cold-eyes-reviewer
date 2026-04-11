@@ -9,6 +9,7 @@ Sweep mode replays saved responses across threshold x confidence combinations
 to compute precision / recall / F1.
 """
 
+import datetime
 import json
 import os
 import glob as _glob
@@ -19,9 +20,12 @@ _root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _root not in sys.path:
     sys.path.insert(0, _root)
 
+from cold_eyes import __version__
 from cold_eyes.review import parse_review_output
 from cold_eyes.policy import apply_policy
 from cold_eyes.constants import SEVERITY_ORDER
+
+_EVAL_SCHEMA_VERSION = 1
 
 
 # ---------------------------------------------------------------------------
@@ -74,6 +78,20 @@ def validate_manifest(cases_dir):
         errors.append(f"total_cases mismatch: manifest={manifest.get('total_cases')}, actual={len(cases)}")
 
     return len(errors) == 0, errors
+
+
+# ---------------------------------------------------------------------------
+# Report envelope
+# ---------------------------------------------------------------------------
+
+def _make_report(mode_result):
+    """Wrap a mode result with metadata envelope."""
+    return {
+        "cold_eyes_version": __version__,
+        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat().replace("+00:00", "Z"),
+        "eval_schema_version": _EVAL_SCHEMA_VERSION,
+        **mode_result,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -148,7 +166,7 @@ def run_deterministic(cases_dir, threshold="critical", confidence="medium"):
         results.append(_evaluate_case(case, threshold, confidence))
 
     passed = sum(1 for r in results if r["match"])
-    return {
+    return _make_report({
         "mode": "deterministic",
         "threshold": threshold,
         "confidence": confidence,
@@ -156,7 +174,7 @@ def run_deterministic(cases_dir, threshold="critical", confidence="medium"):
         "passed": passed,
         "failed": len(results) - passed,
         "cases": results,
-    }
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -218,7 +236,7 @@ def threshold_sweep(cases_dir):
 
     # Find best F1
     best = max(sweep, key=lambda s: s["f1"])
-    return {
+    return _make_report({
         "mode": "sweep",
         "combinations": len(sweep),
         "sweep": sweep,
@@ -227,7 +245,7 @@ def threshold_sweep(cases_dir):
             "confidence": best["confidence"],
             "f1": best["f1"],
         },
-    }
+    })
 
 
 # ---------------------------------------------------------------------------
@@ -295,11 +313,170 @@ def run_benchmark(cases_dir, model="opus", adapter=None, save_dir=None):
         })
 
     passed = sum(1 for r in results if r["match"])
-    return {
+    return _make_report({
         "mode": "benchmark",
         "model": model,
         "total": len(results),
         "passed": passed,
         "failed": len(results) - passed,
         "cases": results,
+    })
+
+
+# ---------------------------------------------------------------------------
+# Report formatting, saving, comparison
+# ---------------------------------------------------------------------------
+
+def format_markdown(report):
+    """Format a report as markdown string."""
+    mode = report.get("mode", "unknown")
+    lines = [
+        f"# Cold Eyes Eval Report — {mode}",
+        "",
+        f"- **Version:** {report.get('cold_eyes_version', 'unknown')}",
+        f"- **Timestamp:** {report.get('timestamp', 'unknown')}",
+        f"- **Eval Schema Version:** {report.get('eval_schema_version', 'unknown')}",
+        "",
+    ]
+
+    if mode == "deterministic":
+        lines += [
+            "## Results",
+            "",
+            f"- **Threshold:** {report.get('threshold', '-')}",
+            f"- **Confidence:** {report.get('confidence', '-')}",
+            f"- **Total:** {report['total']} | **Passed:** {report['passed']} | **Failed:** {report['failed']}",
+            "",
+            "### Cases",
+            "",
+            "| ID | Category | Expected | Actual | Match |",
+            "|---|---|---|---|---|",
+        ]
+        for c in report.get("cases", []):
+            exp = "block" if c["expected_block"] else "pass"
+            act = c.get("actual_action", "block" if c.get("actual_block") else "pass")
+            match_sym = "\u2713" if c["match"] else "\u2717"
+            lines.append(f"| {c['id']} | {c['category']} | {exp} | {act} | {match_sym} |")
+
+        # Category summary
+        by_cat = {}
+        for c in report.get("cases", []):
+            cat = c["category"]
+            by_cat.setdefault(cat, {"total": 0, "passed": 0})
+            by_cat[cat]["total"] += 1
+            if c["match"]:
+                by_cat[cat]["passed"] += 1
+        lines += [
+            "",
+            "### Category Summary",
+            "",
+            "| Category | Total | Passed | Rate |",
+            "|---|---|---|---|",
+        ]
+        for cat in sorted(by_cat):
+            t = by_cat[cat]["total"]
+            p = by_cat[cat]["passed"]
+            rate = f"{p/t*100:.0f}%" if t > 0 else "-"
+            lines.append(f"| {cat} | {t} | {p} | {rate} |")
+
+    elif mode == "sweep":
+        lines += [
+            "## Threshold Sweep",
+            "",
+            "| Threshold | Confidence | Precision | Recall | F1 |",
+            "|---|---|---|---|---|",
+        ]
+        for s in report.get("sweep", []):
+            lines.append(f"| {s['threshold']} | {s['confidence']} | {s['precision']:.4f} | {s['recall']:.4f} | {s['f1']:.4f} |")
+        rec = report.get("recommended", {})
+        if rec:
+            lines += [
+                "",
+                f"**Recommended:** threshold={rec['threshold']}, confidence={rec['confidence']} (F1={rec['f1']:.4f})",
+            ]
+
+    elif mode == "benchmark":
+        lines += [
+            "## Benchmark Results",
+            "",
+            f"- **Model:** {report.get('model', '-')}",
+            f"- **Total:** {report['total']} | **Passed:** {report['passed']} | **Failed:** {report['failed']}",
+            "",
+            "| ID | Category | Expected | Actual | Match |",
+            "|---|---|---|---|---|",
+        ]
+        for c in report.get("cases", []):
+            exp = "block" if c["expected_block"] else "pass"
+            act = "block" if c.get("actual_block") else "pass"
+            match_sym = "\u2713" if c["match"] else "\u2717"
+            lines.append(f"| {c['id']} | {c['category']} | {exp} | {act} | {match_sym} |")
+
+    return "\n".join(lines) + "\n"
+
+
+def save_report(report, output_dir=None, fmt="json"):
+    """Save report to output_dir.  fmt: json, markdown, or both."""
+    if output_dir is None:
+        output_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "results")
+    os.makedirs(output_dir, exist_ok=True)
+
+    mode = report.get("mode", "unknown")
+    ts = report.get("timestamp", "")
+    # 20260412T123456Z → safe filename segment
+    ts_safe = ts.replace(":", "").replace("-", "").split(".")[0]
+    base = f"{mode}_{ts_safe}"
+
+    paths = {}
+    if fmt in ("json", "both"):
+        p = os.path.join(output_dir, f"{base}.json")
+        with open(p, "w", encoding="utf-8") as f:
+            json.dump(report, f, ensure_ascii=False, indent=2)
+        paths["json"] = p
+    if fmt in ("markdown", "both"):
+        p = os.path.join(output_dir, f"{base}.md")
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(format_markdown(report))
+        paths["markdown"] = p
+    return paths
+
+
+def compare_reports(report_a, report_b):
+    """Compare two reports.  Return dict with differences."""
+    result = {
+        "version_a": report_a.get("cold_eyes_version"),
+        "version_b": report_b.get("cold_eyes_version"),
+        "timestamp_a": report_a.get("timestamp"),
+        "timestamp_b": report_b.get("timestamp"),
     }
+
+    cases_a = {c["id"]: c for c in report_a.get("cases", [])}
+    cases_b = {c["id"]: c for c in report_b.get("cases", [])}
+    ids_a = set(cases_a)
+    ids_b = set(cases_b)
+
+    result["cases_added"] = sorted(ids_b - ids_a)
+    result["cases_removed"] = sorted(ids_a - ids_b)
+
+    changed = []
+    for cid in sorted(ids_a & ids_b):
+        a, b = cases_a[cid], cases_b[cid]
+        if a.get("match") != b.get("match") or a.get("actual_block") != b.get("actual_block"):
+            changed.append({
+                "id": cid,
+                "match_a": a.get("match"),
+                "match_b": b.get("match"),
+                "action_a": a.get("actual_action", "block" if a.get("actual_block") else "pass"),
+                "action_b": b.get("actual_action", "block" if b.get("actual_block") else "pass"),
+            })
+    result["cases_changed"] = changed
+
+    # F1 comparison for sweep reports
+    if report_a.get("mode") == "sweep" and report_b.get("mode") == "sweep":
+        rec_a = report_a.get("recommended", {})
+        rec_b = report_b.get("recommended", {})
+        result["f1_a"] = rec_a.get("f1")
+        result["f1_b"] = rec_b.get("f1")
+        if rec_a.get("f1") is not None and rec_b.get("f1") is not None:
+            result["f1_delta"] = round(rec_b["f1"] - rec_a["f1"], 4)
+
+    return result

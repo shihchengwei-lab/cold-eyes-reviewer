@@ -67,6 +67,13 @@ def main():
                         help="Eval mode: deterministic (mock), benchmark (real model), sweep")
     parser.add_argument("--cases-dir", default=None,
                         help="Path to eval cases directory (default: evals/cases/)")
+    parser.add_argument("--save", action="store_true",
+                        help="Save eval report to evals/results/")
+    parser.add_argument("--format", default="json",
+                        choices=["json", "markdown", "both"],
+                        help="Report save format (default: json)")
+    parser.add_argument("--compare", default=None,
+                        help="Path to a previous report JSON for comparison")
     args = parser.parse_args()
 
     if args.command == "init":
@@ -94,7 +101,10 @@ def main():
         reason = args.reason or args.override_reason or ""
         result = arm_override(repo_root, reason, ttl_minutes=args.ttl)
     elif args.command == "eval":
-        from evals.eval_runner import run_deterministic, run_benchmark, threshold_sweep
+        from evals.eval_runner import (
+            run_deterministic, run_benchmark, threshold_sweep,
+            save_report, compare_reports,
+        )
         cases_dir = args.cases_dir or os.path.join(_root, "evals", "cases")
         if args.eval_mode == "deterministic":
             result = run_deterministic(cases_dir, threshold=args.threshold or "critical",
@@ -103,6 +113,13 @@ def main():
             result = run_benchmark(cases_dir, model=args.model or "opus")
         elif args.eval_mode == "sweep":
             result = threshold_sweep(cases_dir)
+        if args.save:
+            saved = save_report(result, fmt=getattr(args, "format", "json"))
+            result["saved"] = saved
+        if args.compare:
+            with open(args.compare, "r", encoding="utf-8") as f:
+                other = json.load(f)
+            result["comparison"] = compare_reports(other, result)
     elif args.command == "verify-install":
         from cold_eyes.doctor import verify_install
         result = verify_install()

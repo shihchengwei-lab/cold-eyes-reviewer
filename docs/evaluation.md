@@ -33,12 +33,12 @@ python cold_eyes/cli.py eval --eval-mode benchmark --model opus
 
 ## Eval case format
 
-Each case is a JSON file in `evals/cases/`:
+Each case is a JSON file in `evals/cases/` (see `evals/schema.md` for the formal definition):
 
 ```json
 {
   "id": "unique-case-id",
-  "category": "true_positive | acceptable | stress",
+  "category": "true_positive | acceptable | false_negative | stress | edge",
   "description": "What this case tests",
   "diff": "unified diff text",
   "mock_response": {
@@ -63,13 +63,17 @@ Each case is a JSON file in `evals/cases/`:
 4. Run `python cold_eyes/cli.py eval` to verify
 5. Run `pytest tests/test_eval.py` to check all tests still pass
 
+All 24 cases are indexed in `evals/manifest.json` with per-category counts. `validate_manifest()` checks manifest-to-file consistency.
+
 ## Current eval set
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| true_positive | 6 | SQL injection, hardcoded secrets, XSS, resource leak, missing error handling, dangling import |
+| true_positive | 8 | SQL injection, hardcoded secrets, XSS, resource leak, missing error handling, dangling import, path traversal, eval injection |
 | acceptable | 4 | Variable rename, docstring update, test addition, README typo |
-| stress | 4 | Large diff (truncation), binary-only, empty diff, mixed severity |
+| false_negative | 3 | Cases that look dangerous but are acceptable (boundary testing) |
+| stress | 5 | Large diff (truncation), binary-only, empty diff, mixed severity, all-minor issues |
+| edge | 4 | CJK comments, unicode identifiers, empty model response, config-only changes |
 
 ## Threshold sweep results
 
@@ -96,8 +100,24 @@ Each case is a JSON file in `evals/cases/`:
 - **Missing real issues?** → Lower threshold to `major` (blocks on major issues too, higher coverage but more friction)
 - **Different model?** → Run `--eval-mode benchmark --model <model>` to measure actual model accuracy, then re-run sweep
 
+## Structured pipeline
+
+Reports from all eval modes include metadata: `cold_eyes_version`, `timestamp`, `eval_schema_version`.
+
+```bash
+# Save report as JSON + markdown
+python cold_eyes/cli.py eval --save --format both
+
+# Compare two reports
+python cold_eyes/cli.py eval --save --compare evals/results/deterministic_prev.json
+```
+
+`compare_reports()` diffs two reports: cases added/removed/changed, pass/fail deltas, and F1 movement for sweep reports.
+
+See also: `docs/trust-model.md` (capability boundaries), `docs/assurance-matrix.md` (per-category detection ability).
+
 ## Limitations
 
-- The deterministic eval set (14 cases) tests the decision boundary, not model quality. Add more cases as you encounter real-world false positives or missed issues.
-- Stress cases cover truncation and edge conditions but not all combinations of scope, model, and diff size.
+- The deterministic eval set (24 cases) tests the decision boundary, not model quality. Add more cases as you encounter real-world false positives or missed issues.
+- Stress and edge cases cover truncation, unicode, and boundary conditions but not all combinations of scope, model, and diff size.
 - Precision/recall numbers reflect mock responses, not real model behavior. Use benchmark mode for model-specific evaluation.

@@ -11,7 +11,10 @@ if PROJECT_ROOT not in sys.path:
 
 CASES_DIR = os.path.join(PROJECT_ROOT, "evals", "cases")
 
-from evals.eval_runner import load_cases, run_deterministic, threshold_sweep, _evaluate_case, validate_manifest
+from evals.eval_runner import (
+    load_cases, run_deterministic, threshold_sweep, _evaluate_case,
+    validate_manifest, _make_report, format_markdown, save_report, compare_reports,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -271,3 +274,73 @@ class TestNewCategories:
         result = _evaluate_case(case)
         assert result["actual_block"] is False
         assert result["match"] is True
+
+
+# ---------------------------------------------------------------------------
+# Report metadata
+# ---------------------------------------------------------------------------
+
+class TestReportMetadata:
+    def test_deterministic_has_metadata(self):
+        report = run_deterministic(CASES_DIR)
+        assert "cold_eyes_version" in report
+        assert "timestamp" in report
+        assert "eval_schema_version" in report
+        assert report["eval_schema_version"] == 1
+
+    def test_sweep_has_metadata(self):
+        report = threshold_sweep(CASES_DIR)
+        assert "cold_eyes_version" in report
+        assert "timestamp" in report
+        assert report["timestamp"].endswith("Z")
+
+
+# ---------------------------------------------------------------------------
+# Markdown formatting
+# ---------------------------------------------------------------------------
+
+class TestFormatMarkdown:
+    def test_deterministic_markdown(self):
+        report = run_deterministic(CASES_DIR)
+        md = format_markdown(report)
+        assert "# Cold Eyes Eval Report" in md
+        assert "deterministic" in md
+        assert "| ID |" in md
+        assert "Category Summary" in md
+
+    def test_sweep_markdown(self):
+        report = threshold_sweep(CASES_DIR)
+        md = format_markdown(report)
+        assert "Threshold Sweep" in md
+        assert "Recommended:" in md
+        assert "Precision" in md
+
+
+# ---------------------------------------------------------------------------
+# Report comparison
+# ---------------------------------------------------------------------------
+
+class TestCompareReports:
+    def test_same_report_no_changes(self):
+        report = run_deterministic(CASES_DIR)
+        diff = compare_reports(report, report)
+        assert diff["cases_added"] == []
+        assert diff["cases_removed"] == []
+        assert diff["cases_changed"] == []
+
+
+# ---------------------------------------------------------------------------
+# Report saving
+# ---------------------------------------------------------------------------
+
+class TestSaveReport:
+    def test_save_creates_files(self, tmp_path):
+        report = run_deterministic(CASES_DIR)
+        paths = save_report(report, output_dir=str(tmp_path), fmt="both")
+        assert "json" in paths
+        assert "markdown" in paths
+        assert os.path.isfile(paths["json"])
+        assert os.path.isfile(paths["markdown"])
+        with open(paths["json"], "r", encoding="utf-8") as f:
+            loaded = json.load(f)
+        assert loaded["mode"] == "deterministic"
