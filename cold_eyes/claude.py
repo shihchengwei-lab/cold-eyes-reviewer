@@ -62,6 +62,7 @@ class ClaudeCliAdapter(ModelAdapter):
                 input=diff_text,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
                 env=env,
                 timeout=self.timeout,
             )
