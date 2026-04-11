@@ -31,5 +31,5 @@ DEPLOY_FILES = [
     "cold_eyes/constants.py", "cold_eyes/git.py", "cold_eyes/filter.py",
     "cold_eyes/prompt.py", "cold_eyes/claude.py", "cold_eyes/review.py",
     "cold_eyes/policy.py", "cold_eyes/history.py", "cold_eyes/config.py",
-    "cold_eyes/override.py", "cold_eyes/doctor.py", "cold_eyes/helper.py",
+    "cold_eyes/override.py", "cold_eyes/doctor.py",
 ]

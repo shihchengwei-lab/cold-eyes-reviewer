@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.0.0 — Stable Release
+
+Remove deprecated `helper.py` (shell no longer uses it). No functional changes from v0.11.0. This version marks API stability: history JSONL v2 schema, CLI subcommands, env vars, policy file keys, and hook JSON output are now stable.
+
+197 tests (5 helper tests removed with the module).
+
 ## v0.11.0 — Personal Hardening
 
 9-patch hardening to make block mode trustworthy for daily use. 202 tests (was 162).

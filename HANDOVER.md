@@ -2,9 +2,9 @@
 
 ## 現況
 
-- **版本：** v0.11.0（master，2026-04-11）
+- **版本：** v1.0.0（master，2026-04-11）
 - **分支：** master
-- **測試：** 202 passed
+- **測試：** 197 passed
 - **部署：** `~/.claude/scripts/` 需同步
 
 ## 架構
@@ -18,7 +18,7 @@ cold-review.sh              Stop hook 入口（shim，~100 行）
 cold-review-prompt.txt      系統 prompt 模板，placeholders: {language}
 .cold-review-policy.yml     Per-repo 配置（optional，放 project root）
 
-cold_eyes/                   Package（15 模組）
+cold_eyes/                   Package（14 模組）
   constants.py               共用常數（SCHEMA_VERSION, SEVERITY_ORDER, BUILTIN_IGNORE, DEPLOY_FILES）
   config.py                  Policy file loader（flat YAML subset parser，無 PyYAML 依賴）
   git.py                     git_cmd（失敗 raise GitCommandError）, collect_files, is_binary, build_diff（回傳 dict）
@@ -32,7 +32,6 @@ cold_eyes/                   Package（15 模組）
   doctor.py                  run_doctor（11 checks，含 legacy detection）
   engine.py                  run() 主管線、_resolve()、_skip()、_infra_review()
   cli.py                     argparse + dispatch（run / doctor / aggregate-overrides / stats / arm-override）
-  helper.py                  parse_hook, log_state_from_shell（deprecated，shell 不再使用）
   __init__.py
 ```
 
@@ -172,6 +171,4 @@ Policy file 目前用 flat YAML subset parser；引入 PyYAML 後可無縫升級
 
 - `line_hint` 的 LLM 幻覺率未實測。prompt 已限制「不確定就留空」，block 顯示加了 `~` 前綴
 - `cli.py` 和 `helper.py` 頂部有 `sys.path` manipulation 以支援直接 `python cold_eyes/cli.py` 呼叫。改為 `pip install -e .` 後可移除
-- `helper.py` 的 `log-state` 已 deprecated，shell 不再使用；`parse-hook` 也被 inline python 取代。整個 helper.py 可在下一版移除
-- `__pycache__/cold-review-helper.cpython-312.pyc` 是殘留的 stale bytecode，可安全刪除
 - 舊的 history 條目仍有 `state: "failed"`（v0.11.0 前的 report-mode infra failure），stats 查詢時要注意
