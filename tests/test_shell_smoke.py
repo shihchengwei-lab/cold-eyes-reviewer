@@ -97,3 +97,35 @@ class TestReadmeSanity:
         with open(readme, "r", encoding="utf-8") as f:
             content = f.read()
         assert "COLD_REVIEW_OVERRIDE_REASON" in content
+
+
+# ===========================================================================
+# PATCH 9 — Shell shim hardening checks
+# ===========================================================================
+
+class TestShellShimIntegrity:
+    """Verify cold-review.sh has no legacy patterns."""
+
+    def test_no_helper_references(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "cold-review-helper" not in content
+        assert "cold_eyes/helper.py" not in content.replace("cold_eyes/cli.py", "")
+
+    def test_no_direct_claude_call(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        # Should not call claude directly (only via Python engine)
+        assert '"claude"' not in content or "claude --version" in content
+        assert "claude -p" not in content
+
+    def test_no_max_lines(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "COLD_REVIEW_MAX_LINES" not in content
+
+    def test_uses_mkdir_lock(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "mkdir" in content
+        assert "lock.d" in content

@@ -10,7 +10,8 @@ from cold_eyes import constants
 
 def log_to_history(cwd, mode, model, state, reason="", review=None,
                    file_count=0, line_count=0, truncated=False, token_count=0,
-                   min_confidence="medium", scope="working", override_reason=""):
+                   min_confidence="medium", scope="working", override_reason="",
+                   failure_kind=None, stderr_excerpt=""):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -25,6 +26,10 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
     }
     if override_reason:
         entry["override_reason"] = override_reason
+    if failure_kind:
+        entry["failure_kind"] = failure_kind
+    if stderr_excerpt:
+        entry["stderr_excerpt"] = stderr_excerpt[:500]
 
     if review is not None:
         entry["diff_stats"] = {

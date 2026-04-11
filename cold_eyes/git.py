@@ -4,12 +4,30 @@ import os
 import subprocess
 
 
+class GitCommandError(RuntimeError):
+    """A git command exited with non-zero status."""
+    def __init__(self, cmd, returncode, stderr=""):
+        self.cmd = cmd
+        self.returncode = returncode
+        self.stderr = stderr
+        super().__init__(
+            f"git {' '.join(cmd)} failed (exit {returncode}): {stderr[:200]}"
+        )
+
+
+class ConfigError(RuntimeError):
+    """A configuration-level problem (missing base, bad scope, etc.)."""
+    pass
+
+
 def git_cmd(*args):
-    """Run a git command, return stdout or empty string on failure."""
+    """Run a git command, return stdout.  Raise GitCommandError on failure."""
     r = subprocess.run(
         ["git"] + list(args), capture_output=True, text=True
     )
-    return r.stdout.strip() if r.returncode == 0 else ""
+    if r.returncode != 0:
+        raise GitCommandError(list(args), r.returncode, r.stderr.strip())
+    return r.stdout.strip()
 
 
 def collect_files(scope="working", base=None):
@@ -23,7 +41,7 @@ def collect_files(scope="working", base=None):
     """
     if scope == "pr-diff":
         if not base:
-            return [], set()
+            raise ConfigError("pr-diff scope requires --base")
         pr = set(filter(None, git_cmd(
             "diff", f"{base}...HEAD", "--name-only").split("\n")))
         return sorted(pr), set()
@@ -53,28 +71,32 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
                base=None):
     """Build token-budgeted diff.
 
-    Returns (diff_text, file_count, token_count, truncated, skipped_files).
-    Token estimate: len(text) // 4.
+    Returns dict with keys:
+      diff_text, file_count, token_count, truncated,
+      partial_files, skipped_budget, skipped_binary, skipped_unreadable
     """
     remaining = max_tokens
     parts = []
     file_count = 0
-    skipped = []
+    partial_files = []
+    skipped_budget = []
+    skipped_binary = []
+    skipped_unreadable = []
 
     for f in ranked_files:
         if remaining <= 0:
-            skipped.append(f)
+            skipped_budget.append(f)
             continue
 
         if f in untracked:
             if is_binary(f):
-                skipped.append(f"{f} (binary)")
+                skipped_binary.append(f)
                 continue
             try:
                 with open(f, "r", encoding="utf-8", errors="replace") as fh:
                     content = fh.read()
             except (OSError, IOError):
-                skipped.append(f"{f} (unreadable)")
+                skipped_unreadable.append(f)
                 continue
             chunk = f"=== NEW FILE: {f} ===\n{content}"
         else:
@@ -97,6 +119,7 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
             char_limit = remaining * 4
             chunk = chunk[:char_limit] + f"\n[truncated: {f}]"
             chunk_tokens = remaining
+            partial_files.append(f)
 
         parts.append(chunk)
         file_count += 1
@@ -104,13 +127,31 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
 
     diff_text = "\n".join(parts)
     total_tokens = max_tokens - remaining
-    truncated = len(skipped) > 0
+    truncated = bool(partial_files or skipped_budget or skipped_binary or skipped_unreadable)
 
     if truncated:
-        notice = f"\n\n[Cold Eyes: diff truncated at ~{max_tokens} tokens. Skipped files:\n"
-        for s in skipped:
-            notice += f"  {s}\n"
+        notice_parts = []
+        if partial_files:
+            notice_parts.append("Partial (cut mid-file): " + ", ".join(partial_files))
+        if skipped_budget:
+            notice_parts.append("Skipped (budget): " + ", ".join(skipped_budget))
+        if skipped_binary:
+            notice_parts.append("Skipped (binary): " + ", ".join(skipped_binary))
+        if skipped_unreadable:
+            notice_parts.append("Skipped (unreadable): " + ", ".join(skipped_unreadable))
+        notice = f"\n\n[Cold Eyes: diff truncated at ~{max_tokens} tokens.\n"
+        for p in notice_parts:
+            notice += f"  {p}\n"
         notice += "]"
         diff_text += notice
 
-    return diff_text, file_count, total_tokens, truncated, skipped
+    return {
+        "diff_text": diff_text,
+        "file_count": file_count,
+        "token_count": total_tokens,
+        "truncated": truncated,
+        "partial_files": partial_files,
+        "skipped_budget": skipped_budget,
+        "skipped_binary": skipped_binary,
+        "skipped_unreadable": skipped_unreadable,
+    }

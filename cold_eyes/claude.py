@@ -1,8 +1,7 @@
 """Model adapter abstraction — swap CLI / API / mock without changing the engine.
 
 Adapter interface:
-    review(diff_text, prompt_text, model) -> (raw_output, exit_code)
-    exit_code: 0 = success, -1 = timeout, -2 = not found, other = error
+    review(diff_text, prompt_text, model) -> ReviewInvocation
 """
 
 import os
@@ -10,11 +9,26 @@ import subprocess
 import tempfile
 
 
+class ReviewInvocation:
+    """Result of a model review call."""
+    __slots__ = ("stdout", "stderr", "exit_code", "failure_kind")
+
+    def __init__(self, stdout, stderr, exit_code, failure_kind=None):
+        self.stdout = stdout
+        self.stderr = stderr
+        self.exit_code = exit_code
+        self.failure_kind = failure_kind
+
+    def __iter__(self):
+        """Backward compat: allow (stdout, exit_code) destructuring."""
+        return iter((self.stdout, self.exit_code))
+
+
 class ModelAdapter:
     """Base class for model adapters."""
 
     def review(self, diff_text, prompt_text, model):
-        """Run a review.  Return (raw_output, exit_code)."""
+        """Run a review.  Return ReviewInvocation."""
         raise NotImplementedError
 
 
@@ -51,19 +65,22 @@ class ClaudeCliAdapter(ModelAdapter):
                 env=env,
                 timeout=self.timeout,
             )
-            return r.stdout.strip(), r.returncode
+            fk = "cli_error" if r.returncode != 0 else None
+            return ReviewInvocation(r.stdout.strip(), r.stderr.strip(), r.returncode, fk)
         except subprocess.TimeoutExpired:
-            return "", -1
+            return ReviewInvocation("", "", -1, "timeout")
         except FileNotFoundError:
-            return "", -2
+            return ReviewInvocation("", "", -2, "cli_not_found")
 
 
 class MockAdapter(ModelAdapter):
     """Adapter that returns a fixed response.  For testing."""
 
-    def __init__(self, response="", exit_code=0):
+    def __init__(self, response="", exit_code=0, stderr="", failure_kind=None):
         self.response = response
         self.exit_code = exit_code
+        self._stderr = stderr
+        self._failure_kind = failure_kind
         self.last_diff = None
         self.last_prompt = None
         self.last_model = None
@@ -74,7 +91,8 @@ class MockAdapter(ModelAdapter):
         self.last_prompt = prompt_text
         self.last_model = model
         self.call_count += 1
-        return self.response, self.exit_code
+        return ReviewInvocation(self.response, self._stderr, self.exit_code,
+                                self._failure_kind)
 
 
 # Backward compat — used nowhere after engine migration, kept for external callers.

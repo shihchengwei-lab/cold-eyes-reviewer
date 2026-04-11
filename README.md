@@ -10,10 +10,10 @@ Cold Eyes is a second-pass gate, not a full code review. It sees only the git di
 Claude Code session ends
        │
        ▼
-  cold-review.sh (guard checks only)
+  cold-review.sh (shim — guards only, no review logic)
        │
        ├─ off mode / recursion / no git repo → exit
-       ├─ lockfile held by another review → exit
+       ├─ atomic lock held by another review → exit
        │
        ▼
   cold_eyes/cli.py → engine.py (all review logic)
@@ -161,8 +161,8 @@ Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |
 | `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head`, `pr-diff` | Diff scope: all uncommitted / staged only / vs HEAD / vs base branch |
 | `COLD_REVIEW_BASE` | (unset) | any branch name | Base branch for `pr-diff` scope (e.g. `main`) |
-| `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | Set to skip block once (logged as override) |
-| `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override when using ALLOW_ONCE |
+| `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | **Deprecated.** Use `arm-override` instead. Still works but emits a warning. |
+| `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override (used with ALLOW_ONCE or arm-override) |
 
 ```bash
 # Use sonnet to save tokens
@@ -188,13 +188,28 @@ export COLD_REVIEW_SCOPE=pr-diff
 export COLD_REVIEW_BASE=main
 
 # One-time override when blocked by a false positive
-export COLD_REVIEW_ALLOW_ONCE=1
-export COLD_REVIEW_OVERRIDE_REASON="false_positive"
+python ~/.claude/scripts/cold_eyes/cli.py arm-override --reason false_positive
 ```
+
+### Overriding a block
+
+Use `arm-override` to create a one-time override token. The token is consumed on the next block and cannot be reused.
+
+```bash
+# Arm a one-time override (default: expires in 10 minutes)
+python ~/.claude/scripts/cold_eyes/cli.py arm-override --reason false_positive
+
+# Custom TTL
+python ~/.claude/scripts/cold_eyes/cli.py arm-override --reason acceptable_risk --ttl 5
+```
+
+The token is scoped to the current repo. After arming, the next block will be bypassed and the reason logged to history.
+
+**Legacy:** `COLD_REVIEW_ALLOW_ONCE=1` still works but is deprecated — it cannot truly be consumed (env vars persist in the parent shell), so it bypasses *every* block while set. A deprecation warning is emitted.
 
 ### Override reasons
 
-When overriding a block, set `COLD_REVIEW_OVERRIDE_REASON` to explain why. Any free text works. Common values:
+Common reason values:
 
 - `false_positive` — the reviewer flagged something that is not actually a problem
 - `acceptable_risk` — the issue is real but acceptable in this context
@@ -266,15 +281,16 @@ Cold Eyes logs its state to `~/.claude/cold-review-history.jsonl` at every exit 
 | State | Meaning |
 |---|---|
 | `skipped` | No changes, not a git repo, all files ignored, or another review in progress |
-| `failed` | Claude CLI error, empty output, or parse failure |
-| `passed` | Review completed, no issues at or above threshold |
-| `reported` | Review completed with issues, but mode is `report` (no block) |
+| `infra_failed` | Infrastructure failure: Claude CLI error, timeout, empty output, parse failure, git error, or config error. History includes `failure_kind` and `stderr_excerpt` for diagnosis. In block mode, this blocks. In report mode, it passes but logs the failure. |
+| `passed` | Review completed, no issues at or above threshold (after confidence filter) |
+| `reported` | Review completed with issues remaining after confidence filter, mode is `report` (no block) |
 | `blocked` | Review completed, issues found at or above threshold, block emitted |
-| `overridden` | Would have blocked, but `COLD_REVIEW_ALLOW_ONCE=1` was set. Override reason (if provided via `COLD_REVIEW_OVERRIDE_REASON`) is recorded in history. |
+| `overridden` | Would have blocked, but an override token was armed (or legacy `ALLOW_ONCE` was set). Override reason recorded in history. |
 
 If reviews aren't running, check:
-1. `~/.claude/cold-review-history.jsonl` — look for recent `failed` or `skipped` entries
-2. `claude -d` — check for auth or rate limit issues
+1. `~/.claude/cold-review-history.jsonl` — look for recent `infra_failed` or `skipped` entries. `failure_kind` and `stderr_excerpt` fields pinpoint the cause.
+2. `python ~/.claude/scripts/cold_eyes/cli.py doctor` — checks environment health
+3. `claude -d` — check for auth or rate limit issues
 
 ## Requirements
 
@@ -287,7 +303,7 @@ If reviews aren't running, check:
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Package: engine, policy, review parsing, history, doctor, CLI, model adapter (13 modules) |
+| `cold_eyes/` | Python package: engine, git, filter, policy, review, history, doctor, CLI, model adapter, override token |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), then calls `cold_eyes/cli.py` |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
 | `.cold-review-ignore` | Per-repo ignore patterns (optional, placed in project root) |
@@ -303,7 +319,7 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`). Build a dashboard, filter by state, chart trends over time. Override entries include `override_reason` when provided. Use `stats` and `aggregate-overrides` commands to query it.
+- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`). Build a dashboard, filter by state, chart trends over time. Use `stats` and `aggregate-overrides` commands to query it.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 - **`.cold-review-policy.yml`** — Flat key-value config. Set per-repo defaults for mode, model, threshold, etc.
@@ -314,18 +330,21 @@ Cold Eyes is a hook and a set of JSON files. Everything is designed to be readab
 python ~/.claude/scripts/cold_eyes/cli.py doctor
 ```
 
-Outputs a JSON report checking 8 items:
+Outputs a JSON report:
 
 | Check | What it verifies |
 |---|---|
 | `python` | Python version |
 | `git` | Git CLI available |
 | `claude_cli` | Claude Code CLI available |
-| `deploy_files` | Sentinel files exist in `~/.claude/scripts/` |
+| `deploy_files` | All package files exist in `~/.claude/scripts/` |
 | `settings_hook` | `settings.json` has a Stop hook referencing `cold-review.sh` |
 | `git_repo` | Current directory is a git repository |
-| `ignore_file` | `.cold-review-ignore` exists in repo root (info only, not required) |
-| `policy_file` | `.cold-review-policy.yml` exists and lists loaded keys (info only, not required) |
+| `ignore_file` | `.cold-review-ignore` exists in repo root (info only) |
+| `policy_file` | `.cold-review-policy.yml` exists and lists loaded keys (info only) |
+| `legacy_helper` | No `cold-review-helper.py` in scripts dir (split-brain detection) |
+| `shell_version` | `cold-review.sh` has no legacy patterns (`claude -p`, helper refs, `MAX_LINES`) |
+| `legacy_env` | `COLD_REVIEW_MAX_LINES` not set (info only) |
 
 If reviews aren't running, `doctor` is the first thing to check.
 
@@ -347,7 +366,7 @@ python ~/.claude/scripts/cold_eyes/cli.py stats --last 7d --by-reason --by-path
 
 Returns a JSON summary of review activity from history:
 
-- **Total and per-state counts** — passed, blocked, overridden, skipped, infra_failed, failed, reported
+- **Total and per-state counts** — passed, blocked, overridden, skipped, infra_failed, reported
 - **`--last`** — filter by time window: `7d` (days), `24h` (hours), `2w` (weeks)
 - **`--by-reason`** — override reasons grouped by frequency
 - **`--by-path`** — per-repo breakdown with total, blocked, and overridden counts (sorted by blocked descending)
@@ -355,8 +374,8 @@ Returns a JSON summary of review activity from history:
 ## Known limitations
 
 - **Review history grows forever.** `~/.claude/cold-review-history.jsonl` is append-only. Periodically archive or truncate it yourself.
-- **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. When truncation causes files to be skipped, block messages include a warning with the count of unreviewed files.
-- **Silent on auth failure.** If your Claude subscription is expired or rate-limited, the review logs a `failed` state. Check stderr or history.
+- **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. Truncation metadata tracks partial files, budget-skipped files, binary files, and unreadable files separately. Block messages include a warning listing what was not reviewed.
+- **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. Check history for patterns.
 - **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
 
 ## License

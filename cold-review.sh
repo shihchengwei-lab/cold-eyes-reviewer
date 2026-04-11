@@ -1,119 +1,108 @@
 #!/bin/bash
-# Cold Eyes Reviewer — Stop hook script (thin orchestrator)
+# Cold Eyes Reviewer — Stop hook shim
 #
-# Guards run here (fast, no Python overhead for trivial skips).
-# All review logic lives in cold_review_engine.py.
+# All review logic lives in cold_eyes/ Python package.
+# This shell script only handles:
+#   - Guard checks (off, recursion, engine exists, git repo)
+#   - Atomic lock (mkdir-based)
+#   - Hook input parsing (stop_hook_active)
+#   - Invoking the Python CLI
+#   - Translating CLI JSON to hook decision JSON
 #
-# Environment variables:
+# Environment variables (resolved by Python engine):
 #   COLD_REVIEW_MODE            — block (default), report, off
 #   COLD_REVIEW_MODEL           — opus (default), sonnet, haiku
 #   COLD_REVIEW_MAX_TOKENS      — token budget for diff (default: 12000)
-#   COLD_REVIEW_MAX_LINES       — backward compat: converted to tokens via ×4
 #   COLD_REVIEW_BLOCK_THRESHOLD — critical (default), major
 #   COLD_REVIEW_CONFIDENCE      — minimum confidence to keep: high, medium (default), low
 #   COLD_REVIEW_LANGUAGE        — output language (default: 繁體中文（台灣）)
-#   COLD_REVIEW_SCOPE           — diff scope: working (default), staged, head
-#   COLD_REVIEW_ALLOW_ONCE      — set to 1 to bypass block once (logged)
-#   COLD_REVIEW_OVERRIDE_REASON — reason text when overriding with ALLOW_ONCE
+#   COLD_REVIEW_SCOPE           — diff scope: working (default), staged, head, pr-diff
+#   COLD_REVIEW_BASE            — base branch for pr-diff scope
+#   COLD_REVIEW_OVERRIDE_REASON — reason text when overriding (legacy)
 
 set -uo pipefail
 
 export PYTHONIOENCODING=utf-8
 
 SCRIPTS_DIR="$(cd "$(dirname "$0")" && pwd)"
-HELPER="$SCRIPTS_DIR/cold_eyes/helper.py"
 ENGINE="$SCRIPTS_DIR/cold_eyes/cli.py"
-LOCKFILE="$HOME/.claude/.cold-review-lock"
+LOCKDIR="$HOME/.claude/.cold-review-lock.d"
 
 MODE="${COLD_REVIEW_MODE:-block}"
-MODEL="${COLD_REVIEW_MODEL:-opus}"
-OVERRIDE_REASON="${COLD_REVIEW_OVERRIDE_REASON:-}"
 
-# Token budget: prefer MAX_TOKENS, fallback to MAX_LINES×4
-# Always computed here for backward compat (MAX_LINES conversion)
-if [[ -n "${COLD_REVIEW_MAX_LINES:-}" ]]; then
-  MAX_TOKENS=$((COLD_REVIEW_MAX_LINES * 4))
-elif [[ -n "${COLD_REVIEW_MAX_TOKENS:-}" ]]; then
-  MAX_TOKENS="$COLD_REVIEW_MAX_TOKENS"
-else
-  MAX_TOKENS=""
-fi
-
-# --- Helper: log guard-level skips to history ---
-log_state() {
-  local state="$1"
-  local reason="${2:-}"
-  python "$HELPER" log-state "$(pwd)" "$MODE" "$MODEL" "$state" "$reason" 2>/dev/null || true
-}
-
-# --- Guard: off mode (no logging — off means off) ---
+# --- Guard: off mode ---
 [[ "$MODE" == "off" ]] && exit 0
 
-# --- Guard: prevent recursion (no logging — internal mechanism) ---
+# --- Guard: prevent recursion ---
 [[ "${COLD_REVIEW_ACTIVE:-}" == "1" ]] && exit 0
 
 # --- Guard: engine must exist ---
-if [[ ! -f "$ENGINE" ]]; then
-  echo "cold-review: engine not found at $ENGINE" >&2
-  log_state "failed" "engine not found"
+[[ ! -f "$ENGINE" ]] && { echo "cold-review: engine not found at $ENGINE" >&2; exit 0; }
+
+# --- Atomic lock (mkdir-based) ---
+acquire_lock() {
+  if mkdir "$LOCKDIR" 2>/dev/null; then
+    echo $$ > "$LOCKDIR/pid"
+    return 0
+  fi
+  # Lock exists — check for stale
+  local lock_pid
+  lock_pid=$(cat "$LOCKDIR/pid" 2>/dev/null || echo "")
+  if [[ -n "$lock_pid" ]] && kill -0 "$lock_pid" 2>/dev/null; then
+    return 1  # Active process holds lock
+  fi
+  # Stale lock — remove and retry once
+  rm -rf "$LOCKDIR"
+  if mkdir "$LOCKDIR" 2>/dev/null; then
+    echo $$ > "$LOCKDIR/pid"
+    return 0
+  fi
+  return 1
+}
+
+release_lock() {
+  rm -rf "$LOCKDIR"
+}
+
+if ! acquire_lock; then
+  echo "cold-review: skipped (another review in progress)" >&2
   exit 0
 fi
-
-# --- Guard: lockfile with stale detection ---
-if [[ -f "$LOCKFILE" ]]; then
-  LOCK_PID=$(head -1 "$LOCKFILE" 2>/dev/null || echo "")
-  if [[ -n "$LOCK_PID" ]] && kill -0 "$LOCK_PID" 2>/dev/null; then
-    echo "cold-review: skipped (another review in progress, pid=$LOCK_PID)" >&2
-    log_state "skipped" "another review in progress"
-    exit 0
-  else
-    rm -f "$LOCKFILE"
-  fi
-fi
+trap 'release_lock' EXIT
 
 # --- Read hook input, check stop_hook_active ---
 INPUT=$(cat)
-STOP_ACTIVE=$(echo "$INPUT" | python "$HELPER" parse-hook 2>/dev/null)
+STOP_ACTIVE=$(echo "$INPUT" | python -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('stop_hook_active') else 'false')" 2>/dev/null || echo "false")
 [[ "$STOP_ACTIVE" == "true" ]] && exit 0
 
 # --- Guard: must be in a git repo ---
 if ! git rev-parse --git-dir > /dev/null 2>&1; then
   echo "cold-review: skipped (not a git repo)" >&2
-  log_state "skipped" "not a git repo"
   exit 0
 fi
 
-# --- Acquire lock ---
-echo $$ > "$LOCKFILE"
-trap 'rm -f "$LOCKFILE"' EXIT
-
-# --- Run engine ---
-# Only pass flags for explicitly-set env vars; engine resolves
-# unset values via policy file → hardcoded defaults.
+# --- Build engine args ---
 ENGINE_ARGS=(run)
 [[ -n "${COLD_REVIEW_MODE+x}" ]]            && ENGINE_ARGS+=(--mode "$MODE")
 [[ -n "${COLD_REVIEW_MODEL+x}" ]]           && ENGINE_ARGS+=(--model "${COLD_REVIEW_MODEL}")
-[[ -n "$MAX_TOKENS" ]]                      && ENGINE_ARGS+=(--max-tokens "$MAX_TOKENS")
+[[ -n "${COLD_REVIEW_MAX_TOKENS+x}" ]]      && ENGINE_ARGS+=(--max-tokens "${COLD_REVIEW_MAX_TOKENS}")
 [[ -n "${COLD_REVIEW_BLOCK_THRESHOLD+x}" ]] && ENGINE_ARGS+=(--threshold "${COLD_REVIEW_BLOCK_THRESHOLD}")
 [[ -n "${COLD_REVIEW_CONFIDENCE+x}" ]]      && ENGINE_ARGS+=(--confidence "${COLD_REVIEW_CONFIDENCE}")
 [[ -n "${COLD_REVIEW_SCOPE+x}" ]]           && ENGINE_ARGS+=(--scope "${COLD_REVIEW_SCOPE}")
 [[ -n "${COLD_REVIEW_LANGUAGE:-}" ]]         && ENGINE_ARGS+=(--language "${COLD_REVIEW_LANGUAGE}")
 [[ -n "${COLD_REVIEW_BASE:-}" ]]             && ENGINE_ARGS+=(--base "${COLD_REVIEW_BASE}")
-[[ -n "$OVERRIDE_REASON" ]]                  && ENGINE_ARGS+=(--override-reason "$OVERRIDE_REASON")
+[[ -n "${COLD_REVIEW_OVERRIDE_REASON:-}" ]]  && ENGINE_ARGS+=(--override-reason "${COLD_REVIEW_OVERRIDE_REASON}")
+
+# --- Run engine ---
 RESULT=$(python "$ENGINE" "${ENGINE_ARGS[@]}" 2>&2) || true
 
 # --- Release lock early ---
-rm -f "$LOCKFILE"
+release_lock
 trap - EXIT
 
-# --- Handle engine failure ---
-if [[ -z "$RESULT" ]]; then
-  echo "cold-review: engine returned no output" >&2
-  log_state "failed" "engine no output"
-  exit 0
-fi
-
 # --- Parse result and act ---
+[[ -z "$RESULT" ]] && exit 0
+
 echo "$RESULT" | python -c "
 import json, sys
 d = json.load(sys.stdin)

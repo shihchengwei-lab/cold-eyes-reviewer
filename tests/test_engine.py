@@ -17,12 +17,12 @@ from cold_eyes import git as _git_mod
 from cold_eyes.review import parse_review_output
 from cold_eyes.policy import apply_policy, filter_by_confidence, format_block_reason
 from cold_eyes.filter import filter_file_list, rank_file_list
-from cold_eyes.git import build_diff, is_binary, collect_files, git_cmd
+from cold_eyes.git import build_diff, is_binary, collect_files, git_cmd, GitCommandError, ConfigError
 from cold_eyes.prompt import build_prompt_text
 from cold_eyes.history import log_to_history, aggregate_overrides, compute_stats
 from cold_eyes.config import load_policy, _parse_flat_yaml, POLICY_FILENAME
 from cold_eyes.claude import (
-    ModelAdapter, ClaudeCliAdapter, MockAdapter, call_claude,
+    ModelAdapter, ClaudeCliAdapter, MockAdapter, call_claude, ReviewInvocation,
 )
 from cold_eyes.doctor import run_doctor
 
@@ -126,12 +126,12 @@ class TestApplyPolicyInfraFailure:
         outcome = engine.apply_policy(self._infra_review(), "block", "critical", False, "medium")
         assert outcome["action"] == "block"
         assert outcome["state"] == "infra_failed"
-        assert "ALLOW_ONCE" in outcome["reason"]
+        assert "arm-override" in outcome["reason"]
 
     def test_report_mode_passes_on_infra_failure(self):
         outcome = engine.apply_policy(self._infra_review(), "report", "critical", False, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == "failed"
+        assert outcome["state"] == "infra_failed"
 
     def test_override_bypasses_infra_block(self):
         outcome = engine.apply_policy(self._infra_review(), "block", "critical", True, "medium")
@@ -292,11 +292,10 @@ class TestBuildDiff:
         old_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
-            diff, fc, tc, trunc, skipped = engine.build_diff(
+            meta = engine.build_diff(
                 ["small.py", "big.py"], {"small.py", "big.py"}, max_tokens=100
             )
-            # With 100 token budget, at least one file should be truncated or skipped
-            assert trunc or "[truncated:" in diff
+            assert meta["truncated"] or "[truncated:" in meta["diff_text"]
         finally:
             os.chdir(old_cwd)
 
@@ -311,11 +310,12 @@ class TestBuildDiff:
         old_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
-            diff, fc, tc, trunc, skipped = engine.build_diff(
+            meta = engine.build_diff(
                 ["a.py", "b.py", "c.py"], {"a.py", "b.py", "c.py"}, max_tokens=50
             )
-            # With tight budget, some files should be skipped
-            assert len(skipped) > 0 or "[truncated:" in diff
+            all_skipped = (meta["partial_files"] + meta["skipped_budget"]
+                           + meta["skipped_binary"] + meta["skipped_unreadable"])
+            assert len(all_skipped) > 0 or "[truncated:" in meta["diff_text"]
         finally:
             os.chdir(old_cwd)
 
@@ -345,11 +345,11 @@ class TestBinaryDetection:
         old_cwd = os.getcwd()
         os.chdir(tmp_path)
         try:
-            diff, fc, tc, trunc, skipped = engine.build_diff(
+            meta = engine.build_diff(
                 ["data.bin"], {"data.bin"}, max_tokens=12000
             )
-            assert any("binary" in s for s in skipped)
-            assert fc == 0  # binary file not counted
+            assert "data.bin" in meta["skipped_binary"]
+            assert meta["file_count"] == 0
         finally:
             os.chdir(old_cwd)
 
@@ -658,6 +658,38 @@ class TestDoctor:
         )
         assert result["all_ok"] is False
 
+    def test_legacy_helper_detected(self, tmp_path):
+        (tmp_path / "cold-review-helper.py").write_text("legacy")
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        helper = next(c for c in result["checks"] if c["name"] == "legacy_helper")
+        assert helper["status"] == "fail"
+        assert "split-brain" in helper["detail"]
+
+    def test_no_legacy_helper_ok(self, tmp_path):
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        helper = next(c for c in result["checks"] if c["name"] == "legacy_helper")
+        assert helper["status"] == "ok"
+
+    def test_shell_with_legacy_patterns_detected(self, tmp_path):
+        (tmp_path / "cold-review.sh").write_text('HELPER="cold-review-helper.py"')
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        sv = next(c for c in result["checks"] if c["name"] == "shell_version")
+        assert sv["status"] == "fail"
+
+    def test_clean_shell_ok(self, tmp_path):
+        (tmp_path / "cold-review.sh").write_text('#!/bin/bash\npython cli.py run')
+        result = engine.run_doctor(
+            scripts_dir=str(tmp_path), settings_path=str(tmp_path / "none.json")
+        )
+        sv = next(c for c in result["checks"] if c["name"] == "shell_version")
+        assert sv["status"] == "ok"
+
 
 # ---------------------------------------------------------------------------
 # Scope
@@ -721,15 +753,22 @@ class TestCollectFilesScope:
         assert untracked == set()
         assert any("main...HEAD" in c for c in calls)
 
-    def test_pr_diff_no_base_returns_empty(self, monkeypatch):
-        monkeypatch.setattr(_git_mod, "git_cmd", lambda *a: "")
-        files, untracked = engine.collect_files("pr-diff")
-        assert files == []
+    def test_pr_diff_no_base_raises_config_error(self):
+        with pytest.raises(ConfigError, match="pr-diff scope requires --base"):
+            engine.collect_files("pr-diff")
 
-    def test_pr_diff_empty_base_returns_empty(self, monkeypatch):
-        monkeypatch.setattr(_git_mod, "git_cmd", lambda *a: "")
-        files, untracked = engine.collect_files("pr-diff", base="")
-        assert files == []
+    def test_pr_diff_empty_base_raises_config_error(self):
+        with pytest.raises(ConfigError, match="pr-diff scope requires --base"):
+            engine.collect_files("pr-diff", base="")
+
+    def test_pr_diff_invalid_base_raises_git_error(self, monkeypatch):
+        def raise_on_diff(*args):
+            if "nonexistent...HEAD" in args:
+                raise GitCommandError(list(args), 128, "unknown revision")
+            return ""
+        monkeypatch.setattr(_git_mod, "git_cmd", raise_on_diff)
+        with pytest.raises(GitCommandError):
+            engine.collect_files("pr-diff", base="nonexistent")
 
 
 class TestBuildDiffScope:
@@ -744,10 +783,7 @@ class TestBuildDiffScope:
             return ""
 
         monkeypatch.setattr(_git_mod, "git_cmd", mock_git)
-        diff, fc, tc, trunc, skip = engine.build_diff(
-            ["x.py"], set(), 12000, scope="staged"
-        )
-        # Verify only --cached was called, not bare diff or diff HEAD
+        meta = engine.build_diff(["x.py"], set(), 12000, scope="staged")
         diff_calls = [c for c in calls if c[0] == "diff"]
         for c in diff_calls:
             assert "--cached" in c
@@ -762,9 +798,7 @@ class TestBuildDiffScope:
             return ""
 
         monkeypatch.setattr(_git_mod, "git_cmd", mock_git)
-        diff, fc, tc, trunc, skip = engine.build_diff(
-            ["x.py"], set(), 12000, scope="head"
-        )
+        meta = engine.build_diff(["x.py"], set(), 12000, scope="head")
         diff_calls = [c for c in calls if c[0] == "diff"]
         for c in diff_calls:
             assert "HEAD" in c
@@ -794,12 +828,12 @@ class TestBuildDiffScope:
             return ""
 
         monkeypatch.setattr(_git_mod, "git_cmd", mock_git)
-        diff, fc, tc, trunc, skip = engine.build_diff(
+        meta = engine.build_diff(
             ["x.py"], set(), 12000, scope="pr-diff", base="main"
         )
         diff_calls = [c for c in calls if c[0] == "diff"]
         assert any("main...HEAD" in c for c in diff_calls)
-        assert "pr change" in diff
+        assert "pr change" in meta["diff_text"]
 
 
 class TestHistoryScope:
@@ -973,18 +1007,18 @@ class TestOverrideReason:
     def test_block_includes_override_hint(self):
         outcome = engine.apply_policy(
             self._review(), "block", "critical", False, "medium")
-        assert "COLD_REVIEW_OVERRIDE_REASON" in outcome["reason"]
+        assert "arm-override" in outcome["reason"]
 
     def test_infra_block_includes_override_hint(self):
         outcome = engine.apply_policy(
             self._infra_review(), "block", "critical", False, "medium")
-        assert "COLD_REVIEW_OVERRIDE_REASON" in outcome["reason"]
+        assert "arm-override" in outcome["reason"]
 
     def test_pass_no_override_hint(self):
         review = {"pass": True, "review_status": "completed",
                   "issues": [], "summary": "ok"}
         outcome = engine.apply_policy(review, "block", "critical", False, "medium")
-        assert "OVERRIDE_REASON" not in outcome["reason"]
+        assert "arm-override" not in outcome["reason"]
 
 
 class TestHistoryOverrideReason:
@@ -1382,6 +1416,12 @@ class TestMockAdapter:
 
     def test_returns_fixed_response(self):
         adapter = MockAdapter(response='{"pass": true}', exit_code=0)
+        inv = adapter.review("diff", "prompt", "opus")
+        assert inv.stdout == '{"pass": true}'
+        assert inv.exit_code == 0
+
+    def test_backward_compat_tuple_destructure(self):
+        adapter = MockAdapter(response='{"pass": true}', exit_code=0)
         out, code = adapter.review("diff", "prompt", "opus")
         assert out == '{"pass": true}'
         assert code == 0
@@ -1401,10 +1441,16 @@ class TestMockAdapter:
         assert adapter.call_count == 2
 
     def test_error_exit_code(self):
-        adapter = MockAdapter(response="", exit_code=-1)
-        out, code = adapter.review("diff", "prompt", "opus")
-        assert out == ""
-        assert code == -1
+        adapter = MockAdapter(response="", exit_code=-1, failure_kind="timeout")
+        inv = adapter.review("diff", "prompt", "opus")
+        assert inv.stdout == ""
+        assert inv.exit_code == -1
+        assert inv.failure_kind == "timeout"
+
+    def test_stderr_captured(self):
+        adapter = MockAdapter(response="", exit_code=1, stderr="auth failed")
+        inv = adapter.review("diff", "prompt", "opus")
+        assert inv.stderr == "auth failed"
 
 
 class TestClaudeCliAdapter:
@@ -1427,3 +1473,256 @@ class TestCallClaudeLegacy:
     def test_legacy_wrapper_callable(self):
         """call_claude still importable and callable (will fail without CLI)."""
         assert callable(call_claude)
+
+
+# ===========================================================================
+# PATCH 4 — Typed git failures
+# ===========================================================================
+
+class TestGitCommandError:
+
+    def test_git_cmd_raises_on_nonzero(self, monkeypatch):
+        """git_cmd must raise GitCommandError when exit code != 0."""
+        import subprocess
+        def fake_run(*a, **kw):
+            return subprocess.CompletedProcess(a, returncode=128, stdout="", stderr="fatal: bad")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        with pytest.raises(GitCommandError) as exc_info:
+            git_cmd("diff", "--name-only")
+        assert exc_info.value.returncode == 128
+        assert "bad" in exc_info.value.stderr
+
+    def test_git_cmd_success_returns_stdout(self, monkeypatch):
+        import subprocess
+        def fake_run(*a, **kw):
+            return subprocess.CompletedProcess(a, returncode=0, stdout="file.py\n", stderr="")
+        monkeypatch.setattr(subprocess, "run", fake_run)
+        assert git_cmd("diff", "--name-only") == "file.py"
+
+    def test_engine_git_failure_is_infra_failed(self, monkeypatch, tmp_path):
+        """Engine maps GitCommandError from collect_files to infra_failed."""
+        def raise_git(*args, **kwargs):
+            raise GitCommandError(["diff"], 128, "fatal")
+        monkeypatch.setattr(_engine_mod, "git_cmd", lambda *a: "")  # rev-parse ok
+        monkeypatch.setattr(_engine_mod, "collect_files", raise_git)
+        monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "h.jsonl"))
+        result = _engine_mod.run(mode="block", adapter=MockAdapter())
+        assert result["state"] == "infra_failed"
+        assert result["action"] == "block"
+
+    def test_engine_config_error_is_infra_failed(self, monkeypatch, tmp_path):
+        """Engine maps ConfigError from collect_files to infra_failed."""
+        def raise_config(*args, **kwargs):
+            raise ConfigError("pr-diff scope requires --base")
+        monkeypatch.setattr(_engine_mod, "git_cmd", lambda *a: "")
+        monkeypatch.setattr(_engine_mod, "collect_files", raise_config)
+        monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "h.jsonl"))
+        result = _engine_mod.run(mode="block", adapter=MockAdapter())
+        assert result["state"] == "infra_failed"
+        assert "pr-diff" in result["reason"]
+
+
+# ===========================================================================
+# PATCH 6 — ReviewInvocation + stderr/failure_kind
+# ===========================================================================
+
+class TestReviewInvocation:
+
+    def test_review_invocation_fields(self):
+        inv = ReviewInvocation("out", "err", 0)
+        assert inv.stdout == "out"
+        assert inv.stderr == "err"
+        assert inv.exit_code == 0
+        assert inv.failure_kind is None
+
+    def test_review_invocation_with_failure_kind(self):
+        inv = ReviewInvocation("", "", -1, "timeout")
+        assert inv.failure_kind == "timeout"
+
+    def test_backward_compat_iter(self):
+        inv = ReviewInvocation("output", "err", 0)
+        out, code = inv
+        assert out == "output"
+        assert code == 0
+
+
+class TestHistoryFailureKind:
+
+    def test_failure_kind_in_history(self, tmp_path):
+        hfile = str(tmp_path / "h.jsonl")
+        log_to_history("/tmp", "block", "opus", "infra_failed",
+                       reason="claude exit -1",
+                       failure_kind="timeout", stderr_excerpt="timed out",
+                       min_confidence="medium", scope="working")
+        # Re-read from constants default; override for this test
+        import cold_eyes.constants as c
+        orig = c.HISTORY_FILE
+        c.HISTORY_FILE = hfile
+        try:
+            log_to_history("/tmp", "block", "opus", "infra_failed",
+                           reason="claude exit -1",
+                           failure_kind="timeout", stderr_excerpt="timed out")
+        finally:
+            c.HISTORY_FILE = orig
+        with open(hfile) as f:
+            entry = json.loads(f.readline())
+        assert entry["failure_kind"] == "timeout"
+        assert entry["stderr_excerpt"] == "timed out"
+
+    def test_no_failure_kind_when_success(self, tmp_path):
+        import cold_eyes.constants as c
+        hfile = str(tmp_path / "h.jsonl")
+        orig = c.HISTORY_FILE
+        c.HISTORY_FILE = hfile
+        try:
+            log_to_history("/tmp", "block", "opus", "passed")
+        finally:
+            c.HISTORY_FILE = orig
+        with open(hfile) as f:
+            entry = json.loads(f.readline())
+        assert "failure_kind" not in entry
+        assert "stderr_excerpt" not in entry
+
+
+# ===========================================================================
+# PATCH 5 — Rich diff metadata
+# ===========================================================================
+
+class TestDiffMetadata:
+
+    def test_partial_file_sets_truncated_true(self, tmp_path):
+        """A single file cut mid-content should set truncated=True."""
+        f = tmp_path / "big.py"
+        f.write_text("x = 1\n" * 2000)  # large file
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            meta = engine.build_diff(["big.py"], {"big.py"}, max_tokens=50)
+            assert meta["truncated"] is True
+            assert "big.py" in meta["partial_files"]
+            assert meta["skipped_budget"] == []
+        finally:
+            os.chdir(old_cwd)
+
+    def test_binary_in_skipped_binary(self, tmp_path):
+        f = tmp_path / "img.png"
+        f.write_bytes(b"\x89PNG\r\n\x00\x00")
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            meta = engine.build_diff(["img.png"], {"img.png"}, max_tokens=12000)
+            assert "img.png" in meta["skipped_binary"]
+            assert meta["truncated"] is True
+        finally:
+            os.chdir(old_cwd)
+
+    def test_unreadable_in_skipped_unreadable(self, tmp_path):
+        """A file that can't be read lands in skipped_unreadable."""
+        f = tmp_path / "secret.dat"
+        f.write_text("data")
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            # Make unreadable by monkeypatching open
+            import builtins
+            real_open = builtins.open
+            def bad_open(path, *a, **kw):
+                if "secret.dat" in str(path) and "r" in str(a):
+                    raise OSError("permission denied")
+                return real_open(path, *a, **kw)
+            builtins.open = bad_open
+            try:
+                meta = engine.build_diff(["secret.dat"], {"secret.dat"}, max_tokens=12000)
+                assert "secret.dat" in meta["skipped_unreadable"]
+            finally:
+                builtins.open = real_open
+        finally:
+            os.chdir(old_cwd)
+
+    def test_budget_exhausted_in_skipped_budget(self, tmp_path):
+        f1 = tmp_path / "a.py"
+        f1.write_text("a" * 400)  # 400 chars → 100 tokens, fills budget
+        f2 = tmp_path / "b.py"
+        f2.write_text("b")
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            meta = engine.build_diff(
+                ["a.py", "b.py"], {"a.py", "b.py"}, max_tokens=100
+            )
+            assert "b.py" in meta["skipped_budget"]
+        finally:
+            os.chdir(old_cwd)
+
+    def test_no_truncation_when_all_fit(self, tmp_path):
+        f = tmp_path / "small.py"
+        f.write_text("x = 1\n")
+        old_cwd = os.getcwd()
+        os.chdir(tmp_path)
+        try:
+            meta = engine.build_diff(["small.py"], {"small.py"}, max_tokens=12000)
+            assert meta["truncated"] is False
+            assert meta["partial_files"] == []
+            assert meta["skipped_budget"] == []
+            assert meta["skipped_binary"] == []
+            assert meta["skipped_unreadable"] == []
+        finally:
+            os.chdir(old_cwd)
+
+
+# ===========================================================================
+# PATCH 7 — Policy/state machine fixes
+# ===========================================================================
+
+class TestPolicyStateMachine:
+
+    def _review_with_issues(self, severity="critical", confidence="high"):
+        return {
+            "pass": False, "review_status": "completed",
+            "issues": [{"severity": severity, "confidence": confidence,
+                        "check": "x", "verdict": "y", "fix": "z",
+                        "file": "auth.py", "line_hint": "42"}],
+            "summary": "test",
+        }
+
+    def test_all_filtered_out_state_is_passed(self):
+        """If confidence filter removes all issues, report mode → passed, not reported."""
+        review = self._review_with_issues(confidence="low")
+        outcome = engine.apply_policy(review, "report", "critical", False, "high")
+        assert outcome["state"] == "passed"
+
+    def test_report_with_remaining_issues_is_reported(self):
+        review = self._review_with_issues(confidence="high")
+        outcome = engine.apply_policy(review, "report", "critical", False, "medium")
+        assert outcome["state"] == "reported"
+
+    def test_block_reason_includes_file(self):
+        review = self._review_with_issues()
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        assert "auth.py" in outcome["reason"]
+
+    def test_block_reason_includes_line_hint(self):
+        review = self._review_with_issues()
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        assert "(~42)" in outcome["reason"]
+
+    def test_block_reason_english_labels(self):
+        review = self._review_with_issues()
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium",
+                                      language="English")
+        assert "Check:" in outcome["reason"]
+        assert "Verdict:" in outcome["reason"]
+        assert "Fix:" in outcome["reason"]
+        assert "\u6aa2\u67e5" not in outcome["reason"]
+
+    def test_block_reason_chinese_default(self):
+        review = self._review_with_issues()
+        outcome = engine.apply_policy(review, "block", "critical", False, "medium")
+        assert "\u6aa2\u67e5" in outcome["reason"]
+
+    def test_infra_state_consistent_across_modes(self):
+        infra = {"pass": True, "review_status": "failed", "issues": [], "summary": "err"}
+        block_outcome = engine.apply_policy(infra, "block", "critical", False, "medium")
+        report_outcome = engine.apply_policy(infra, "report", "critical", False, "medium")
+        assert block_outcome["state"] == "infra_failed"
+        assert report_outcome["state"] == "infra_failed"

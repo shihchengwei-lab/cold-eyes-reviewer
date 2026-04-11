@@ -6,7 +6,7 @@ import subprocess
 import sys
 
 from cold_eyes.constants import DEPLOY_FILES
-from cold_eyes.git import git_cmd
+from cold_eyes.git import git_cmd, GitCommandError
 from cold_eyes.config import load_policy, POLICY_FILENAME
 
 
@@ -24,10 +24,10 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
     checks.append({"name": "python", "status": "ok", "detail": ver})
 
     # 2. Git
-    git_ver = git_cmd("--version")
-    if git_ver:
+    try:
+        git_ver = git_cmd("--version")
         checks.append({"name": "git", "status": "ok", "detail": git_ver})
-    else:
+    except GitCommandError:
         checks.append({"name": "git", "status": "fail", "detail": "not found"})
 
     # 3. Claude CLI
@@ -85,16 +85,19 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
                        "detail": str(e)})
 
     # 6. Git repo
-    git_dir = git_cmd("rev-parse", "--git-dir")
-    if git_dir:
+    try:
+        git_dir = git_cmd("rev-parse", "--git-dir")
         checks.append({"name": "git_repo", "status": "ok", "detail": "in git repo"})
-    else:
+    except GitCommandError:
         checks.append({"name": "git_repo", "status": "fail",
                        "detail": "not in a git repo"})
 
     # 7. .cold-review-ignore (info level)
     if repo_root is None:
-        repo_root = git_cmd("rev-parse", "--show-toplevel")
+        try:
+            repo_root = git_cmd("rev-parse", "--show-toplevel")
+        except GitCommandError:
+            repo_root = ""
     ignore_path = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
     if ignore_path and os.path.isfile(ignore_path):
         checks.append({"name": "ignore_file", "status": "ok",
@@ -116,6 +119,39 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
     else:
         checks.append({"name": "policy_file", "status": "info",
                        "detail": f"{POLICY_FILENAME} not found (optional)"})
+
+    # 9. Legacy helper detection (split-brain check)
+    helper_path = os.path.join(scripts_dir, "cold-review-helper.py")
+    if os.path.isfile(helper_path):
+        checks.append({"name": "legacy_helper", "status": "fail",
+                       "detail": "cold-review-helper.py found — remove to avoid split-brain"})
+    else:
+        checks.append({"name": "legacy_helper", "status": "ok",
+                       "detail": "no legacy helper"})
+
+    # 10. Shell version check (no legacy patterns)
+    shell_path = os.path.join(scripts_dir, "cold-review.sh")
+    if os.path.isfile(shell_path):
+        try:
+            with open(shell_path, "r", encoding="utf-8") as f:
+                shell_content = f.read()
+            has_legacy = ("cold-review-helper" in shell_content
+                          or "claude -p" in shell_content
+                          or "COLD_REVIEW_MAX_LINES" in shell_content)
+            if has_legacy:
+                checks.append({"name": "shell_version", "status": "fail",
+                               "detail": "cold-review.sh contains legacy patterns"})
+            else:
+                checks.append({"name": "shell_version", "status": "ok",
+                               "detail": "shell is current version"})
+        except OSError:
+            checks.append({"name": "shell_version", "status": "info",
+                           "detail": "could not read cold-review.sh"})
+
+    # 11. Legacy env var
+    if os.environ.get("COLD_REVIEW_MAX_LINES"):
+        checks.append({"name": "legacy_env", "status": "info",
+                       "detail": "COLD_REVIEW_MAX_LINES is set — use COLD_REVIEW_MAX_TOKENS instead"})
 
     all_ok = all(c["status"] != "fail" for c in checks)
     return {"action": "doctor", "checks": checks, "all_ok": all_ok}

@@ -9,28 +9,50 @@ def filter_by_confidence(issues, min_confidence="medium"):
     return [i for i in issues if CONFIDENCE_ORDER.get(i.get("confidence", "medium"), 2) >= threshold]
 
 
-def format_block_reason(review, truncated=False, skipped_count=0):
+def _is_chinese(language):
+    """True if language string looks like it requests Chinese output."""
+    if not language:
+        return True  # default is Chinese
+    low = language.lower()
+    return any(k in low for k in ("中文", "chinese", "zh", "繁體", "簡體"))
+
+
+def format_block_reason(review, truncated=False, skipped_count=0, language=None):
     """Format review into human-readable block reason."""
+    use_zh = _is_chinese(language)
+    if use_zh:
+        check_l, verdict_l, fix_l = "\u6aa2\u67e5", "\u5224\u6c7a", "\u6307\u793a"
+        trunc_msg = f"\u26a0 \u5be9\u67e5\u4e0d\u5b8c\u6574\uff1adiff \u8d85\u904e token \u9810\u7b97\uff0c{skipped_count} \u500b\u6a94\u6848\u672a\u5be9\u67e5\u3002"
+    else:
+        check_l, verdict_l, fix_l = "Check", "Verdict", "Fix"
+        trunc_msg = f"\u26a0 Incomplete review: diff exceeded token budget, {skipped_count} files not reviewed."
+
     summary = review.get("summary", "")
     issues = review.get("issues", [])
     lines = [f"Cold Eyes Review \u2014 {summary}"]
     for issue in issues:
         sev = issue.get("severity", "major").upper()
+        file_name = issue.get("file", "")
         line_hint = issue.get("line_hint", "")
         check = issue.get("check", "")
         verdict = issue.get("verdict", "")
         fix = issue.get("fix", "")
+        file_part = f" {file_name}" if file_name and file_name != "unknown" else ""
         hint_part = f" (~{line_hint})" if line_hint else ""
-        lines.append(f"  - [{sev}]{hint_part} \u6aa2\u67e5\uff1a{check}")
-        lines.append(f"    \u5224\u6c7a\uff1a{verdict}")
-        lines.append(f"    \u6307\u793a\uff1a{fix}")
+        lines.append(f"  - [{sev}]{file_part}{hint_part} {check_l}\uff1a{check}" if use_zh
+                     else f"  - [{sev}]{file_part}{hint_part} {check_l}: {check}")
+        lines.append(f"    {verdict_l}\uff1a{verdict}" if use_zh
+                     else f"    {verdict_l}: {verdict}")
+        lines.append(f"    {fix_l}\uff1a{fix}" if use_zh
+                     else f"    {fix_l}: {fix}")
     if truncated:
-        lines.append(f"  \u26a0 \u5be9\u67e5\u4e0d\u5b8c\u6574\uff1adiff \u8d85\u904e token \u9810\u7b97\uff0c{skipped_count} \u500b\u6a94\u6848\u672a\u5be9\u67e5\u3002")
+        lines.append(f"  {trunc_msg}")
     return "\n".join(lines)
 
 
 def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
-                 truncated=False, skipped_files=None, override_reason=""):
+                 truncated=False, skipped_files=None, override_reason="",
+                 language=None):
     """Determine final outcome. Return FinalOutcome dict.
 
     FinalOutcome keys: action, state, reason, display, truncated, skipped_count
@@ -40,6 +62,8 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
         skipped_files = []
     skipped_count = len(skipped_files)
     engine_ok = review.get("review_status") != "failed"
+
+    override_instruction = "To override: python cli.py arm-override --reason '<reason>'"
 
     # --- Infrastructure failure ---
     if not engine_ok:
@@ -51,21 +75,21 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
                     "action": "pass",
                     "state": "overridden",
                     "reason": override_reason,
-                    "display": f"cold-review: override \u2014 infra failure bypass (ALLOW_ONCE){reason_suffix}",
+                    "display": f"cold-review: override \u2014 infra failure bypass{reason_suffix}",
                 }
             return {
                 "action": "block",
                 "state": "infra_failed",
                 "reason": (
                     f"Cold Eyes Review \u2014 infrastructure failure: {error_detail}.\n"
-                    "To override: COLD_REVIEW_ALLOW_ONCE=1 COLD_REVIEW_OVERRIDE_REASON='<reason>'"
+                    f"{override_instruction}"
                 ),
                 "display": "cold-review: blocking (infrastructure failure)",
             }
-        # report mode \u2014 log but pass
+        # report mode — log but pass; state is infra_failed (consistent)
         return {
             "action": "pass",
-            "state": "failed",
+            "state": "infra_failed",
             "reason": error_detail,
             "display": f"cold-review: report logged (infra failure: {error_detail})",
         }
@@ -82,15 +106,15 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
         max_severity = max(max_severity, level)
 
     should_block = max_severity >= threshold_level
-    review_pass = review.get("pass", True)
+    effective_pass = len(filtered_issues) == 0
 
     if mode == "report":
-        state = "reported" if not review_pass else "passed"
+        state = "reported" if not effective_pass else "passed"
         return {
             "action": "pass",
             "state": state,
             "reason": "",
-            "display": f"cold-review: report logged (pass={review_pass})",
+            "display": f"cold-review: report logged (pass={effective_pass})",
         }
 
     # block mode
@@ -101,13 +125,10 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
                 "action": "pass",
                 "state": "overridden",
                 "reason": override_reason,
-                "display": f"cold-review: override \u2014 block skipped (ALLOW_ONCE){reason_suffix}",
+                "display": f"cold-review: override \u2014 block skipped{reason_suffix}",
             }
-        block_reason = format_block_reason(review, truncated, skipped_count)
-        block_reason += (
-            "\n\nTo override: COLD_REVIEW_ALLOW_ONCE=1 "
-            "COLD_REVIEW_OVERRIDE_REASON='<reason>'"
-        )
+        block_reason = format_block_reason(review, truncated, skipped_count, language)
+        block_reason += f"\n\n{override_instruction}"
         return {
             "action": "block",
             "state": "blocked",

@@ -27,5 +27,9 @@ RISK_PATTERN = re.compile(
 
 DEPLOY_FILES = [
     "cold-review.sh", "cold-review-prompt.txt",
-    "cold_eyes/cli.py", "cold_eyes/engine.py", "cold_eyes/constants.py",
+    "cold_eyes/__init__.py", "cold_eyes/cli.py", "cold_eyes/engine.py",
+    "cold_eyes/constants.py", "cold_eyes/git.py", "cold_eyes/filter.py",
+    "cold_eyes/prompt.py", "cold_eyes/claude.py", "cold_eyes/review.py",
+    "cold_eyes/policy.py", "cold_eyes/history.py", "cold_eyes/config.py",
+    "cold_eyes/override.py", "cold_eyes/doctor.py", "cold_eyes/helper.py",
 ]
