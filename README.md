@@ -329,7 +329,7 @@ Review outcomes include coverage visibility: `reviewed_files`, `total_files`, an
 ```
 *.lock  package-lock.json  pnpm-lock.yaml  yarn.lock
 dist/*  build/*  .next/*  coverage/*  vendor/*
-node_modules/*  *.min.js  *.min.css
+node_modules/*  *.min.js  *.min.css  *.map
 ```
 
 **Per-repo patterns:** Create `.cold-review-ignore` in your project root to add project-specific exclusions. Uses fnmatch glob patterns, one per line. Lines starting with `#` are comments. This file lives in the repo, not in `~/.claude/scripts/`.
@@ -432,7 +432,7 @@ If reviews aren't running, `doctor` is the first thing to check.
 python ~/.claude/scripts/cold_eyes/cli.py verify-install
 ```
 
-Returns `{"action": "verify-install", "ok": true, "failures": []}` if the 3 critical checks (deploy files, hook config, git repo) pass.
+Returns `{"action": "verify-install", "ok": true, "failures": []}` if the 2 critical checks (deploy files, hook config) pass. Git repo availability is reported as an environment warning, not a critical failure.
 
 ### Evaluation
 
