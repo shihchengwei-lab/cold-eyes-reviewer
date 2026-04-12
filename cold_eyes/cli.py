@@ -64,7 +64,7 @@ def main():
     parser.add_argument("--context-tokens", type=int, default=None,
                         help="Token budget for context retrieval in deep reviews (default: 2000)")
     parser.add_argument("--max-input-tokens", type=int, default=None,
-                        help="Total token cap for model input: diff + context + hints (default: max_tokens + context_tokens + 1000)")
+                        help="Total token cap for model input: diff + context + hints")
     parser.add_argument("--truncation-policy", default=None,
                         choices=["warn", "soft-pass", "fail-closed"],
                         help="How to handle truncated diffs (default: warn)")
