@@ -5,14 +5,15 @@
 - **版本：** v1.11.3（master，已 push）
 - **分支：** master
 - **測試：** 774 passed / 0 failed
-- **部署：** 待同步 `~/.claude/scripts/`
+- **部署：** 已同步 `~/.claude/scripts/`（清除舊 `cold_eyes/cold_eyes/` 巢狀殘留 + `cold_review_engine.py`）
 - **版本訊號：**
   - `__init__.py` = 1.11.3
   - CHANGELOG = v1.11.3
+  - GitHub description = 774 tests
   - tag = 待打
   - pytest = 774 passed
 
-## 本次會話做了什麼（2026-04-13，Session 6 — Bug Fix Final）
+## 本次會話做了什麼（2026-04-13，Session 6 — Bug Fix Final + Deploy）
 
 ### 起點
 
@@ -20,9 +21,9 @@
 
 ### 完成內容
 
-5 個平行 agent 分組修 bug（core v1、v2 modules、CLI+infra、tests、shell+evals+docs），修完最後 4 個收尾。
+#### A. Bug Fix — v1.11.3（48 bugs fixed）
 
-#### 修復清單（48 bugs）
+5 個平行 agent 分組修 bug（core v1、v2 modules、CLI+infra、tests、shell+evals+docs），再修最後 4 個收尾。
 
 **Major（1）：**
 
@@ -85,7 +86,7 @@
 
 | # | 修法摘要 |
 |---|----------|
-| #32 | severity check bare pass 加說��� |
+| #32 | severity check bare pass 加說明 |
 | #36 | benchmark response 改 `.txt` 副檔名 |
 | #79 | sweep 加 `"minor"` threshold（9 組合）|
 | #80 | baseline.json 重生為 33 cases |
@@ -101,9 +102,28 @@
 38 files changed, 409 insertions(+), 156 deletions(-)
 ```
 
-#### Push
+#### B. Deploy 同步
 
-v1.11.3 推送（`1a63896..3a73862`）。
+`cp` repo → `~/.claude/scripts/`。清除舊殘留：
+- `cold_eyes/cold_eyes/`（巢狀複製）
+- `cold_eyes/__pycache__/`
+- `cold_review_engine.py`（v1.0 遺物）
+
+#### C. Repo 頁面對齊
+
+- GitHub description：773 → 774 tests
+- README：built-in ignore 加 `*.map`
+- README：verify-install 改為 2 critical checks（git_repo 移至 env_warnings）
+
+#### D. Push
+
+3 commits 推送（`fce961c..c4c0bac`）：
+
+```
+3a73862 fix: 48 bug fixes — 101/101 complete (v1.11.3)
+2d15876 docs(handover): update for Session 6
+c4c0bac docs(readme): align with v1.11.3
+```
 
 ---
 
@@ -176,27 +196,27 @@ cold_eyes/
     state_machine.py             VALID_TRANSITIONS + transition()
   contract/
     schema.py                    CorrectnessContract create/validate
-    generator.py                 rule-based contract generation
+    generator.py                 rule-based contract generation（逐檔 regex match）
     quality_checker.py           quality score + warnings
   gates/
-    risk_classifier.py           session-level risk aggregation
+    risk_classifier.py           session-level risk aggregation（逐檔 regex match）
     catalog.py                   gate registry (5 builtin gates)
     selection.py                 contract-driven + risk-escalation gate selection（llm_review 保證）
-    orchestrator.py              sequential gate execution, wraps engine.run()
+    orchestrator.py              sequential gate execution, wraps engine.run()（只讀 stdout）
     result.py                    gate-specific output parsers (pytest, ruff, llm_review)
   retry/
     taxonomy.py                  failure classification (11 categories)
     brief.py                     RetryBrief create/validate
-    signal_parser.py             extract actionable signals from gate output
+    signal_parser.py             extract actionable signals from gate output（traceback 去重）
     translator.py                gate failures → retry brief
-    strategy.py                  8 retry strategies + escalation logic
+    strategy.py                  8 retry strategies + escalation logic（abort >=3 統一）
     stop.py                      5 stop conditions（stride-based progress check）
   noise/
     dedup.py                     (type, file, check) deduplication
     grouping.py                  anchor-based proximity + same-check clustering
     retry_suppression.py         suppress previously-seen findings（cumulative）
     fp_memory.py                 wraps v1 memory.py for v2 findings
-    calibration.py               wraps v1 policy.calibrate_evidence() for v2（try/except）
+    calibration.py               wraps v1 policy.calibrate_evidence() for v2（per-finding try/except）
   runner/
     session_runner.py            top-level run_session() entry point
     metrics.py                   collect_metrics() + aggregate_metrics()（aborted 排除分母）
@@ -238,6 +258,7 @@ cold_eyes/
 | abort threshold | translator `>=3`、strategy `>3` | 統一 `>=3` |
 | truncation notice | 不計 token | 預留空間 |
 | triage fallback | conftest/fixtures → `"source"` | → `"test_support"` |
+| verify-install | 3 critical checks（含 git_repo）| 2 critical checks（git_repo 移至 env_warnings）|
 
 ---
 
@@ -249,10 +270,10 @@ cold_eyes/
 
 ### 原有待辦（仍有效）
 
-1. **E2E 驗證** — 在真實 repo 跑 `python cli.py run --v2`
+1. **E2E 驗證** — 在��實 repo 跑 `python cli.py run --v2`
 2. **shell hook 啟用** — `cold-review.sh` 加 `--v2` flag
 3. **補測試覆蓋** — `available_gate_ids=None` auto-detection、`engine_adapter` 實際使用
-4. **部署** — `cp` 至 `~/.claude/scripts/`
+4. **部署已完成** — ~~`cp` 至 `~/.claude/scripts/`~~（Session 6 已同步）
 
 ---
 
@@ -267,7 +288,7 @@ cold_eyes/
 | `COLD_REVIEW_SHALLOW_MODEL` | `sonnet` | shallow review 的 model |
 | `COLD_REVIEW_MAX_TOKENS` | `12000` | diff 的 token 預算 |
 | `COLD_REVIEW_CONTEXT_TOKENS` | `2000` | context section 的 token 預算（0=停用）|
-| `COLD_REVIEW_MAX_INPUT_TOKENS` | `max_tokens+context_tokens+1000` | 總 token 上限（0 或負數 → 用預設；負數時 stderr 警告）|
+| `COLD_REVIEW_MAX_INPUT_TOKENS` | `max_tokens+context_tokens+1000` | 總 token 上限（0 或負數 ��� 用預設；負數時 stderr 警告）|
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | severity 門檻（自動 lowercase；未知值 → 全擋）|
 | `COLD_REVIEW_CONFIDENCE` | `medium` | confidence 門檻（未知值 → 最嚴格）|
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | 輸出語言（sanitize：50 字上限）|
@@ -277,18 +298,19 @@ cold_eyes/
 
 ## 長期事項（不可自行移除，需 user 確認）
 
-- **v2 E2E 驗證未完成** — user 需在真實 repo 跑 `python cli.py run --v2`，然後檢查 `~/.claude/cold-review-sessions/sessions.jsonl` 確認 session 流程正確。每次 session 開頭應提醒 user 此��，直到 user 明確說測完、決定是否切為預設後才可移除本項。
+- **v2 E2E 驗證未完成** — user 需在真實 repo 跑 `python cli.py run --v2`，然後檢查 `~/.claude/cold-review-sessions/sessions.jsonl` 確認 session 流程正確。每次 session 開頭應提醒 user 此事，直到 user 明確說測完、決定是否切為預設後才可移除本項。
 
 ## 注意事項
 
-- v1 pipeline 有修改（engine.py 加了 `outcome["issues"]`、`.lower()`、cast、input_remaining 警告、`history_path` 參數等），但 `engine.run()` 的對外 contract 向後相容 — 新參數皆有預設值。
-- v2 純 stdlib��無新增依賴。`pyproject.toml` 的 `include = ["cold_eyes*"]` 已自動涵蓋 sub-packages。
+- v1 pipeline 有修改（engine.py 加了 `outcome["issues"]`、`.lower()`、cast、input_remaining 警告、`history_path` 參數等），但 `engine.run()` ���對外 contract 向後相容 — 新參數皆有預設值。
+- v2 純 stdlib，無新增依賴。`pyproject.toml` 的 `include = ["cold_eyes*"]` 已自動涵蓋 sub-packages。
 - Session store 用 JSONL（同 v1 history），路徑 `~/.claude/cold-review-sessions/sessions.jsonl`。原子寫入。
 - history.py 的 prune/archive 現在都用 write-to-temp-then-rename（防 crash 資料遺失，但不防 concurrent write）。
 - override.py 的 `consume_override` 現在用 `os.rename` 原子搶佔（防 concurrent review 雙 pass）。
-- Gate catalog 目前 5 個 builtin gates，`llm_review` 永遠加入（若 available）。其餘 4 個 external gates 靠 subprocess（只��� stdout，不混 stderr）。
+- Gate catalog 目前 5 個 builtin gates，`llm_review` 永遠加入（若 available）。其餘 4 個 external gates 靠 subprocess（只讀 stdout，不混 stderr）。
 - `max_retries` 語義 = actual retries after initial attempt。`max_retries=3` → 4 total runs。
 - v2 session 結果現在寫入 v1 history（`model="v2-session"`），v1 stats/quality-report 可見。
 - review.py 同時支援 Claude CLI wrapped `{"result":"..."}` 和 unwrapped 格式。
 - Bug report 在 `C:\Users\kk789\Desktop\cold-eyes-report.md`（13 輪，101 bugs，**101 fixed**）。
-- v2 task breakdown ���始文件在 `C:\Users\kk789\Downloads\cold-eyes-reviewer_v2_task_breakdown.md`。
+- v2 task breakdown 原始文件在 `C:\Users\kk789\Downloads\cold-eyes-reviewer_v2_task_breakdown.md`。
+- Deploy 目錄 `~/.claude/scripts/` 已於 Session 6 同步，清除了舊殘留（巢狀 cold_eyes、pycache、cold_review_engine.py）。
