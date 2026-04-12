@@ -2,13 +2,13 @@
 
 ## 現況
 
-- **版本：** v1.9.2 + v2 session engine（master，尚未升版）
+- **版本：** v1.10.0（master）
 - **分支：** master
 - **測試：** 773 passed / 0 failed
 - **v1 模組：** 完全未修改，531 既有測試不受影響
 - **v2 模組：** 26 tasks across 5 phases，debug review 完成，242 新測試
 - **Lint：** clean
-- **狀態：** 已 commit、尚未升版、尚未部署
+- **狀態：** 已 commit、已升版、尚未部署
 
 ## 本次會話做了什麼（2026-04-12）
 

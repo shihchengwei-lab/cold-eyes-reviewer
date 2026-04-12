@@ -1,5 +1,17 @@
 # Changelog
 
+## v1.10.0 — Correctness session engine (v2)
+
+v1 pipeline 完全未修改。v2 在上層新增 session engine，包裝 `engine.run()` 為 `llm_review` gate。
+
+- **6 個 sub-package** — `session/`, `contract/`, `gates/`, `retry/`, `noise/`, `runner/`
+- **session engine** — `run_session(task, files)` 驅動 contract → gate → noise → retry loop
+- **gate orchestration** — 5 builtin gates（llm_review, test_runner, lint_checker, type_checker, build_checker）
+- **retry loop** — failure taxonomy（11 categories）、8 strategies、5 stop conditions
+- **noise suppression** — dedup、retry suppression、FP memory、calibration
+- **debug review** — 修 `types.py` stdlib shadow（→ `type_defs.py`）、`_parse_ruff` Windows path、4 lint issues、dead code
+- 773 tests（+242），0 failures。純 stdlib，無新依賴。
+
 ## v1.9.2 — README factual alignment + input budget cap
 
 ### Total input budget enforcement
