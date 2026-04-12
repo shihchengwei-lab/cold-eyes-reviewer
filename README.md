@@ -150,6 +150,8 @@ Every review consumes tokens from your Claude usage quota. How much depends on:
 - **Diff size** — larger diffs send more input tokens (budget default: 12000)
 - **Context and hints** — deep reviews add up to ~2200 tokens (context + detector hints) on top of the diff
 
+**v2 pipeline (`--v2`):** v2 adds multi-gate verification and a retry loop on top of the v1 review. Non-LLM gates (test runner, lint, type check) use no tokens. The LLM review gate is the same `engine.run()` call as v1. If all gates pass on the first try, token cost equals v1. If the retry loop triggers, each iteration makes one additional LLM call. With the default `max_retries=3`, the worst case is **4x the v1 cost** (1 initial + 3 retries). In practice, most reviews pass on the first iteration.
+
 Subscription users (Pro/Max): reviews count against your plan's usage quota, not billed separately. API users: cost follows Anthropic's published per-token pricing, which changes over time.
 
 To reduce token usage: use `COLD_REVIEW_MODEL=sonnet` or `haiku`, lower `COLD_REVIEW_MAX_TOKENS`, or set `COLD_REVIEW_CONTEXT_TOKENS=0` to disable context retrieval.
