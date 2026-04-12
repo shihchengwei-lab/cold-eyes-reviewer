@@ -4,7 +4,7 @@
 
 A cold-read code reviewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
 
-Cold Eyes is a second-pass gate, not a full code review. It has no conversation context and no requirements. Deep reviews see the git diff plus limited structured context (recent commits, co-changed files) and regex-based detector hints. Shallow reviews see only the diff. It catches surface-level correctness, security, and consistency issues. It does not understand your intent.
+Cold Eyes is a second-pass gate, not a full code review. It has no conversation context and no requirements. Deep reviews see the git diff plus limited structured context (recent commits, co-changed files) and regex-based detector hints. Shallow reviews see only the diff. It asks the model to check for surface-level correctness, security, and consistency issues. Whether it catches them depends on the model and the diff. It does not understand your intent.
 
 ## How it works
 
@@ -32,7 +32,7 @@ Claude Code session ends
        ├─ 9. parse review → FP memory lookup → evidence calibration → confidence filter
        ├─ 10. policy decision
        │
-       ├─ block mode: issues at or above threshold → block → Claude fixes
+       ├─ block mode: issues at or above threshold → block (Claude Code decides what to do next)
        ├─ report mode: log review → pass
        └─ all engine-level exits logged to ~/.claude/cold-review-history.jsonl
           (shell guard skips — off, recursion, no git repo, lock — are not logged)
@@ -143,15 +143,16 @@ Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will r
 
 ## Token usage
 
-Every review consumes tokens from your Claude subscription. Rough per-review cost estimates (input + output, typical 200-500 line diff):
+Every review consumes tokens from your Claude usage quota. How much depends on:
 
-| Model | Estimated cost per review |
-|---|---|
-| `haiku` | ~$0.01–0.05 |
-| `sonnet` | ~$0.05–0.20 |
-| `opus` | ~$0.50–2.00 |
+- **Review depth** — skip uses zero tokens (no model call), shallow uses fewer than deep
+- **Model choice** — opus costs more per token than sonnet; sonnet more than haiku
+- **Diff size** — larger diffs send more input tokens (budget default: 12000)
+- **Context and hints** — deep reviews add up to ~2200 tokens (context + detector hints) on top of the diff
 
-Actual cost depends on diff size (token budget default: 12000) and output length. Use `COLD_REVIEW_MODEL=sonnet` or `haiku` to reduce cost.
+Subscription users (Pro/Max): reviews count against your plan's usage quota, not billed separately. API users: cost follows Anthropic's published per-token pricing, which changes over time.
+
+To reduce token usage: use `COLD_REVIEW_MODEL=sonnet` or `haiku`, lower `COLD_REVIEW_MAX_TOKENS`, or set `COLD_REVIEW_CONTEXT_TOKENS=0` to disable context retrieval.
 
 ## What gets reviewed
 
@@ -375,9 +376,10 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package: engine, git, filter, policy, review, schema, history, doctor, CLI, model adapter, override token |
+| `cold_eyes/` | Python package (18 modules): engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
-| `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
+| `cold-review-prompt.txt` | Deep review system prompt: input type descriptions, check items, evidence principles, severity/confidence/category definitions, output schema |
+| `cold-review-prompt-shallow.txt` | Shallow review system prompt: critical-only checks, minimal schema |
 | `evals/` | Evaluation framework: 33 case fixtures (7 categories) + eval runner (deterministic/benchmark/sweep) + structured pipeline |
 | `docs/` | Architecture, failure modes, troubleshooting, evaluation, scope strategy, history schema, tuning, support policy, roadmap, version policy, agent setup, release checklist, sample outputs |
 | `pyproject.toml` | Package metadata and ruff/lint config (optional `pip install -e .` for `cold-eyes` CLI command) |
