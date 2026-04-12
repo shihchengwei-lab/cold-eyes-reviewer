@@ -167,6 +167,10 @@ cold_eyes/
 | `COLD_REVIEW_BASE` | 未設 | pr-diff scope 的 base branch |
 | `COLD_REVIEW_TRUNCATION_POLICY` | `warn` | warn / soft-pass / fail-closed |
 
+## 長期事項（不可自行移除，需 user 確認）
+
+- **v2 E2E 驗證未完成** — user 需在真實 repo 跑 `python cli.py run --v2`，然後檢查 `~/.claude/cold-review-sessions/sessions.jsonl` 確認 session 流程正確。每次 session 開頭應提醒 user 此事，直到 user 明確說測完、決定是否切為預設後才可移除本項。
+
 ## 注意事項
 
 - v1 pipeline 完全未修改。`engine.run()` 被 `gates/orchestrator.py` 包裝，不是替換。
