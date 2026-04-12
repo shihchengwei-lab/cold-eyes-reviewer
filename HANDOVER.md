@@ -2,137 +2,173 @@
 
 ## 現況
 
-- **版本：** v1.9.2（master，`4054798`，2026-04-12）
+- **版本：** v1.9.2 + v2 session engine（master，尚未升版）
 - **分支：** master
-- **測試：** 531 passed（coverage 87%，門檻 75%）
-- **部署：** 已同步 `~/.claude/scripts/`（22 files verified）
-- **版本訊號：**
-  - `__init__.py` = 1.9.2 ✓
-  - CHANGELOG = v1.9.2 ✓
-  - About = 已更新 ✓
-  - pytest = 531 passed ✓
-  - tag = v1.9.2 ✓
-  - Release = v1.9.2 ✓
-- **CI：** Tests ✓（6 OS/Python 組合）、Shellcheck ✓、Lint ✓
-- **Eval：** 33/33 deterministic，regression check pass
-
-## 架構
-
-```
-cold-review.sh              （同 v1.8.0，無變更）
-  └→ cold_eyes/cli.py       CLI entry → engine.py → 各模組
-
-cold_eyes/
-  engine.py                  v1.9.2 UPDATED — max_input_tokens 總預算控制
-  cli.py                     v1.9.2 UPDATED — --max-input-tokens flag
-  memory.py                  v1.9.0 — FP pattern extraction + matching + category baselines
-  policy.py                  v1.9.0 — calibrate_evidence() Rule 3 (FP match) + Rule 4 (category cap)
-  constants.py               v1.9.0 — DEPLOY_FILES 含 memory.py
-  detector.py                （同 v1.8.0）
-  schema.py                  （同 v1.7.0）
-  review.py                  （同 v1.7.0）
-  prompt.py                  （同 v1.6.0）
-  triage.py                  （同 v1.5.0）
-  context.py                 （同 v1.6.0）
-  git.py                     （同 v1.7.0）
-  （其餘模組同 v1.8.0）
-
-cold-review-prompt.txt       v1.9.1 — self-disclosure: 3 input types + limitations
-cold-review-prompt-shallow.txt （同 v1.6.0，shallow 只看 diff）
-
-evals/
-  cases/                     33 total（+3 FP memory cases）
-  manifest.json              v1.9.0 — 33 cases，ground_truth 15/18
-  eval_runner.py             v1.9.0 — _evaluate_case() passes fp_patterns
-
-docs/
-  roadmap.md                 v1.9.0 — v1.9.0 section
-```
-
-### Engine pipeline 流程
-
-```
-collect → filter → rank → triage → build_diff → [context] → [detector] → prompt → model → parse → [fp_memory] → calibrate → filter → policy
-                          ^^^^^^^^               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-                          skip/shallow/deep      max_input_tokens 總預算控制：
-                                                 diff 先佔 → context 拿剩餘 → hints 剩餘夠才加
-                                                                                ^^^^^^^^^^
-                                                                                extract_fp_patterns()
-                                                                                → calibrate_evidence(fp_patterns)
-                                                                                → Rule 3: FP match -1/type
-                                                                                → Rule 4: category cap
-```
-
-### Input budget 機制
-
-原本 diff（`max_tokens`）、context（`context_tokens`）、detector hints（無預算）各自獨立，拼接後無總量上限。大 diff 可觸發 Claude CLI "Prompt is too long"。
-
-`engine.py` 加入 `max_input_tokens` 作為共享總預算，三個元件依序扣除：
-
-| 優先順序 | 元件 | 預算來源 | 超出行為 |
-|---|---|---|---|
-| 1 | diff | `max_tokens`（已有截斷機制） | 截斷個別檔案 |
-| 2 | context | `min(context_tokens, 剩餘)` | 縮減或跳過 |
-| 3 | detector hints | 剩餘 | 整段丟棄（`hints_dropped=True`） |
-
-預設 `max_input_tokens = max_tokens + context_tokens + 1000 = 15000`。
+- **測試：** 773 passed / 0 failed
+- **v1 模組：** 完全未修改，531 既有測試不受影響
+- **v2 模組：** 26 tasks across 5 phases，debug review 完成，242 新測試
+- **Lint：** clean
+- **狀態：** 已 commit、尚未升版、尚未部署
 
 ## 本次會話做了什麼（2026-04-12）
 
 ### 起點
 
-接手 v1.9.2（`c89984d`，525 tests）。用戶問 "Prompt is too long" 錯誤成因。
+接手 v1.9.2（`b282ed2`，531 tests）。用戶提供 v2 任務拆分文件 `cold-eyes-reviewer_v2_task_breakdown.md`，目標是把系統從 AI reviewer 重構成 **Agent coding correctness layer**。
 
-### 修了什麼
+### 完成內容
 
-| # | 做了什麼 | 檔案 |
-|---|---------|------|
-| 1 | `max_input_tokens` 總預算控制 + 預算分配邏輯 | `engine.py`（+6 tests） |
-| 2 | `--max-input-tokens` CLI flag | `cli.py` |
-| 3 | CLI help string 超過 ruff E501 130 字元限制 | `cli.py` |
-| 4 | CHANGELOG、HANDOVER 更新 | docs |
+按計畫執行 5 個 Phase（A→E），26 個 task 全部交付：
 
-### Commits
+| Phase | 內容 | 新模組 | 新測試 |
+|-------|------|--------|--------|
+| A — Data Skeleton | types, session, contract | 7 files | 93 tests |
+| B — Gate Orchestration | risk classifier, catalog, selection, orchestrator, result | 5 files | 52 tests |
+| C — Retry Loop | taxonomy, brief, signal parser, translator, strategy, stop | 6 files | 53 tests |
+| D — Noise Suppression | dedup, grouping, suppression, fp_memory, calibration | 5 files | 30 tests |
+| E — E2E Integration | session_runner, metrics + 5 scenario tests | 3 files | 13 tests |
 
-| Hash | 說明 |
-|------|------|
-| `1024981` | fix(engine): add max_input_tokens total budget cap |
-| `3752780` | docs: rewrite HANDOVER for input budget cap session handoff |
-| `4054798` | fix(lint): shorten cli help string to pass ruff E501 |
+**v2 新增：** 31 Python 檔案，2356 行程式碼，2076 行測試。
 
-### 驗證
+### 關鍵設計決策
 
-- 531 tests passed（+6）
-- CI: Tests ✓、Lint ✓、Shellcheck ✓
-- 22 DEPLOY_FILES hash 一致
+1. v1 `engine.run()` **完全未動**，被包裝為 `llm_review` gate
+2. 新增 6 個 sub-package：`session/`, `contract/`, `gates/`, `retry/`, `noise/`, `runner/`
+3. 共用型別定義在 `cold_eyes/type_defs.py`（TypedDict + helpers）
+4. 全部 rule-based deterministic，無 LLM 參與 orchestration
+5. 純 stdlib，無新增外部依賴
+
+### v2 核心入口
+
+```python
+from cold_eyes.runner.session_runner import run_session
+session = run_session("fix auth bug", ["src/auth.py"])
+```
+
+## 架構
+
+### v2 pipeline 流程
+
+```
+run_session(task, files)
+  ├─ create_session()
+  ├─ generate_contracts()          ← contract/generator.py
+  ├─ check_quality()               ← contract/quality_checker.py
+  ├─ classify_risk()               ← gates/risk_classifier.py
+  ├─ build_gate_plan()             ← gates/selection.py
+  │
+  ├─ LOOP (max_retries):
+  │   ├─ run_gates()               ← gates/orchestrator.py
+  │   │   ├─ llm_review → engine.run() (v1 pipeline)
+  │   │   └─ test_runner / lint_checker / ... (subprocess)
+  │   │
+  │   ├─ merge_duplicates()        ← noise/dedup.py
+  │   ├─ suppress_seen()           ← noise/retry_suppression.py
+  │   ├─ calibrate()               ← noise/calibration.py
+  │   │
+  │   ├─ if all passed → return "passed"
+  │   │
+  │   ├─ translate()               ← retry/translator.py
+  │   ├─ should_stop()             ← retry/stop.py
+  │   ├─ select_strategy()         ← retry/strategy.py
+  │   └─ if stop/abort → return "failed_terminal"
+  │
+  └─ return SessionRecord
+```
+
+### Session 狀態機
+
+```
+created → contract_generated → gates_planned → gates_running
+                                                   ↓
+                                     passed    gates_failed
+                                                   ↓
+                                              retrying → gates_running (loop)
+                                                   ↓
+                                              failed_terminal
+
+任何非 terminal 狀態 → aborted
+```
+
+### 目錄結構（v2 新增）
+
+```
+cold_eyes/
+  type_defs.py                    共用 TypedDict + helpers (generate_id, now_iso)
+  session/
+    schema.py                    SessionRecord create/validate
+    store.py                     JSONL-based SessionStore
+    state_machine.py             VALID_TRANSITIONS + transition()
+  contract/
+    schema.py                    CorrectnessContract create/validate
+    generator.py                 rule-based contract generation
+    quality_checker.py           quality score + warnings
+  gates/
+    risk_classifier.py           session-level risk aggregation
+    catalog.py                   gate registry (llm_review, test_runner, lint_checker, type_checker, build_checker)
+    selection.py                 contract-driven + risk-escalation gate selection
+    orchestrator.py              sequential gate execution, wraps engine.run()
+    result.py                    gate-specific output parsers (pytest, ruff, llm_review)
+  retry/
+    taxonomy.py                  failure classification (11 categories)
+    brief.py                     RetryBrief create/validate
+    signal_parser.py             extract actionable signals from gate output
+    translator.py                gate failures → retry brief
+    strategy.py                  8 retry strategies + escalation logic
+    stop.py                      5 stop conditions (max retries, repeated failure, no progress, scope expanding, all passing)
+  noise/
+    dedup.py                     (type, file, check) deduplication
+    grouping.py                  proximity + same-check root-cause clustering
+    retry_suppression.py         suppress previously-seen findings
+    fp_memory.py                 wraps v1 memory.py for v2 findings
+    calibration.py               wraps v1 policy.calibrate_evidence() for v2
+  runner/
+    session_runner.py            top-level run_session() entry point
+    metrics.py                   collect_metrics() + aggregate_metrics()
+```
 
 ---
 
-## 下次 Session 要做什麼
+## Debug Review 結果（2026-04-12，第二次會話）
 
-### 兩個方向皆暫緩
+### 修了什麼（6 bugs + 2 code quality）
 
-用戶決定 Phase 1-5 完成後暫不推進。原因：
-- **Trust Phase 2（外部證據）** — 目前只有自己使用，無外部審核需求
-- **實戰校準** — override history 資料不足，需要累積使用數據
+| # | 檔案 | 問題 | 修法 |
+|---|------|------|------|
+| 1 | `risk_classifier.py:38` | F841 `test_count` unused | 移除 |
+| 2 | `calibration.py:3` | F401 `CONFIDENCE_ORDER` unused | 移除 import |
+| 3 | `strategy.py:3` | F401 `VALID_STRATEGIES` unused | 移除 import |
+| 4 | `taxonomy.py:3` | F401 `FAILURE_CATEGORIES` unused | 移除 import |
+| 5 | `types.py` | shadow stdlib `types` → circular import | 重命名為 `type_defs.py`，10 imports 更新 |
+| 6 | `result.py:79` | `_parse_ruff()` `:` split 在 Windows `C:\` 壞掉 | 偵測 drive letter |
+| 7 | `session_runner.py:176` | ternary side-effect | 改為 `if` statement |
+| 8 | `translator.py:122` | dead code `return "low"` | 移除 |
 
-### 如果要做事
+同時修了 `Literal.__args__`（CPython impl detail）→ explicit lists。
 
-最有價值的下一步是**日常使用累積數據**，然後：
-1. 用 `cli.py stats` 和 `quality-report` 看 override 分佈
-2. 檢驗 FP memory 的 min_count=2、last_days=90 是否合適
-3. 根據結果調參
+### 審查後不需修的項目
 
-### 注意事項
+| 項目 | 結論 |
+|------|------|
+| `generator.py` path join | RISK_CATEGORIES patterns 足夠具體，偏保守合理 |
+| `stop.py:16` `>=` | 語義正確：max_retries = max briefs allowed |
+| `retry_suppression.py` key | 各 gate parser field naming 在同 gate 內一致 |
+| `store.py` concurrent write | v2.0 single-threaded known limitation |
+| `catalog.py` `shutil.which()` | Windows 已處理 `.exe` |
+| `fp_memory.py` try/except | 標準 optional dependency pattern |
 
-- 模型名稱是純字串透傳，Claude CLI 支援的新模型直接可用，不需改程式碼。
-- FP memory 在 history 為空時無效果（graceful no-op）。
-- `compute_category_baselines()` 用 `total_overrides * 3` 估算 total_reviews，是 heuristic。
-- Manifest ground_truth_summary 現在是 15/18。加 eval cases 要重新計算。
-- 版號升太快的教訓：docs-only 變更不需要獨立 patch version，應累積後一次推。
-- 性價比計畫全文見 `C:\Users\kk789\Downloads\cold-eyes-reviewer_cost_effective_roadmap_extreme.md`。
+### 下次 Session 可做的事
+
+- 升版（v2.0.0 或 v1.10.0）
+- `run_session()` 接入 `SessionStore.save()` 和 `history.log_to_history()`
+- 補測試覆蓋：`available_gate_ids=None` auto-detection、`engine_adapter` 實際使用
+- 接入真實 gate（目前 external gates 靠 subprocess，但 wiring 完整）
+
+---
 
 ## 環境變數
+
+（與 v1.9.2 相同，v2 新增模組不引入新的環境變數）
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
@@ -141,7 +177,7 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 | `COLD_REVIEW_SHALLOW_MODEL` | `sonnet` | shallow review 的 model |
 | `COLD_REVIEW_MAX_TOKENS` | `12000` | diff 的 token 預算 |
 | `COLD_REVIEW_CONTEXT_TOKENS` | `2000` | context section 的 token 預算（0=停用）|
-| `COLD_REVIEW_MAX_INPUT_TOKENS` | `max_tokens+context_tokens+1000` | 總 token 上限（diff+context+hints）|
+| `COLD_REVIEW_MAX_INPUT_TOKENS` | `max_tokens+context_tokens+1000` | 總 token 上限 |
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | 擋的 severity 門檻 |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | confidence 硬過濾門檻 |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | 輸出語言 |
@@ -149,13 +185,12 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 | `COLD_REVIEW_BASE` | 未設 | pr-diff scope 的 base branch |
 | `COLD_REVIEW_TRUNCATION_POLICY` | `warn` | warn / soft-pass / fail-closed |
 
-## CLI 命令
+## 注意事項
 
-v1.9.2 新增 `--max-input-tokens` flag。其餘同 v1.8.0。FP memory 自動從 override history 讀取，無需設定。
-
-## 已知問題
-
-- FP memory 在 history 為空時無效果（設計行為 — 新安裝的 graceful no-op）。
-- `compute_category_baselines()` 的 total_reviews 估算（`total_overrides * 3`）是 heuristic。極端 override 率下可能不準確。
-- Repo-type classification 是 file-path heuristic。混合型 repo 取最高分 type，可能不完美。
-- Evidence calibration 對 old-format model output 的影響：high confidence 無 evidence → 降為 medium。
+- v2 新增檔案尚未 commit。所有變更都是 untracked files。
+- v1 pipeline 完全未修改。`engine.run()` 被 `gates/orchestrator.py` 包裝，不是替換。
+- v2 純 stdlib，無新增依賴。`pyproject.toml` 的 `include = ["cold_eyes*"]` 已自動涵蓋 sub-packages。
+- Session store 用 JSONL（同 v1 history），路徑 `~/.claude/cold-review-sessions/sessions.jsonl`。
+- Gate catalog 目前 5 個 builtin gates，只有 `llm_review` 是 v1 整合；其餘 4 個 external gates 靠 subprocess。
+- v2 task breakdown 原始文件在 `C:\Users\kk789\Downloads\cold-eyes-reviewer_v2_task_breakdown.md`。
+- 實作計畫在 `C:\Users\kk789\.claude\plans\effervescent-zooming-gray.md`。
