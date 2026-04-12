@@ -2,17 +2,18 @@
 
 ## 現況
 
-- **版本：** v1.6.0（master，pending commit，2026-04-12）
+- **版本：** v1.6.0（master，`dfd7ccb`，2026-04-12）
 - **分支：** master
 - **測試：** 382 passed（coverage 82%，門檻 75%）
-- **版本訊號：** 待對齊（commit + tag + release + About 更新後完成）
+- **部署：** `~/.claude/scripts/` 已同步（context.py + prompt-shallow.txt + 全部更新）
+- **版本訊號：** 六訊號對齊
   - `__init__.py` = 1.6.0
   - CHANGELOG = v1.6.0
-  - About = 待更新（382 tests）
+  - About = 382 tests
   - pytest = 382 passed
-  - tag = 待建立
-  - Release = 待建立
-- **CI：** 待推送驗證
+  - tag = v1.6.0
+  - Release = v1.6.0（CI ✓）
+- **CI：** Tests ✓ + Release ✓
 - **Lint：** ruff clean
 - **Eval：** 24/24 deterministic，regression check pass（baseline v1.4.1 相容）
 
