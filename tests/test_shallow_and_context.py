@@ -412,3 +412,233 @@ class TestEngineContextIntegrationContinued:
             engine.run(adapter=mock_adapter, context_tokens=0)
 
         mock_ctx.assert_not_called()
+
+
+# ---------------------------------------------------------------------------
+# Total input budget enforcement (max_input_tokens)
+# ---------------------------------------------------------------------------
+
+def _make_mock_adapter(stdout=None):
+    """Helper: mock adapter returning a passing review."""
+    mock_invocation = MagicMock()
+    mock_invocation.exit_code = 0
+    mock_invocation.stdout = stdout or (
+        '{"pass": true, "review_status": "completed", '
+        '"issues": [], "summary": "ok"}'
+    )
+    mock_invocation.failure_kind = None
+    adapter = MagicMock()
+    adapter.review.return_value = mock_invocation
+    return adapter
+
+
+def _engine_patches(**overrides):
+    """Return a dict of standard engine patches for budget tests."""
+    defaults = {
+        "git_cmd_rv": "/repo",
+        "files": (["src/main.py"], set()),
+        "diff": {
+            "diff_text": "--- a/src/main.py\n+++ b/src/main.py\n@@ -1 +1 @@\n-old\n+new",
+            "file_count": 1, "token_count": 50, "truncated": False,
+            "partial_files": [], "skipped_budget": [],
+            "skipped_binary": [], "skipped_unreadable": [],
+        },
+        "context": {
+            "context_text": "[Cold Eyes: Context]\nrecent stuff\n[End context]\n",
+            "context_summary": "recent commits for 1 file(s)",
+            "token_count": 200,
+        },
+        "hints": {
+            "hint_text": "[Cold Eyes: State/Invariant Detector]\nsome hints\n[End]\n",
+            "state_signals": [{"signal_type": "state_check", "line": "+if state"}],
+            "repo_type": "general",
+            "detector_focus": "general",
+        },
+    }
+    defaults.update(overrides)
+    return defaults
+
+
+class TestMaxInputTokensBudget:
+    """max_input_tokens caps the total content sent to the model."""
+
+    def test_default_max_input_tokens(self):
+        """Default = max_tokens + context_tokens + 1000."""
+        from cold_eyes import engine
+
+        adapter = _make_mock_adapter()
+        p = _engine_patches()
+
+        with patch.object(engine, "git_cmd", return_value=p["git_cmd_rv"]), \
+             patch.object(engine, "collect_files", return_value=p["files"]), \
+             patch("cold_eyes.engine.filter_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.rank_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.build_diff", return_value=p["diff"]), \
+             patch("cold_eyes.engine.load_policy", return_value={}), \
+             patch("cold_eyes.engine.consume_override",
+                   return_value=(False, "")), \
+             patch("cold_eyes.engine.build_context",
+                   return_value=p["context"]) as mock_ctx, \
+             patch("cold_eyes.engine.build_detector_hints",
+                   return_value=p["hints"]), \
+             patch("cold_eyes.engine.log_to_history"):
+            result = engine.run(adapter=adapter)
+
+        # With default budget (12000+2000+1000=15000), 50 diff tokens,
+        # context (200) and hints should both fit.
+        mock_ctx.assert_called_once()
+        ctx_budget = mock_ctx.call_args[1]["max_tokens"]
+        assert ctx_budget == 2000  # min(2000, 15000-50) = 2000
+        assert result.get("hints_dropped") is not True
+
+    def test_context_clamped_by_remaining_budget(self):
+        """Context budget reduced when diff consumes most of the total budget."""
+        from cold_eyes import engine
+
+        adapter = _make_mock_adapter()
+        # Diff uses 14500 of 15000 budget -> only 500 left for context
+        big_diff = dict(_engine_patches()["diff"], token_count=14500)
+        p = _engine_patches(diff=big_diff)
+
+        with patch.object(engine, "git_cmd", return_value=p["git_cmd_rv"]), \
+             patch.object(engine, "collect_files", return_value=p["files"]), \
+             patch("cold_eyes.engine.filter_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.rank_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.build_diff", return_value=big_diff), \
+             patch("cold_eyes.engine.load_policy", return_value={}), \
+             patch("cold_eyes.engine.consume_override",
+                   return_value=(False, "")), \
+             patch("cold_eyes.engine.build_context",
+                   return_value=p["context"]) as mock_ctx, \
+             patch("cold_eyes.engine.build_detector_hints",
+                   return_value=p["hints"]), \
+             patch("cold_eyes.engine.log_to_history"):
+            engine.run(adapter=adapter)
+
+        # Context budget should be clamped: min(2000, 15000-14500) = 500
+        ctx_budget = mock_ctx.call_args[1]["max_tokens"]
+        assert ctx_budget == 500
+
+    def test_context_skipped_when_no_budget_remains(self):
+        """Context skipped entirely when diff exhausts the total budget."""
+        from cold_eyes import engine
+
+        adapter = _make_mock_adapter()
+        # Diff uses all 15000 tokens
+        full_diff = dict(_engine_patches()["diff"], token_count=15000)
+
+        with patch.object(engine, "git_cmd", return_value="/repo"), \
+             patch.object(engine, "collect_files",
+                          return_value=(["src/main.py"], set())), \
+             patch("cold_eyes.engine.filter_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.rank_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.build_diff", return_value=full_diff), \
+             patch("cold_eyes.engine.load_policy", return_value={}), \
+             patch("cold_eyes.engine.consume_override",
+                   return_value=(False, "")), \
+             patch("cold_eyes.engine.build_context") as mock_ctx, \
+             patch("cold_eyes.engine.build_detector_hints",
+                   return_value=_engine_patches()["hints"]), \
+             patch("cold_eyes.engine.log_to_history"):
+            engine.run(adapter=adapter)
+
+        mock_ctx.assert_not_called()
+
+    def test_hints_dropped_when_budget_exhausted(self):
+        """Detector hints dropped (not truncated) when no budget remains."""
+        from cold_eyes import engine
+
+        adapter = _make_mock_adapter()
+        p = _engine_patches()
+        big_diff = dict(p["diff"], token_count=14000)
+        # Make hints large enough to exceed remaining after context
+        big_hints = dict(p["hints"],
+                         hint_text="x" * 4000)  # ~1000 tokens ASCII
+
+        with patch.object(engine, "git_cmd", return_value="/repo"), \
+             patch.object(engine, "collect_files",
+                          return_value=(["src/main.py"], set())), \
+             patch("cold_eyes.engine.filter_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.rank_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.build_diff", return_value=big_diff), \
+             patch("cold_eyes.engine.load_policy", return_value={}), \
+             patch("cold_eyes.engine.consume_override",
+                   return_value=(False, "")), \
+             patch("cold_eyes.engine.build_context",
+                   return_value=p["context"]), \
+             patch("cold_eyes.engine.build_detector_hints",
+                   return_value=big_hints), \
+             patch("cold_eyes.engine.log_to_history"):
+            result = engine.run(adapter=adapter)
+
+        assert result.get("hints_dropped") is True
+        # Hints text should NOT appear in the diff sent to model
+        sent_diff = adapter.review.call_args[0][0]
+        assert "x" * 4000 not in sent_diff
+
+    def test_explicit_max_input_tokens_overrides_default(self):
+        """Explicit max_input_tokens setting takes precedence."""
+        from cold_eyes import engine
+
+        adapter = _make_mock_adapter()
+        p = _engine_patches()
+
+        with patch.object(engine, "git_cmd", return_value="/repo"), \
+             patch.object(engine, "collect_files",
+                          return_value=(["src/main.py"], set())), \
+             patch("cold_eyes.engine.filter_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.rank_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.build_diff", return_value=p["diff"]), \
+             patch("cold_eyes.engine.load_policy", return_value={}), \
+             patch("cold_eyes.engine.consume_override",
+                   return_value=(False, "")), \
+             patch("cold_eyes.engine.build_context",
+                   return_value=p["context"]) as mock_ctx, \
+             patch("cold_eyes.engine.build_detector_hints",
+                   return_value=p["hints"]), \
+             patch("cold_eyes.engine.log_to_history"):
+            # Tight budget: 100 total, diff uses 50 -> only 50 left for context
+            engine.run(adapter=adapter, max_input_tokens=100)
+
+        ctx_budget = mock_ctx.call_args[1]["max_tokens"]
+        assert ctx_budget == 50  # min(2000, 100-50)
+
+    def test_env_var_max_input_tokens(self):
+        """COLD_REVIEW_MAX_INPUT_TOKENS env var is respected."""
+        from cold_eyes import engine
+
+        adapter = _make_mock_adapter()
+        p = _engine_patches()
+
+        with patch.object(engine, "git_cmd", return_value="/repo"), \
+             patch.object(engine, "collect_files",
+                          return_value=(["src/main.py"], set())), \
+             patch("cold_eyes.engine.filter_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.rank_file_list",
+                   side_effect=lambda f, _: f), \
+             patch("cold_eyes.engine.build_diff", return_value=p["diff"]), \
+             patch("cold_eyes.engine.load_policy", return_value={}), \
+             patch("cold_eyes.engine.consume_override",
+                   return_value=(False, "")), \
+             patch("cold_eyes.engine.build_context",
+                   return_value=p["context"]) as mock_ctx, \
+             patch("cold_eyes.engine.build_detector_hints",
+                   return_value=p["hints"]), \
+             patch("cold_eyes.engine.log_to_history"), \
+             patch.dict("os.environ",
+                        {"COLD_REVIEW_MAX_INPUT_TOKENS": "80"}):
+            engine.run(adapter=adapter)
+
+        ctx_budget = mock_ctx.call_args[1]["max_tokens"]
+        assert ctx_budget == 30  # min(2000, 80-50)

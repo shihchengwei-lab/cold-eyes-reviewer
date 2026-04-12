@@ -3,7 +3,7 @@
 import os
 
 from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED
-from cold_eyes.git import git_cmd, collect_files, build_diff, GitCommandError, ConfigError
+from cold_eyes.git import git_cmd, collect_files, build_diff, estimate_tokens, GitCommandError, ConfigError
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.triage import classify_depth
 from cold_eyes.context import build_context
@@ -38,7 +38,7 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
 def run(mode=None, model=None, max_tokens=None, threshold=None,
         confidence=None, language=None, scope=None, override_reason=None,
         adapter=None, base=None, truncation_policy=None, shallow_model=None,
-        context_tokens=None):
+        context_tokens=None, max_input_tokens=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
@@ -46,6 +46,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     truncation_policy: 'warn' (default), 'soft-pass', or 'fail-closed'.
     shallow_model: model override for shallow reviews (default: sonnet).
     context_tokens: token budget for context retrieval in deep reviews (default: 2000).
+    max_input_tokens: total token cap for all content sent to model
+                      (diff + context + hints). Default: max_tokens + context_tokens + 1000.
     """
     cwd = os.getcwd()
     try:
@@ -74,6 +76,11 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                              policy, "shallow_model", "sonnet")
     context_tokens = _resolve(context_tokens, "COLD_REVIEW_CONTEXT_TOKENS",
                               policy, "context_tokens", 2000, cast=int)
+    max_input_tokens = _resolve(max_input_tokens, "COLD_REVIEW_MAX_INPUT_TOKENS",
+                                policy, "max_input_tokens", None,
+                                cast=lambda v: int(v) if v is not None else None)
+    if max_input_tokens is None:
+        max_input_tokens = max_tokens + context_tokens + 1000
 
     # mode=off: skip immediately (normally caught by shell, but policy file may set it)
     if mode == "off":
@@ -162,20 +169,32 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     skipped_files = (diff_meta["partial_files"] + diff_meta["skipped_budget"]
                      + diff_meta["skipped_binary"] + diff_meta["skipped_unreadable"])
 
-    # Context retrieval for deep path
+    # --- Total input budget enforcement ---
+    input_remaining = max_input_tokens - token_count
+    hints_dropped = False
+
+    # Context retrieval for deep path (capped by remaining budget)
     context_meta = None
-    if review_depth == "deep" and context_tokens > 0:
-        context_meta = build_context(ranked, max_tokens=context_tokens)
+    if review_depth == "deep" and context_tokens > 0 and input_remaining > 0:
+        effective_ctx_budget = min(context_tokens, input_remaining)
+        context_meta = build_context(ranked, max_tokens=effective_ctx_budget)
         if context_meta["context_text"]:
             diff_text = context_meta["context_text"] + "\n" + diff_text
             token_count += context_meta["token_count"]
+            input_remaining -= context_meta["token_count"]
 
-    # Detector hints for deep path
+    # Detector hints for deep path (dropped if no budget remains)
     detector_meta = None
     if review_depth == "deep":
         detector_meta = build_detector_hints(diff_text, ranked)
         if detector_meta["hint_text"]:
-            diff_text = detector_meta["hint_text"] + "\n" + diff_text
+            hint_tokens = estimate_tokens(detector_meta["hint_text"])
+            if hint_tokens <= input_remaining:
+                diff_text = detector_meta["hint_text"] + "\n" + diff_text
+                input_remaining -= hint_tokens
+            else:
+                detector_meta["hint_text"] = ""
+                hints_dropped = True
 
     # Coverage visibility
     total_candidates = len(ranked)
@@ -241,10 +260,13 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     outcome["why_depth_selected"] = triage["why_depth_selected"]
     if context_meta and context_meta["context_text"]:
         outcome["context_summary"] = context_meta["context_summary"]
-    if detector_meta and detector_meta["hint_text"]:
-        outcome["detector_repo_type"] = detector_meta["repo_type"]
-        outcome["detector_focus"] = detector_meta["detector_focus"]
-        outcome["state_signal_count"] = len(detector_meta["state_signals"])
+    if detector_meta:
+        if detector_meta["hint_text"]:
+            outcome["detector_repo_type"] = detector_meta["repo_type"]
+            outcome["detector_focus"] = detector_meta["detector_focus"]
+            outcome["state_signal_count"] = len(detector_meta["state_signals"])
+        if hints_dropped:
+            outcome["hints_dropped"] = True
     if fp_patterns and fp_patterns["total_overrides"] > 0:
         outcome["fp_memory_overrides"] = fp_patterns["total_overrides"]
         outcome["fp_memory_patterns"] = (

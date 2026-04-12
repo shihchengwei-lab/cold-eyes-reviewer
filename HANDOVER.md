@@ -2,15 +2,15 @@
 
 ## 現況
 
-- **版本：** v1.9.2（master，`c3e6aeb`，2026-04-12）
+- **版本：** v1.9.2（master，2026-04-12）
 - **分支：** master
-- **測試：** 525 passed（coverage 87%，門檻 75%）
+- **測試：** 531 passed（coverage 87%，門檻 75%）
 - **部署：** 已同步 `~/.claude/scripts/`
 - **版本訊號：**
   - `__init__.py` = 1.9.2 ✓
   - CHANGELOG = v1.9.2 ✓
   - About = 已更新 ✓
-  - pytest = 525 passed ✓
+  - pytest = 531 passed ✓
   - tag = v1.9.2 ✓
   - Release = v1.9.2 ✓
 - **CI：** Tests ✓ + Release ✓
@@ -56,11 +56,14 @@ docs/
 
 ```
 collect → filter → rank → triage → build_diff → [context] → [detector] → prompt → model → parse → [fp_memory] → calibrate → filter → policy
-                          ^^^^^^^^                            ^^^^^^^^^^                   ^^^^^^^^^^
-                          skip/shallow/deep                   state signals                extract_fp_patterns()
-                                                              + repo-specific              → calibrate_evidence(fp_patterns)
-                                                              focus hints                  → Rule 3: FP match -1/type
-                                                                                           → Rule 4: category cap
+                          ^^^^^^^^               ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                          skip/shallow/deep      max_input_tokens 總預算控制：
+                                                 diff 先佔 → context 拿剩餘 → hints 剩餘夠才加
+                                                                                ^^^^^^^^^^
+                                                                                extract_fp_patterns()
+                                                                                → calibrate_evidence(fp_patterns)
+                                                                                → Rule 3: FP match -1/type
+                                                                                → Rule 4: category cap
 ```
 
 ## 本次會話做了什麼（2026-04-12）
@@ -108,9 +111,18 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 - Files 表列 11 模組 → 18 模組
 - Prompt 描述停在 v1.0 → 列出實際內容
 
+### Input budget cap（v1.9.2 追加，無版號變更）
+
+diff + context + detector hints 拼接後無總預算上限，大 diff 觸發 "Prompt is too long"。
+
+| # | 做了什麼 | 檔案 | 測試變化 |
+|---|---------|------|---------|
+| 1 | `max_input_tokens` 總預算控制 + 預算分配邏輯 | `engine.py` | +6 |
+| 2 | `--max-input-tokens` CLI flag | `cli.py` | 0 |
+
 ### 驗證結果
 
-- 525 tests passed（+56 from v1.8.0 的 469）
+- 531 tests passed（+62 from v1.8.0 的 469）
 - Eval: 33/33 deterministic
 - Lint (ruff): clean
 - Coverage: 87%
@@ -159,6 +171,7 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 | `COLD_REVIEW_SHALLOW_MODEL` | `sonnet` | shallow review 的 model |
 | `COLD_REVIEW_MAX_TOKENS` | `12000` | diff 的 token 預算 |
 | `COLD_REVIEW_CONTEXT_TOKENS` | `2000` | context section 的 token 預算（0=停用）|
+| `COLD_REVIEW_MAX_INPUT_TOKENS` | `max_tokens+context_tokens+1000` | 總 token 上限（diff+context+hints）|
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | 擋的 severity 門檻 |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | confidence 硬過濾門檻 |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | 輸出語言 |

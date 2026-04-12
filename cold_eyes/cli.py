@@ -63,6 +63,8 @@ def main():
                         help="Model for shallow reviews (default: sonnet)")
     parser.add_argument("--context-tokens", type=int, default=None,
                         help="Token budget for context retrieval in deep reviews (default: 2000)")
+    parser.add_argument("--max-input-tokens", type=int, default=None,
+                        help="Total token cap for model input: diff + context + hints (default: max_tokens + context_tokens + 1000)")
     parser.add_argument("--truncation-policy", default=None,
                         choices=["warn", "soft-pass", "fail-closed"],
                         help="How to handle truncated diffs (default: warn)")
@@ -146,7 +148,8 @@ def main():
                      override_reason=args.override_reason,
                      truncation_policy=args.truncation_policy,
                      shallow_model=args.shallow_model,
-                     context_tokens=args.context_tokens)
+                     context_tokens=args.context_tokens,
+                     max_input_tokens=args.max_input_tokens)
     print(json.dumps(result, ensure_ascii=False))
 
 

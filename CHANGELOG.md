@@ -1,6 +1,17 @@
 # Changelog
 
-## v1.9.2 — README factual alignment
+## v1.9.2 — README factual alignment + input budget cap
+
+### Total input budget enforcement
+
+diff + context + detector hints 各自有獨立預算（或無預算），拼接後總量無上限，大 diff 可觸發 "Prompt is too long"。
+
+- **`max_input_tokens`** — 新增 total token cap，控制所有送入 model 的 stdin 內容（diff + context + hints）。預設 = `max_tokens + context_tokens + 1000`。
+- **預算分配** — diff 先佔預算，context 拿 `min(context_tokens, 剩餘)`，detector hints 剩餘夠就加、不夠整段丟棄（`hints_dropped=True`）。
+- **設定方式** — CLI `--max-input-tokens`、env `COLD_REVIEW_MAX_INPUT_TOKENS`、policy file `max_input_tokens`。
+- 531 tests (+6)。
+
+### README factual alignment
 
 README described v1.4-era behavior. Updated 6 areas to match v1.9 reality:
 
