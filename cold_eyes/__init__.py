@@ -1,2 +1,2 @@
 """Cold Eyes Reviewer — zero-context code review engine."""
-__version__ = "1.9.0"
+__version__ = "1.9.1"

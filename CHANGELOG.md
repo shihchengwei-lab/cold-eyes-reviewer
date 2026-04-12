@@ -1,5 +1,11 @@
 # Changelog
 
+## v1.9.1 — Prompt self-disclosure + deploy fix
+
+- **Deep prompt rewritten** — removed "零 context" / "只看到 git diff" claims. Prompt now explicitly describes the 3 input types the model may receive: git diff, context block (v1.6.0+), detector hints (v1.8.0+). Each described with source, purpose, and limitations.
+- **GitHub About updated** — "Zero-context" → "Cold-read". Shallow prompt unchanged (shallow path truly has no context).
+- **Full deploy sync** — previous deploys only copied changed files, leaving stale modules (e.g. prompt.py from pre-v1.6.0). All 22 DEPLOY_FILES now synced.
+
 ## v1.9.0 — False-Positive Memory + Confidence Calibration (Phase 5)
 
 Override history now feeds back into calibration: recurring false-positive patterns are automatically detected and used to downgrade confidence on matching issues. Category-level confidence caps prevent chronically noisy categories from producing high-confidence blocks. 525 tests (was 469).
