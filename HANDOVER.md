@@ -2,10 +2,10 @@
 
 ## 現況
 
-- **版本：** v1.9.2（master，2026-04-12）
+- **版本：** v1.9.2（master，`1024981`，2026-04-12）
 - **分支：** master
 - **測試：** 531 passed（coverage 87%，門檻 75%）
-- **部署：** 已同步 `~/.claude/scripts/`
+- **部署：** 已同步 `~/.claude/scripts/`（22 files verified）
 - **版本訊號：**
   - `__init__.py` = 1.9.2 ✓
   - CHANGELOG = v1.9.2 ✓
@@ -19,18 +19,16 @@
 
 ## 架構
 
-v1.9.0 新增 memory module（FP pattern extraction + matching），接入 calibration pipeline。
-v1.9.1-v1.9.2 為文件修正，無 runtime 變更。
-
 ```
 cold-review.sh              （同 v1.8.0，無變更）
   └→ cold_eyes/cli.py       CLI entry → engine.py → 各模組
 
 cold_eyes/
-  memory.py                  v1.9.0 NEW — FP pattern extraction + matching + category baselines
-  policy.py                  v1.9.0 UPDATED — calibrate_evidence() 加 Rule 3 (FP match) + Rule 4 (category cap)
-  engine.py                  v1.9.0 UPDATED — extract_fp_patterns() 在 parse 後、apply_policy 前執行
-  constants.py               v1.9.0 UPDATED — DEPLOY_FILES 加入 memory.py
+  engine.py                  v1.9.2 UPDATED — max_input_tokens 總預算控制
+  cli.py                     v1.9.2 UPDATED — --max-input-tokens flag
+  memory.py                  v1.9.0 — FP pattern extraction + matching + category baselines
+  policy.py                  v1.9.0 — calibrate_evidence() Rule 3 (FP match) + Rule 4 (category cap)
+  constants.py               v1.9.0 — DEPLOY_FILES 含 memory.py
   detector.py                （同 v1.8.0）
   schema.py                  （同 v1.7.0）
   review.py                  （同 v1.7.0）
@@ -40,16 +38,16 @@ cold_eyes/
   git.py                     （同 v1.7.0）
   （其餘模組同 v1.8.0）
 
-cold-review-prompt.txt       v1.9.1 UPDATED — self-disclosure: 3 input types + limitations
-cold-review-prompt-shallow.txt （同 v1.6.0，shallow 真的只看 diff）
+cold-review-prompt.txt       v1.9.1 — self-disclosure: 3 input types + limitations
+cold-review-prompt-shallow.txt （同 v1.6.0，shallow 只看 diff）
 
 evals/
   cases/                     33 total（+3 FP memory cases）
-  manifest.json              v1.9.0 UPDATED — 33 cases，ground_truth 15/18
-  eval_runner.py             v1.9.0 UPDATED — _evaluate_case() passes fp_patterns
+  manifest.json              v1.9.0 — 33 cases，ground_truth 15/18
+  eval_runner.py             v1.9.0 — _evaluate_case() passes fp_patterns
 
 docs/
-  roadmap.md                 v1.9.0 UPDATED — v1.9.0 section
+  roadmap.md                 v1.9.0 — v1.9.0 section
 ```
 
 ### Engine pipeline 流程
@@ -66,76 +64,45 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
                                                                                 → Rule 4: category cap
 ```
 
+### Input budget 機制（本次新增）
+
+原本 diff（`max_tokens`）、context（`context_tokens`）、detector hints（無預算）各自獨立，拼接後無總量上限。大 diff 可觸發 Claude CLI "Prompt is too long"。
+
+修法：`engine.py` 加入 `max_input_tokens` 作為共享總預算。三個元件依序扣除：
+
+| 優先順序 | 元件 | 預算來源 | 超出行為 |
+|---|---|---|---|
+| 1 | diff | `max_tokens`（已有截斷機制） | 截斷個別檔案 |
+| 2 | context | `min(context_tokens, 剩餘)` | 縮減或跳過 |
+| 3 | detector hints | 剩餘 | 整段丟棄（`hints_dropped=True`） |
+
+預設 `max_input_tokens = max_tokens + context_tokens + 1000 = 15000`。
+
 ## 本次會話做了什麼（2026-04-12）
 
 ### 起點
 
-接手 v1.8.0（`f0a6898`，469 tests）。HANDOVER 指定：收尾 + 性價比階段 5。
+接手 v1.9.2（`c89984d`，525 tests）。用戶問 "Prompt is too long" 錯誤成因。
 
-### v1.8.0 收尾
-
-| # | 做了什麼 | 結果 |
-|---|---------|------|
-| 1 | CI 確認 | Tests ✓ + Release ✓ |
-| 2 | GitHub About 更新 | 469 tests, evidence-bound claims, detectors |
-
-### Phase 5：FP Memory + Confidence Calibration（v1.9.0）
-
-| # | 做了什麼 | 檔案 | 測試變化 |
-|---|---------|------|---------|
-| WP1 | FP pattern extraction + matching | `memory.py` | +27 |
-| WP2 | Rule 3 in calibrate_evidence() + engine wiring | `policy.py`, `engine.py`, `constants.py` | 0 |
-| WP3 | Category baselines + Rule 4 | `memory.py`, `policy.py` | +25 |
-| WP4 | 3 eval cases + manifest + version bump + CHANGELOG + roadmap | 多檔 | +4 |
-
-### 文件事實對齊（v1.9.1 + v1.9.2）
-
-用戶依北極星原則（「只從基本事實長出答案」）審查 repo 描述，發現兩類問題：
-
-**說少的（v1.9.1 — prompt + About）：**
-- Deep prompt 聲稱「只看到 git diff」，但 model 實際收到 diff + context block + detector hints
-- 修正：prompt 改為明列 3 種 input types 及各自來源和限度
-- GitHub About 的「Zero-context」改為「Cold-read」
-
-**說少的（v1.9.2 — README 6 處）：**
-- 介紹：「zero-context」「only the git diff」→ 區分 deep/shallow 各看到什麼
-- 流程圖：3 步 → 10 步 pipeline
-- Output 範例：補 evidence-bound 欄位
-- 安裝指令：補 `cold-review-prompt-shallow.txt`
-- Eval 數字：24 cases / 5 categories → 33 / 7（3 處）
-
-**說多的（v1.9.2 同 commit — README 5 處）：**
-- 「It catches」→「It asks the model to check for」（能力不等於保證）
-- 「→ Claude fixes」→「Claude Code decides what to do next」（Cold Eyes 只擋不修）
-- Token 成本表寫死 $0.01-$2.00 → 改描述 4 個成本因素 + 訂閱制/API 計費差異
-- Files 表列 11 模組 → 18 模組
-- Prompt 描述停在 v1.0 → 列出實際內容
-
-### Input budget cap（v1.9.2 追加，無版號變更）
-
-diff + context + detector hints 拼接後無總預算上限，大 diff 觸發 "Prompt is too long"。
+### 修了什麼
 
 | # | 做了什麼 | 檔案 | 測試變化 |
 |---|---------|------|---------|
 | 1 | `max_input_tokens` 總預算控制 + 預算分配邏輯 | `engine.py` | +6 |
 | 2 | `--max-input-tokens` CLI flag | `cli.py` | 0 |
+| 3 | CHANGELOG、HANDOVER 更新 | docs | 0 |
 
 ### 驗證結果
 
-- 531 tests passed（+62 from v1.8.0 的 469）
-- Eval: 33/33 deterministic
-- Lint (ruff): clean
-- Coverage: 87%
+- 531 tests passed（+6）
+- 22 DEPLOY_FILES hash 一致
+- `git push` 完成
 
 ### Commits
 
 | Hash | 說明 |
 |------|------|
-| `8082f4e` | v1.9.0 Phase 5 commit + tag |
-| `cd40137` | HANDOVER rewrite for v1.9.0 |
-| `be9f241` | v1.9.1 prompt self-disclosure + tag |
-| `e337310` | v1.9.2 README factual alignment (說少的) + tag |
-| `c3e6aeb` | README overclaim fixes (說多的), 無版號變更 |
+| `1024981` | fix(engine): add max_input_tokens total budget cap |
 
 ---
 
@@ -181,7 +148,7 @@ diff + context + detector hints 拼接後無總預算上限，大 diff 觸發 "P
 
 ## CLI 命令
 
-（同 v1.8.0，無新增 flags。FP memory 自動從 override history 讀取，無需設定。）
+v1.9.2 新增 `--max-input-tokens` flag。其餘同 v1.8.0。FP memory 自動從 override history 讀取，無需設定。
 
 ## 已知問題
 
