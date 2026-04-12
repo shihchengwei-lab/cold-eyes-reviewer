@@ -3,6 +3,7 @@
 import json
 import os
 import re
+import tempfile
 from datetime import datetime, timezone, timedelta
 
 from cold_eyes import constants
@@ -314,6 +315,9 @@ def prune_history(history_path=None, keep_days=None, keep_entries=None):
     if keep_days is None and keep_entries is None:
         return {"action": "prune", "error": "specify --keep-days or --keep-entries"}
 
+    if keep_entries is not None and keep_entries < 1:
+        raise ValueError("--keep-entries must be >= 1")
+
     entries = _read_history(path)
     original_count = len(entries)
 
@@ -344,11 +348,19 @@ def prune_history(history_path=None, keep_days=None, keep_entries=None):
         else:
             kept = tail
 
-    # Rewrite file
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as f:
-        for e in kept:
-            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    # Rewrite file atomically
+    dir_name = os.path.dirname(path)
+    if dir_name:
+        os.makedirs(dir_name, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=dir_name or ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            for e in kept:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        os.replace(tmp_path, path)
+    except BaseException:
+        os.unlink(tmp_path)
+        raise
 
     return {
         "action": "prune",
@@ -391,17 +403,37 @@ def archive_history(history_path=None, before=None, dest=None):
         except (ValueError, TypeError):
             keep.append(e)
 
-    # Append to archive
-    if archive:
-        os.makedirs(os.path.dirname(dest), exist_ok=True)
-        with open(dest, "a", encoding="utf-8") as f:
-            for e in archive:
-                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    # Ensure archive directory exists (#72: always, not just when archive non-empty)
+    dest_dir = os.path.dirname(dest)
+    if dest_dir:  # #13: guard against bare filename where dirname is ""
+        os.makedirs(dest_dir, exist_ok=True)
 
-    # Rewrite main history
-    with open(path, "w", encoding="utf-8") as f:
-        for e in keep:
-            f.write(json.dumps(e, ensure_ascii=False) + "\n")
+    # Atomic archive write: read existing, append new, write to temp, rename
+    existing_archive = _read_history(dest)
+    all_archive = existing_archive + archive
+    fd_arc, tmp_arc = tempfile.mkstemp(dir=dest_dir or ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd_arc, "w", encoding="utf-8") as f:
+            for e in all_archive:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        os.replace(tmp_arc, dest)
+    except BaseException:
+        os.unlink(tmp_arc)
+        raise
+
+    # Atomic main history rewrite
+    path_dir = os.path.dirname(path)
+    if path_dir:
+        os.makedirs(path_dir, exist_ok=True)
+    fd_main, tmp_main = tempfile.mkstemp(dir=path_dir or ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd_main, "w", encoding="utf-8") as f:
+            for e in keep:
+                f.write(json.dumps(e, ensure_ascii=False) + "\n")
+        os.replace(tmp_main, path)
+    except BaseException:
+        os.unlink(tmp_main)
+        raise
 
     return {
         "action": "archive",

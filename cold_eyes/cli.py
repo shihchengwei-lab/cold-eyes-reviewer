@@ -84,6 +84,23 @@ def _run_v2(args):
     except Exception:
         pass  # persistence failure must not block the review outcome
 
+    # Log summary to v1 history so stats/quality-report see v2 sessions
+    from cold_eyes.history import log_to_history
+    try:
+        v2_outcome = session.get("final_outcome", {})
+        v2_state = v2_outcome.get("state", "unknown")
+        log_to_history(
+            cwd=repo_root or os.getcwd(),
+            mode="v2-session",
+            model="v2-session",
+            state=v2_state,
+            reason=v2_outcome.get("stop_reason", ""),
+            file_count=len(all_files),
+            scope=scope,
+        )
+    except Exception:
+        pass  # history logging failure must not block the review outcome
+
     # Extract final_outcome and add shell-compatible fields
     outcome = session.get("final_outcome", {"action": "pass", "state": "unknown"})
     state = outcome.get("state", "unknown")

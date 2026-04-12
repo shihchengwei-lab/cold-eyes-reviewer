@@ -99,6 +99,7 @@ def _run_external(
             capture_output=True,
             text=True,
             timeout=timeout,
+            encoding="utf-8",
             errors="replace",
         )
         raw = proc.stdout + proc.stderr

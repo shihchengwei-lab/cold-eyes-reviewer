@@ -47,7 +47,10 @@ class ClaudeCliAdapter(ModelAdapter):
         try:
             return self._call(diff_text, model, prompt_fd.name)
         finally:
-            os.unlink(prompt_fd.name)
+            try:
+                os.unlink(prompt_fd.name)
+            except OSError:
+                pass
 
     def _call(self, diff_text, model, prompt_file):
         env = {**os.environ, "COLD_REVIEW_ACTIVE": "1"}

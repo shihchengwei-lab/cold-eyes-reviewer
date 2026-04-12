@@ -27,7 +27,7 @@ STATE_REPORTED = "reported"
 BUILTIN_IGNORE = [
     "*.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
     "dist/*", "build/*", ".next/*", "coverage/*", "vendor/*",
-    "node_modules/*", "*.min.js", "*.min.css",
+    "node_modules/*", "*.min.js", "*.min.css", "*.map",
 ]
 
 RISK_PATTERN = re.compile(

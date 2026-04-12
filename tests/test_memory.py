@@ -208,7 +208,7 @@ class TestExtractFpPatterns:
         ]
         _write_history(entries, path)
         result = extract_fp_patterns(history_path=path, min_count=2)
-        assert "src\\models" in result["path_patterns"]
+        assert "src/models" in result["path_patterns"]
 
 
 # ---------------------------------------------------------------------------

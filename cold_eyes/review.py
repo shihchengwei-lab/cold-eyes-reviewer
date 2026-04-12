@@ -10,19 +10,33 @@ def parse_review_output(raw_json_str):
     """Parse claude --output-format json output. Return dict."""
     try:
         raw = json.loads(raw_json_str)
-        result_str = raw.get("result", "{}")
-        if isinstance(result_str, str):
-            cleaned = result_str.strip()
-            if cleaned.startswith("```"):
-                lines = cleaned.split("\n")
-                if lines and lines[0].strip().startswith("```"):
-                    lines = lines[1:]
-                if lines and lines[-1].strip().startswith("```"):
-                    lines = lines[:-1]
-                cleaned = "\n".join(lines).strip()
-            result = json.loads(cleaned)
+        # Handle both wrapped ({"result": "..."}) and unwrapped formats
+        if "result" in raw:
+            result_str = raw["result"]
+            # Bug #69: Claude returns {"result": null} — treat as failed review
+            if result_str is None:
+                return {
+                    "schema_version": SCHEMA_VERSION,
+                    "pass": False,
+                    "review_status": "failed",
+                    "issues": [],
+                    "summary": "LLM returned null result",
+                }
+            if isinstance(result_str, str):
+                cleaned = result_str.strip()
+                if cleaned.startswith("```"):
+                    lines = cleaned.split("\n")
+                    if lines and lines[0].strip().startswith("```"):
+                        lines = lines[1:]
+                    if lines and lines[-1].strip().startswith("```"):
+                        lines = lines[:-1]
+                    cleaned = "\n".join(lines).strip()
+                result = json.loads(cleaned)
+            else:
+                result = result_str
         else:
-            result = result_str
+            # Unwrapped: raw itself is the review dict
+            result = raw
         result.setdefault("schema_version", SCHEMA_VERSION)
         result.setdefault("review_status", "completed")
         result.setdefault("pass", True)

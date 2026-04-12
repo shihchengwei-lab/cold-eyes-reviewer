@@ -2,15 +2,15 @@
 
 ## 現況
 
-- **版本：** v1.11.1（master，已 commit）
+- **版本：** v1.11.2（master，已 commit）
 - **分支：** master
-- **測試：** 773 passed / 0 failed
+- **測試：** 774 passed / 0 failed
 - **部署：** 待同步 `~/.claude/scripts/`
 - **版本訊號：**
-  - `__init__.py` = 1.11.1
-  - CHANGELOG = v1.11.1
+  - `__init__.py` = 1.11.2
+  - CHANGELOG = v1.11.2
   - tag = 待打
-  - pytest = 773 passed
+  - pytest = 774 passed
 
 ## 本次會話做了什麼（2026-04-13，Session 4 — Bug Hunt + Fix）
 
@@ -197,31 +197,14 @@ cold_eyes/
 
 ## 下次 Session 要做的事
 
-### 未提交改動（最優先）
+### 繼續修 Bug（報告中剩餘 48 bugs）
 
-1. **Review + Commit** — 20 files 的 bugfix 已就緒，773 tests pass。需 review 後 commit。
-2. **升版決定** — 29 bugs 是否值得升版（e.g., v1.12.0）。行為變化不小（見上表），建議升版。
+桌面報告 `cold-eyes-report.md` 剩餘未修的 bugs（101 − 29 − 24 = 48）：
 
-### 繼續修 Bug（報告中剩餘 72 bugs）
+**Major（1 remaining）：**
+- #59 override.py TOCTOU race（需 file locking，複雜度高）
 
-桌面報告 `cold-eyes-report.md` 剩餘未修的 bugs（101 − 29 = 72）：
-
-**Major（13 remaining）：**
-- #2 engine.py input_remaining 負數 → context/hints 靜默 skip
-- #26 gates/selection.py 最低保證只在 selected 全空時觸發
-- #52 history.py keep_entries=0 清空歷史
-- #55 doctor.py subprocess 缺 encoding
-- #56 doctor.py git not installed → FileNotFoundError
-- #57 orchestrator.py subprocess 缺 explicit encoding
-- #59 override.py TOCTOU race
-- #71 cli.py v2 sessions 不產生 v1 history entry
-- #87 claude.py os.unlink temp file on Windows
-- #88 review.py Claude CLI format 假設
-- #89 history.py concurrent append lost during prune
-- #51 history.py non-atomic archive
-- #99 engine.py + memory.py _extract_fp UnicodeDecodeError
-
-**Minor（59 remaining）：** #6, #11, #12, #13, #15, #17, #19, #20, #21, #29, #31, #32, #33, #34, #35, #36, #37, #46, #47, #48, #49, #50, #60, #61, #62, #63, #64, #66, #67, #68, #69, #72, #73, #75, #76, #77, #78, #79, #80, #81, #83, #84, #85, #86, #90, #91, #92, #93, #95, #96, #99, #100, #101, etc.
+**Minor（47 remaining）：** #15, #17, #19, #20, #21, #31, #32, #34, #35, #36, #37, #46, #47, #48, #49, #50, #60, #61, #62, #64, #66（已存在）, #68, #76, #77, #78, #79, #80, #81, #83, #84, #85, #86, #90, #91, #92, #93, #95, #96, #100, #101, etc.
 
 ### 原有待辦（仍有效）
 

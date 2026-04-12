@@ -51,7 +51,7 @@ def detect_state_signals(diff_text):
 
 _REPO_INDICATORS = {
     "web_backend": re.compile(
-        r"(route|controller|handler|middleware|view[/\\s]|endpoint|server)",
+        r"(route|controller|handler|middleware|view[/\\\\]|endpoint|server)",
         re.IGNORECASE),
     "sdk_library": re.compile(
         r"(sdk[/\\]|client[/\\]|lib[/\\]|setup\.py$|pyproject\.toml$)",

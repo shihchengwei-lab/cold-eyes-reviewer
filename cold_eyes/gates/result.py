@@ -72,9 +72,14 @@ def _parse_ruff(raw: str, exit_code: int) -> tuple[str, list[dict], list[str]]:
     status = "pass" if exit_code == 0 else "fail"
     findings: list[dict] = []
 
+    import re as _re
+    _ruff_code_re = _re.compile(r"[A-Z]\d{3,4}")
+
     for line in raw.splitlines():
         line_s = line.strip()
-        if ":" not in line_s or not any(c in line_s for c in ("E", "F", "W")):
+        # Match ruff output format: file:line:col: CODE message
+        # Require a ruff-style violation code (e.g. E501, F841, W291)
+        if ":" not in line_s or not _ruff_code_re.search(line_s):
             continue
         # Split with enough parts to handle Windows drive letter (C:\path:line:col: msg)
         parts = line_s.split(":", 4)
@@ -117,7 +122,10 @@ def _parse_llm_review(raw: str, exit_code: int) -> tuple[str, list[dict], list[s
     if state in ("blocked", "infra_failed"):
         status = "fail"
     elif state in ("passed", "skipped", "reported"):
-        status = "pass"
+        # Only override to "pass" if exit_code also indicates success.
+        # If exit_code != 0, the orchestrator detected a failure — respect it.
+        if exit_code == 0:
+            status = "pass"
 
     for issue in outcome.get("issues", []):
         findings.append({

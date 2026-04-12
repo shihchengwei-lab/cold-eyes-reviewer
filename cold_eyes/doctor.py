@@ -27,14 +27,15 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
     try:
         git_ver = git_cmd("--version")
         checks.append({"name": "git", "status": "ok", "detail": git_ver})
-    except GitCommandError:
+    except (GitCommandError, FileNotFoundError):
         checks.append({"name": "git", "status": "fail",
-                       "detail": "not found. Fix: install Git and ensure it is on PATH"})
+                       "detail": "git is not installed. Fix: install Git and ensure it is on PATH"})
 
     # 3. Claude CLI
     try:
         r = subprocess.run(
-            ["claude", "--version"], capture_output=True, text=True, timeout=10
+            ["claude", "--version"], capture_output=True, text=True, timeout=10,
+            encoding="utf-8",
         )
         if r.returncode == 0 and r.stdout.strip():
             checks.append({"name": "claude_cli", "status": "ok",

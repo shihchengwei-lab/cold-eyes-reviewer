@@ -18,7 +18,7 @@ def _read_overrides(history_path=None, last_days=None):
         return []
 
     entries = []
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, "r", encoding="utf-8", errors="replace") as f:
         for line in f:
             line = line.strip()
             if not line:
@@ -92,10 +92,8 @@ def extract_fp_patterns(history_path=None, min_count=2, last_days=90):
     for issue in issues:
         file_path = issue.get("file", "")
         if file_path and file_path != "unknown":
+            file_path = file_path.replace("\\", "/")
             dir_part = file_path.rsplit("/", 1)[0] if "/" in file_path else ""
-            # Also try backslash for Windows paths
-            if not dir_part and "\\" in file_path:
-                dir_part = file_path.rsplit("\\", 1)[0]
             if dir_part:
                 path_counter[dir_part] += 1
 

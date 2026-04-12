@@ -47,12 +47,15 @@ def aggregate_metrics(sessions: list[dict]) -> dict:
     total_gates = sum(m["total_gates_run"] for m in metrics)
     passed_sessions = sum(1 for m in metrics if m["final_state"] == "passed")
     failed_sessions = sum(1 for m in metrics if m["final_state"] == "failed_terminal")
+    aborted_sessions = sum(1 for m in metrics if m["final_state"] == "aborted")
+    completed = passed_sessions + failed_sessions
 
     return {
         "session_count": n,
         "passed_sessions": passed_sessions,
         "failed_sessions": failed_sessions,
-        "pass_rate": round(passed_sessions / n, 2) if n else 0.0,
+        "aborted_sessions": aborted_sessions,
+        "pass_rate": round(passed_sessions / completed, 2) if completed else 0.0,
         "total_retries": total_retries,
         "avg_retries": round(total_retries / n, 1) if n else 0.0,
         "total_gates_run": total_gates,

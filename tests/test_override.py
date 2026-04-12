@@ -55,11 +55,20 @@ class TestConsumeOverride:
 
     def test_expired_token_rejected(self, tmp_path, monkeypatch):
         monkeypatch.setattr("cold_eyes.override.TOKEN_DIR", str(tmp_path))
-        arm_override("/repo", "test", ttl_minutes=0)
-        # ttl=0 means it expires immediately
-        time.sleep(0.1)
+        arm_override("/repo", "test", ttl_minutes=1)
+        # Backdate the token so it's already expired
+        token_file = list(tmp_path.iterdir())[0]
+        import json
+        data = json.loads(token_file.read_text())
+        data["expires_at"] = data["created_at"]  # expire immediately
+        token_file.write_text(json.dumps(data))
         ok, reason = consume_override("/repo")
         assert ok is False
+
+    def test_zero_ttl_rejected(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("cold_eyes.override.TOKEN_DIR", str(tmp_path))
+        with pytest.raises(ValueError):
+            arm_override("/repo", "test", ttl_minutes=0)
 
     def test_repo_mismatch_rejected(self, tmp_path, monkeypatch):
         monkeypatch.setattr("cold_eyes.override.TOKEN_DIR", str(tmp_path))

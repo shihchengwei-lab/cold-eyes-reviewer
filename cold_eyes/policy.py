@@ -51,8 +51,8 @@ def calibrate_evidence(issues, fp_patterns=None):
         cat = issue.get("category", "")
         if cat and cat in category_caps:
             cap = category_caps[cat]
-            cap_level = CONFIDENCE_ORDER.get(cap, 2)
-            cur_level = CONFIDENCE_ORDER.get(issue["confidence"], 2)
+            cap_level = CONFIDENCE_ORDER.get(cap, 0)
+            cur_level = CONFIDENCE_ORDER.get(issue["confidence"], 0)
             if cur_level > cap_level:
                 issue["confidence"] = cap
         calibrated.append(issue)

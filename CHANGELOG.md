@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.11.2 — 24 bug fixes (platform, atomicity, robustness)
+
+Second bug-fix batch from 101-bug report. 12 major, 12 minor.
+
+### Major
+- **#2** `engine.py` — input_remaining 負數時 stderr 警告（context/hints 被 skip）
+- **#26** `gates/selection.py` — `llm_review` 永遠加入 selected gates（不只 fallback）
+- **#51** `history.py` — archive 改原子寫入（write-to-temp-then-rename）
+- **#52** `history.py` — `keep_entries < 1` 拋 ValueError（防清空歷史）
+- **#55** `doctor.py` — subprocess 加 `encoding="utf-8"`
+- **#56** `doctor.py` — 捕 `FileNotFoundError`（git 未安裝）
+- **#57** `gates/orchestrator.py` — external gate subprocess 加 `encoding="utf-8"`
+- **#71** `cli.py` — v2 session 結果寫入 v1 history
+- **#87** `claude.py` — `os.unlink` 加 try/except OSError（Windows handle lock）
+- **#88** `review.py` — 同時支援 wrapped/unwrapped Claude CLI 輸出格式
+- **#89** `history.py` — prune 改原子寫入
+- **#99** `memory.py` — `errors="replace"` 防 UnicodeDecodeError
+
+### Minor
+- **#6** `gates/result.py` — exit_code≠0 時不覆寫 status 為 pass
+- **#11** `detector.py` — regex `[/\\s]` 修正為 `[/\\]`（不再誤匹 `views`）
+- **#12** `memory.py` — 路徑 `\` → `/` 統一（Windows 混合分隔符）
+- **#13** `history.py` — `makedirs("")` 防護
+- **#29** `override.py` — `ttl_minutes ≤ 0` 拋 ValueError
+- **#33** `runner/metrics.py` — aborted sessions 不影響 pass_rate 分母
+- **#63** `policy.py` — 未知 confidence 預設 0（最嚴格）
+- **#67** `constants.py` — BUILTIN_IGNORE 加 `*.map`
+- **#69** `review.py` — `{"result": null}` 不再靜默 pass
+- **#72** `history.py` — archive 目錄 makedirs 無條件執行
+- **#73** `engine.py` — hint tokens 計入 token_count
+- **#75** `gates/result.py` — ruff parser 用 `[A-Z]\d{3,4}` regex
+
+15 production files, 2 test files changed. 774 tests (+1), 0 failures.
+
 ## v1.11.1 — 29 bug fixes (data boundary + cross-module contracts)
 
 Bug hunt rounds 1-13 累計 101 bugs；本版修復 29 個（2 critical, 15 major, 12 minor）。

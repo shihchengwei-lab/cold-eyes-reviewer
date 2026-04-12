@@ -20,6 +20,8 @@ def arm_override(repo_root, reason, ttl_minutes=10):
 
     Returns dict with token metadata.
     """
+    if ttl_minutes <= 0:
+        raise ValueError(f"ttl_minutes must be positive, got {ttl_minutes}")
     os.makedirs(TOKEN_DIR, exist_ok=True)
     now = datetime.now(timezone.utc)
     token = {

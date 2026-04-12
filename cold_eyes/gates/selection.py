@@ -57,12 +57,13 @@ def select_gates(
                 seen.add(gid)
 
     # --- Minimum gate guarantee ---
-    if not selected and "llm_review" in available_gate_ids:
+    if "llm_review" in available_gate_ids and "llm_review" not in seen:
         selected.append({
             "gate_id": "llm_review",
-            "reason": "fallback: at least one gate must run",
+            "reason": "fallback: llm_review must always run",
             "blocking": "soft",
         })
+        seen.add("llm_review")
 
     return selected
 

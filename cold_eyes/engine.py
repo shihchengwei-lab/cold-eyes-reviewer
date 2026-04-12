@@ -1,6 +1,7 @@
 """Pipeline orchestrator — coordinates the full review flow."""
 
 import os
+import sys
 
 from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED
 from cold_eyes.git import git_cmd, collect_files, build_diff, estimate_tokens, GitCommandError, ConfigError
@@ -192,6 +193,11 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
 
     # --- Total input budget enforcement ---
     input_remaining = max_input_tokens - token_count
+    if input_remaining < 0:
+        sys.stderr.write(
+            f"cold-review: warning: diff tokens ({token_count}) exceed "
+            f"max_input_tokens ({max_input_tokens}); context and hints will be skipped\n"
+        )
     hints_dropped = False
 
     # Context retrieval for deep path (capped by remaining budget)
@@ -213,6 +219,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             if hint_tokens <= input_remaining:
                 diff_text = detector_meta["hint_text"] + "\n" + diff_text
                 input_remaining -= hint_tokens
+                token_count += hint_tokens
             else:
                 detector_meta["hint_text"] = ""
                 hints_dropped = True
