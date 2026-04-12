@@ -2,7 +2,7 @@
 
 ## 現況
 
-- **版本：** v1.9.2（master，`1024981`，2026-04-12）
+- **版本：** v1.9.2（master，`4054798`，2026-04-12）
 - **分支：** master
 - **測試：** 531 passed（coverage 87%，門檻 75%）
 - **部署：** 已同步 `~/.claude/scripts/`（22 files verified）
@@ -13,8 +13,7 @@
   - pytest = 531 passed ✓
   - tag = v1.9.2 ✓
   - Release = v1.9.2 ✓
-- **CI：** Tests ✓ + Release ✓
-- **Lint：** ruff clean（cold_eyes/ + tests/）
+- **CI：** Tests ✓（6 OS/Python 組合）、Shellcheck ✓、Lint ✓
 - **Eval：** 33/33 deterministic，regression check pass
 
 ## 架構
@@ -64,11 +63,11 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
                                                                                 → Rule 4: category cap
 ```
 
-### Input budget 機制（本次新增）
+### Input budget 機制
 
 原本 diff（`max_tokens`）、context（`context_tokens`）、detector hints（無預算）各自獨立，拼接後無總量上限。大 diff 可觸發 Claude CLI "Prompt is too long"。
 
-修法：`engine.py` 加入 `max_input_tokens` 作為共享總預算。三個元件依序扣除：
+`engine.py` 加入 `max_input_tokens` 作為共享總預算，三個元件依序扣除：
 
 | 優先順序 | 元件 | 預算來源 | 超出行為 |
 |---|---|---|---|
@@ -86,23 +85,26 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 
 ### 修了什麼
 
-| # | 做了什麼 | 檔案 | 測試變化 |
-|---|---------|------|---------|
-| 1 | `max_input_tokens` 總預算控制 + 預算分配邏輯 | `engine.py` | +6 |
-| 2 | `--max-input-tokens` CLI flag | `cli.py` | 0 |
-| 3 | CHANGELOG、HANDOVER 更新 | docs | 0 |
-
-### 驗證結果
-
-- 531 tests passed（+6）
-- 22 DEPLOY_FILES hash 一致
-- `git push` 完成
+| # | 做了什麼 | 檔案 |
+|---|---------|------|
+| 1 | `max_input_tokens` 總預算控制 + 預算分配邏輯 | `engine.py`（+6 tests） |
+| 2 | `--max-input-tokens` CLI flag | `cli.py` |
+| 3 | CLI help string 超過 ruff E501 130 字元限制 | `cli.py` |
+| 4 | CHANGELOG、HANDOVER 更新 | docs |
 
 ### Commits
 
 | Hash | 說明 |
 |------|------|
 | `1024981` | fix(engine): add max_input_tokens total budget cap |
+| `3752780` | docs: rewrite HANDOVER for input budget cap session handoff |
+| `4054798` | fix(lint): shorten cli help string to pass ruff E501 |
+
+### 驗證
+
+- 531 tests passed（+6）
+- CI: Tests ✓、Lint ✓、Shellcheck ✓
+- 22 DEPLOY_FILES hash 一致
 
 ---
 
@@ -123,6 +125,7 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 
 ### 注意事項
 
+- 模型名稱是純字串透傳，Claude CLI 支援的新模型直接可用，不需改程式碼。
 - FP memory 在 history 為空時無效果（graceful no-op）。
 - `compute_category_baselines()` 用 `total_overrides * 3` 估算 total_reviews，是 heuristic。
 - Manifest ground_truth_summary 現在是 15/18。加 eval cases 要重新計算。
