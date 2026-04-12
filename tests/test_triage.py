@@ -9,7 +9,14 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
 
+import json
+
 from cold_eyes.triage import classify_file_role, classify_depth
+
+_PASS_STDOUT = json.dumps({"result": json.dumps({
+    "pass": True, "review_status": "completed",
+    "issues": [], "summary": "ok",
+})})
 
 
 # ---------------------------------------------------------------------------
@@ -315,7 +322,7 @@ class TestEngineTriageIntegration:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
+        mock_invocation.stdout = _PASS_STDOUT
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()

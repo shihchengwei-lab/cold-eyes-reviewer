@@ -14,6 +14,11 @@ from cold_eyes.prompt import build_prompt_text
 from cold_eyes.context import build_context, _recent_commits, _co_changed_files
 from cold_eyes.git import estimate_tokens
 
+_PASS_STDOUT = json.dumps({"result": json.dumps({
+    "pass": True, "review_status": "completed",
+    "issues": [], "summary": "ok",
+})})
+
 
 # ---------------------------------------------------------------------------
 # WP1: Shallow prompt
@@ -92,7 +97,7 @@ class TestEngineShallowModel:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
+        mock_invocation.stdout = _PASS_STDOUT
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -131,7 +136,7 @@ class TestEngineShallowModel:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
+        mock_invocation.stdout = _PASS_STDOUT
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -169,7 +174,7 @@ class TestEngineShallowModel:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
+        mock_invocation.stdout = _PASS_STDOUT
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -264,7 +269,7 @@ class TestEngineContextIntegration:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
+        mock_invocation.stdout = _PASS_STDOUT
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -310,7 +315,7 @@ class TestEngineContextIntegration:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
+        mock_invocation.stdout = _PASS_STDOUT
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -388,7 +393,7 @@ class TestEngineContextIntegrationContinued:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
+        mock_invocation.stdout = _PASS_STDOUT
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()

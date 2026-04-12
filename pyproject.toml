@@ -30,6 +30,7 @@ ignore = ["E741"]
 "cold_eyes/cli.py" = ["E402"]
 "cold_eyes/git.py" = ["F401"]
 "tests/*" = ["E402", "F401", "F841"]
+"evals/*" = ["E402"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

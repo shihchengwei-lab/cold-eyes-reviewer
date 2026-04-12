@@ -121,10 +121,6 @@ def run_session(
             add_event(session, "session_failed", session["final_outcome"])
             return session
         all_passed = all(r.get("status") == "pass" for r in results)
-        has_hard_failures = any(
-            r.get("status") == "fail" and r.get("blocking_mode") == "hard"
-            for r in results
-        )
 
         if all_passed:
             transition(session, "passed")
