@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_cases": 30,
+  "total_cases": 33,
   "categories": {
     "true_positive": {
       "description": "Real issues Cold Eyes should block",
@@ -67,10 +67,19 @@
         "evidence-abstain-demotes",
         "evidence-backward-compat"
       ]
+    },
+    "fp_memory": {
+      "description": "False-positive memory: FP pattern matching, category caps, no-match pass-through",
+      "count": 3,
+      "cases": [
+        "fp-memory-known-pattern",
+        "fp-memory-category-cap",
+        "fp-memory-no-match"
+      ]
     }
   },
   "ground_truth_summary": {
-    "should_block_true": 14,
-    "should_block_false": 16
+    "should_block_true": 15,
+    "should_block_false": 18
   }
 }

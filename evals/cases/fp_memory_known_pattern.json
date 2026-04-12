@@ -1,0 +1,19 @@
+{
+  "id": "fp-memory-known-pattern",
+  "category": "fp_memory",
+  "description": "Issue matches known FP category+path pattern — confidence demoted from high to low, filtered out at default confidence=medium, should not block",
+  "diff": "--- a/src/models/order.py\n+++ b/src/models/order.py\n@@ -10,4 +10,5 @@\n class Order:\n     def update_status(self, new_status):\n-        self.status = new_status\n+        self.status = new_status\n+        self.updated_at = datetime.now()\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Missing pre-condition check before state transition\",\"verdict\":\"update_status does not verify the current state before allowing transition\",\"fix\":\"Add a guard that verifies valid state transitions\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"state_invariant\",\"file\":\"src/models/order.py\",\"line_hint\":\"L13\",\"evidence\":[\"line 13: self.status = new_status is set without validation\"],\"what_would_falsify_this\":\"If the caller always validates before calling update_status\",\"suggested_validation\":\"Check all callers of update_status\",\"abstain_condition\":\"\"}],\"summary\":\"State transition without precondition check\"}"
+  },
+  "fp_patterns": {
+    "category_patterns": {"state_invariant": 5},
+    "path_patterns": {"src/models": 4},
+    "check_patterns": {},
+    "total_overrides": 10,
+    "total_issues": 15
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

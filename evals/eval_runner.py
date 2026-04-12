@@ -111,10 +111,12 @@ def _evaluate_case(case, threshold="critical", confidence="medium"):
     truncated = settings.get("truncated", False)
     skipped_files = settings.get("skipped_files", [])
 
+    fp_patterns = case.get("fp_patterns")
+
     outcome = apply_policy(
         review, mode="block", threshold=threshold, allow_once=False,
         min_confidence=confidence, truncated=truncated,
-        skipped_files=skipped_files,
+        skipped_files=skipped_files, fp_patterns=fp_patterns,
     )
 
     gt = case["ground_truth"]

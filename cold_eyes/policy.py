@@ -4,19 +4,29 @@ from cold_eyes.constants import (
     SEVERITY_ORDER, CONFIDENCE_ORDER,
     STATE_PASSED, STATE_BLOCKED, STATE_OVERRIDDEN, STATE_INFRA_FAILED, STATE_REPORTED,
 )
+try:
+    from cold_eyes.memory import match_fp_pattern, compute_category_baselines
+except ImportError:
+    match_fp_pattern = None
+    compute_category_baselines = None
 
 
 _CONFIDENCE_DOWNGRADE = {"high": "medium", "medium": "low", "low": "low"}
 
 
-def calibrate_evidence(issues):
-    """Adjust confidence based on evidence and abstain conditions.
+def calibrate_evidence(issues, fp_patterns=None):
+    """Adjust confidence based on evidence, abstain conditions, and FP memory.
 
     Rules applied in order per issue:
     1. confidence=high with empty evidence → medium
     2. has non-empty abstain_condition → confidence -1 level
+    3. matches known FP pattern → confidence -1 per match type (max -2)
+    4. category confidence cap — if category has high override ratio, cap confidence
     Returns new list (shallow copies).
     """
+    category_caps = (compute_category_baselines(fp_patterns)
+                     if fp_patterns and compute_category_baselines else {})
+
     calibrated = []
     for issue in issues:
         issue = dict(issue)
@@ -28,6 +38,23 @@ def calibrate_evidence(issues):
         if issue.get("abstain_condition"):
             issue["confidence"] = _CONFIDENCE_DOWNGRADE.get(
                 issue["confidence"], issue["confidence"])
+        # Rule 3: matches known FP pattern → -1 per match (max 2 downgrades)
+        if fp_patterns and match_fp_pattern:
+            match_count, _ = match_fp_pattern(issue, fp_patterns)
+            downgrades = min(match_count, 2)
+            for _ in range(downgrades):
+                issue["confidence"] = _CONFIDENCE_DOWNGRADE.get(
+                    issue["confidence"], issue["confidence"])
+            if match_count > 0:
+                issue["fp_match_count"] = match_count
+        # Rule 4: category confidence cap
+        cat = issue.get("category", "")
+        if cat and cat in category_caps:
+            cap = category_caps[cat]
+            cap_level = CONFIDENCE_ORDER.get(cap, 2)
+            cur_level = CONFIDENCE_ORDER.get(issue["confidence"], 2)
+            if cur_level > cap_level:
+                issue["confidence"] = cap
         calibrated.append(issue)
     return calibrated
 
@@ -84,11 +111,12 @@ def format_block_reason(review, truncated=False, skipped_count=0, language=None)
 
 def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
                  truncated=False, skipped_files=None, override_reason="",
-                 language=None, truncation_policy="warn"):
+                 language=None, truncation_policy="warn", fp_patterns=None):
     """Determine final outcome. Return FinalOutcome dict.
 
     FinalOutcome keys: action, state, reason, display, truncated, skipped_count
     The review in the outcome has issues filtered by confidence.
+    fp_patterns: FP memory patterns from extract_fp_patterns() (optional).
     """
     if skipped_files is None:
         skipped_files = []
@@ -127,7 +155,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
         }
 
     # --- Evidence calibration (before confidence filter) ---
-    calibrated_issues = calibrate_evidence(review.get("issues", []))
+    calibrated_issues = calibrate_evidence(review.get("issues", []), fp_patterns=fp_patterns)
 
     # --- Confidence filter (hard gate) ---
     filtered_issues = filter_by_confidence(calibrated_issues, min_confidence)

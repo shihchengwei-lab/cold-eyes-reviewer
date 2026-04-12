@@ -1,0 +1,19 @@
+{
+  "id": "fp-memory-no-match",
+  "category": "fp_memory",
+  "description": "Real issue does not match any FP pattern — confidence stays high, should still block",
+  "diff": "--- a/src/auth/login.py\n+++ b/src/auth/login.py\n@@ -5,5 +5,4 @@\n def authenticate(username, password):\n     user = find_user(username)\n-    if user and verify_hash(password, user.password_hash):\n-        return create_session(user)\n+    return create_session(user)\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Authentication bypass — password verification removed\",\"verdict\":\"The password check was deleted, allowing login with just a username\",\"fix\":\"Restore the password verification guard\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"auth_bypass\",\"file\":\"src/auth/login.py\",\"line_hint\":\"L8\",\"evidence\":[\"line 8: create_session(user) called without verify_hash\",\"removed: if user and verify_hash(password, user.password_hash)\"],\"what_would_falsify_this\":\"If authentication is handled by a separate middleware upstream\",\"suggested_validation\":\"Check if any middleware verifies password before this handler\",\"abstain_condition\":\"\"}],\"summary\":\"Password verification removed from login\"}"
+  },
+  "fp_patterns": {
+    "category_patterns": {"state_invariant": 5},
+    "path_patterns": {"src/models": 4},
+    "check_patterns": {},
+    "total_overrides": 10,
+    "total_issues": 15
+  },
+  "ground_truth": {
+    "should_block": true
+  }
+}

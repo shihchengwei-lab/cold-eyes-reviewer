@@ -25,7 +25,7 @@ from evals.eval_runner import (
 class TestCaseLoading:
     def test_loads_all_cases(self):
         cases = load_cases(CASES_DIR)
-        assert len(cases) == 30
+        assert len(cases) == 33
 
     def test_required_fields_present(self):
         cases = load_cases(CASES_DIR)
@@ -36,7 +36,7 @@ class TestCaseLoading:
 
     def test_valid_categories(self):
         cases = load_cases(CASES_DIR)
-        valid = {"true_positive", "acceptable", "stress", "false_negative", "edge", "evidence",}
+        valid = {"true_positive", "acceptable", "stress", "false_negative", "edge", "evidence", "fp_memory"}
         for case in cases:
             assert case["category"] in valid, f"{case['id']} has invalid category"
 
@@ -120,7 +120,7 @@ class TestDeterministic:
 
     def test_total_equals_case_count(self):
         report = run_deterministic(CASES_DIR)
-        assert report["total"] == 30
+        assert report["total"] == 33
 
 
 # ---------------------------------------------------------------------------
@@ -394,3 +394,41 @@ class TestRegressionCheck:
         for reg in result["regressions"]:
             assert reg["match_a"] is True
             assert reg["match_b"] is False
+
+
+# ---------------------------------------------------------------------------
+# FP memory eval cases
+# ---------------------------------------------------------------------------
+
+class TestFpMemoryEval:
+    def test_fp_memory_cases_present(self):
+        cases = load_cases(CASES_DIR)
+        fp_cases = [c for c in cases if c["category"] == "fp_memory"]
+        assert len(fp_cases) == 3
+
+    def test_fp_memory_known_pattern_passes(self):
+        cases = load_cases(CASES_DIR)
+        case = next(c for c in cases if c["id"] == "fp-memory-known-pattern")
+        result = _evaluate_case(case)
+        assert result["actual_block"] is False
+        assert result["match"] is True
+
+    def test_fp_memory_category_cap_passes(self):
+        cases = load_cases(CASES_DIR)
+        case = next(c for c in cases if c["id"] == "fp-memory-category-cap")
+        result = _evaluate_case(case)
+        assert result["actual_block"] is False
+        assert result["match"] is True
+
+    def test_fp_memory_no_match_blocks(self):
+        cases = load_cases(CASES_DIR)
+        case = next(c for c in cases if c["id"] == "fp-memory-no-match")
+        result = _evaluate_case(case)
+        assert result["actual_block"] is True
+        assert result["match"] is True
+
+    def test_fp_memory_all_match_deterministic(self):
+        report = run_deterministic(CASES_DIR)
+        fp_cases = [c for c in report["cases"] if c["category"] == "fp_memory"]
+        for c in fp_cases:
+            assert c["match"] is True, f"{c['id']} did not match ground truth"

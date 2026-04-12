@@ -1,0 +1,19 @@
+{
+  "id": "fp-memory-category-cap",
+  "category": "fp_memory",
+  "description": "Issue in high-override-ratio category — confidence capped at low by category baseline, filtered out, should not block",
+  "diff": "--- a/src/handlers/payment.py\n+++ b/src/handlers/payment.py\n@@ -20,3 +20,5 @@\n def process_refund(order_id, amount):\n     order = get_order(order_id)\n-    return stripe.refund(order.charge_id, amount)\n+    refund = stripe.refund(order.charge_id, amount)\n+    order.refund_status = 'refunded'\n+    return refund\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Refund status set without checking current state\",\"verdict\":\"order.refund_status is set to refunded without verifying the order is not already refunded\",\"fix\":\"Add guard: if order.refund_status == refunded, raise or return early\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"noisy_category\",\"file\":\"src/handlers/payment.py\",\"line_hint\":\"L24\",\"evidence\":[\"line 24: order.refund_status = refunded set unconditionally\"],\"what_would_falsify_this\":\"If the caller already checks refund status before calling process_refund\",\"suggested_validation\":\"Check process_refund callers\",\"abstain_condition\":\"\"}],\"summary\":\"Unconditional refund status update\"}"
+  },
+  "fp_patterns": {
+    "category_patterns": {"noisy_category": 8},
+    "path_patterns": {},
+    "check_patterns": {},
+    "total_overrides": 5,
+    "total_issues": 10
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

@@ -1,5 +1,33 @@
 # Changelog
 
+## v1.9.0 — False-Positive Memory + Confidence Calibration (Phase 5)
+
+Override history now feeds back into calibration: recurring false-positive patterns are automatically detected and used to downgrade confidence on matching issues. Category-level confidence caps prevent chronically noisy categories from producing high-confidence blocks. 525 tests (was 469).
+
+### FP pattern extraction (WP1)
+
+- **`cold_eyes/memory.py`** — new module. `extract_fp_patterns(history_path, min_count, last_days)` scans override history for recurring category, path, and check patterns.
+- **`match_fp_pattern(issue, fp_patterns)`** — checks if an issue matches 0-3 known FP pattern types (category, path, check prefix).
+
+### Calibration integration (WP2)
+
+- **Rule 3 in `calibrate_evidence()`** — issues matching FP patterns are downgraded: -1 confidence per match type (max -2 downgrades). Issues annotated with `fp_match_count`.
+- **Engine wiring** — `extract_fp_patterns()` runs after model parse, before `apply_policy()`. FP memory stats (`fp_memory_overrides`, `fp_memory_patterns`) added to outcome.
+
+### Per-category confidence baselines (WP3)
+
+- **`compute_category_baselines(fp_patterns)`** — categories with override ratio >= 0.5 are capped at "low"; >= 0.3 at "medium".
+- **Rule 4 in `calibrate_evidence()`** — applies category caps after FP match downgrades. Caps never upgrade confidence.
+
+### Eval (WP4)
+
+- **3 new eval cases** — `fp-memory-known-pattern` (pass: double FP match demotes to low), `fp-memory-category-cap` (pass: high-ratio cap), `fp-memory-no-match` (block: real issue unaffected).
+- **33/33 deterministic**, regression check pass.
+
+### Tests
+
+- 525 tests (+56): FP extraction (14+13 backslash), FP matching (13), FP calibration rules (12+6), category baselines (7+1), eval FP cases (5).
+
 ## v1.8.0 — State/Invariant Detector + Repo-Specific Focus (Phase 4)
 
 Two detectors added to the deep review path: a fixed state/invariant detector and a repo-type-adaptive focus selector. Both are regex-based pre-model analysis that enrich the prompt with targeted hints. 469 tests (was 421).

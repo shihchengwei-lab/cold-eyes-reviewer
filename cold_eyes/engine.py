@@ -9,6 +9,11 @@ from cold_eyes.triage import classify_depth
 from cold_eyes.context import build_context
 from cold_eyes.detector import build_detector_hints
 from cold_eyes.prompt import build_prompt_text
+
+try:
+    from cold_eyes.memory import extract_fp_patterns as _extract_fp
+except ImportError:
+    _extract_fp = None
 from cold_eyes.claude import ClaudeCliAdapter
 from cold_eyes.review import parse_review_output
 from cold_eyes.policy import apply_policy
@@ -218,11 +223,15 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     # 8. Parse review
     review = parse_review_output(invocation.stdout)
 
-    # 9-10. Apply policy (with truncation context)
+    # 8.5 FP memory — extract patterns from override history
+    fp_patterns = _extract_fp() if _extract_fp else None
+
+    # 9-10. Apply policy (with truncation context + FP memory)
     outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
                            truncated=truncated, skipped_files=skipped_files,
                            override_reason=override_reason, language=language,
-                           truncation_policy=truncation_policy)
+                           truncation_policy=truncation_policy,
+                           fp_patterns=fp_patterns)
 
     # Add coverage visibility
     outcome["reviewed_files"] = reviewed_count
@@ -236,6 +245,13 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         outcome["detector_repo_type"] = detector_meta["repo_type"]
         outcome["detector_focus"] = detector_meta["detector_focus"]
         outcome["state_signal_count"] = len(detector_meta["state_signals"])
+    if fp_patterns and fp_patterns["total_overrides"] > 0:
+        outcome["fp_memory_overrides"] = fp_patterns["total_overrides"]
+        outcome["fp_memory_patterns"] = (
+            len(fp_patterns["category_patterns"])
+            + len(fp_patterns["path_patterns"])
+            + len(fp_patterns["check_patterns"])
+        )
 
     # 11. Log
     diff_line_count = diff_text.count("\n") + 1

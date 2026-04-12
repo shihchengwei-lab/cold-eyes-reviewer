@@ -65,5 +65,6 @@ DEPLOY_FILES = [
     "cold_eyes/override.py", "cold_eyes/doctor.py",
     "cold_eyes/schema.py", "cold_eyes/triage.py",
     "cold_eyes/context.py", "cold_eyes/detector.py",
+    "cold_eyes/memory.py",
     "cold-review-prompt-shallow.txt",
 ]

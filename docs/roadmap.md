@@ -51,6 +51,14 @@ Based on external review, the project follows a phased trust engineering plan. T
 - [x] Engine outcome fields: detector_repo_type, detector_focus, state_signal_count
 - [x] 3 state/invariant eval cases (30 total)
 
+### False-positive memory + confidence calibration (v1.9.0)
+
+- [x] FP pattern extraction from override history (category, path, check prefix)
+- [x] FP pattern matching integrated into calibrate_evidence() (Rule 3: -1 per match type, max -2)
+- [x] Per-category confidence caps (Rule 4: high-ratio categories capped at medium/low)
+- [x] Engine wiring: extract_fp_patterns() runs before apply_policy()
+- [x] 3 FP memory eval cases (33 total)
+
 ### Phase 2 — External evidence (future)
 
 - Release-by-release assurance notes (`docs/reports/vX.Y.Z-assurance.md`)
