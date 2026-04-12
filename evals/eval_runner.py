@@ -252,11 +252,13 @@ def threshold_sweep(cases_dir):
 # Benchmark mode (requires real model)
 # ---------------------------------------------------------------------------
 
-def run_benchmark(cases_dir, model="opus", adapter=None, save_dir=None):
+def run_benchmark(cases_dir, model="opus", adapter=None, save_dir=None,
+                   prompt_depth="deep"):
     """Run eval cases with a real model adapter.
 
     adapter: ModelAdapter instance.  If None, uses ClaudeCliAdapter.
     save_dir: directory to save model responses (default: cases_dir/../responses/).
+    prompt_depth: 'deep' or 'shallow' — selects which prompt template to use.
     """
     from cold_eyes.claude import ClaudeCliAdapter
     from cold_eyes.prompt import build_prompt_text
@@ -268,7 +270,7 @@ def run_benchmark(cases_dir, model="opus", adapter=None, save_dir=None):
     os.makedirs(save_dir, exist_ok=True)
 
     cases = load_cases(cases_dir)
-    prompt_text = build_prompt_text()
+    prompt_text = build_prompt_text(depth=prompt_depth)
     results = []
 
     for case in cases:
@@ -316,6 +318,7 @@ def run_benchmark(cases_dir, model="opus", adapter=None, save_dir=None):
     return _make_report({
         "mode": "benchmark",
         "model": model,
+        "prompt_depth": prompt_depth,
         "total": len(results),
         "passed": passed,
         "failed": len(results) - passed,

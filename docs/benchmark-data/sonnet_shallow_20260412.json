@@ -1,0 +1,492 @@
+{
+  "cold_eyes_version": "1.6.0",
+  "timestamp": "2026-04-12T05:04:43.577813Z",
+  "eval_schema_version": 1,
+  "mode": "benchmark",
+  "model": "sonnet",
+  "prompt_depth": "shallow",
+  "total": 24,
+  "passed": 21,
+  "failed": 3,
+  "cases": [
+    {
+      "id": "edge-cjk-comment",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "僅文件字串更新，無 critical 問題",
+        "issues": []
+      }
+    },
+    {
+      "id": "edge-config-only-change",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "純設定檔新增 language 欄位，無安全或穩定性風險。",
+        "issues": []
+      }
+    },
+    {
+      "id": "edge-empty-mock-response",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": true,
+      "match": false,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "Flask DEBUG 模式硬編碼為 True，生產環境將暴露互動式除錯器",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "app.py",
+            "line_hint": "L4",
+            "check": "app.config['DEBUG'] = True 直接寫死在應用程式設定中",
+            "verdict": "Flask 的 Werkzeug 互動式除錯器在 DEBUG=True 時對所有請求開放，攻擊者可透過除錯器 console 執行任意 Python 程式碼，完全 RCE",
+            "fix": "移除此行，改用環境變數控制：app.config['DEBUG'] = os.environ.get('FLASK_DEBUG', 'false').lower() == 'true'，並確保生產環境 FLASK_DEBUG 未設或為 false"
+          }
+        ]
+      }
+    },
+    {
+      "id": "edge-unicode-filename",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "純文件新增，無安全或穩定性問題",
+        "issues": []
+      }
+    },
+    {
+      "id": "fn-env-var-not-secret",
+      "category": "false_negative",
+      "expected_block": false,
+      "actual_block": true,
+      "match": false,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "直接存取 os.environ[\"API_BASE\"] 在 import 時立即拋出 KeyError，導致整個應用無法啟動",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "correctness",
+            "file": "config.py",
+            "line_hint": "L6",
+            "check": "os.environ[\"API_BASE\"] 在 class body 層級直接求值，若環境變數不存在則在 module import 時拋出 KeyError",
+            "verdict": "生產環境啟動崩潰：任何未設定 API_BASE 的部署（含 CI、staging、容器冷啟動）都會立即炸掉，且錯誤訊息不明確",
+            "fix": "改用 os.environ.get(\"API_BASE\") 並在應用初始化時驗證，或加上明確錯誤訊息：os.environ.get(\"API_BASE\") or (_ for _ in ()).throw(RuntimeError(\"API_BASE env var is required\"))；更直觀做法是用 pydantic BaseSettings 或在 create_app() 內做 require check"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fn-intentional-shell-true",
+      "category": "false_negative",
+      "expected_block": false,
+      "actual_block": true,
+      "match": false,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "shell=True 搭配未驗證路徑存在 injection 風險，rm -rf 無確認機制",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "scripts/cleanup.py",
+            "line_hint": "L6",
+            "check": "subprocess.run() 以 shell=True 執行包含 glob 的字串命令",
+            "verdict": "shell=True 讓命令字串經由 sh 解析，若路徑任何部分來自外部輸入則可 injection；即使此處為硬編碼，shell=True 是不必要的攻擊面擴大",
+            "fix": "改用 list 形式並移除 shell=True：subprocess.run(['rm', '-rf', '/tmp/app-cache/'], check=True)"
+          },
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "correctness",
+            "file": "scripts/cleanup.py",
+            "line_hint": "L6",
+            "check": "rm -rf /tmp/app-cache/* 為不可逆操作，無任何前置確認或路徑驗證",
+            "verdict": "若 /tmp/app-cache 為符號連結或路徑被竄改，會遞迴刪除非預期目錄；check=True 只捕捉非零退出碼，不保護誤刪",
+            "fix": "刪除前驗證路徑是否為預期目錄（os.path.realpath 比對），或改用 shutil.rmtree('/tmp/app-cache', ignore_errors=False) 並明確指定絕對路徑變數"
+          }
+        ]
+      }
+    },
+    {
+      "id": "fn-test-fixture-secret",
+      "category": "false_negative",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "測試檔案使用明確標記的假 token 與 secret，無 critical 問題。",
+        "issues": []
+      }
+    },
+    {
+      "id": "ok-comment-update",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "僅修改 docstring，無邏輯變動，無 critical 問題。",
+        "issues": []
+      }
+    },
+    {
+      "id": "ok-readme-typo",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "純文件拼字修正，無 critical 問題",
+        "issues": []
+      }
+    },
+    {
+      "id": "ok-style-rename",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "純變數重命名，無 critical 問題。",
+        "issues": []
+      }
+    },
+    {
+      "id": "ok-test-addition",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "純測試新增，無 critical 問題",
+        "issues": []
+      }
+    },
+    {
+      "id": "stress-all-minor",
+      "category": "stress",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": true,
+        "review_status": "completed",
+        "summary": "無 critical 問題，僅含 TODO/FIXME 註解與輕微重構",
+        "issues": []
+      }
+    },
+    {
+      "id": "stress-binary-only",
+      "category": "stress",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": null,
+      "skipped": true
+    },
+    {
+      "id": "stress-empty-diff",
+      "category": "stress",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "model_response": null,
+      "skipped": true
+    },
+    {
+      "id": "stress-large-diff",
+      "category": "stress",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "shell=True 加上未消毒的 user_input 造成 command injection，os.popen 換成 subprocess 但漏洞依然存在且更危險",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "core/handler.py",
+            "line_hint": "L5",
+            "check": "subprocess.check_output(f'echo {user_input}', shell=True) — user_input 直接插入 shell 字串，攻擊者可輸入 `; rm -rf /` 或任意指令",
+            "verdict": "shell injection 漏洞，os.popen 時已存在，換成 subprocess 後危險程度相同，未修復根本問題",
+            "fix": "改用 list 形式並移除 shell=True：subprocess.check_output(['echo', user_input]).decode()"
+          }
+        ]
+      }
+    },
+    {
+      "id": "stress-mixed-severity",
+      "category": "stress",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "移除 secure_filename 導致路徑穿越攻擊",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "api/routes.py",
+            "line_hint": "L10",
+            "check": "filename 直接來自 request.form，未經過 secure_filename 過濾即拼入路徑",
+            "verdict": "攻擊者可傳入 filename=../../etc/passwd 或 ../../config.py，繞過 UPLOAD_DIR 限制，任意覆寫伺服器檔案（路徑穿越 / Path Traversal）",
+            "fix": "還原 path = os.path.join(UPLOAD_DIR, secure_filename(filename))；若 secure_filename 不可用，至少做 os.path.basename(filename) 並驗證結果路徑以 UPLOAD_DIR 開頭"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-dangling-import",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "移除了 sanitize_output，process() 的回傳值未經淨化直接輸出，可能引發 XSS 或 injection",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "medium",
+            "category": "security",
+            "file": "app/handlers.py",
+            "line_hint": "L22",
+            "check": "sanitize_output(result) 被移除，process(data) 的回傳值直接 return",
+            "verdict": "若 process() 回傳內容包含使用者可控資料，移除輸出淨化會讓 XSS 或 response injection 成為可能",
+            "fix": "保留 sanitize_output 呼叫：return sanitize_output(process(data))；或確認 process() 內部已完整淨化所有輸出路徑"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-eval-injection",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "移除輸入驗證後 eval() 直接執行任意用戶輸入，導致遠端代碼執行漏洞",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "calc.py",
+            "line_hint": "L3",
+            "check": "原本的白名單字元過濾被刪除，eval(user_expr) 現在無防護地執行任意字串",
+            "verdict": "任何用戶皆可傳入 __import__('os').system('rm -rf /') 等 payload 取得 RCE",
+            "fix": "改用 ast.literal_eval() 處理純數值運算，或用 mathparse/sympy 等沙箱函式庫；若必須保留 eval，至少恢復白名單過濾"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-hardcoded-secret",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "AWS 憑證以明文 hardcode 寫入原始碼",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "config/aws.py",
+            "line_hint": "L3-L4",
+            "check": "AWS_ACCESS_KEY 與 AWS_SECRET_KEY 以字串常數直接寫入程式碼，會隨 git commit 永久留存於版本歷史",
+            "verdict": "hardcoded credentials 一旦推送即視同公開洩漏，任何有 repo 讀取權限者皆可取得有效 AWS 金鑰",
+            "fix": "移除兩行常數，改用環境變數或 IAM Role：boto3.Session() 預設會自動讀取 AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY 環境變數，或使用 Instance Profile / ECS Task Role 讓 SDK 自動取得臨時憑證，完全不需要在程式碼中出現任何金鑰字串。若金鑰已推送過，立即在 AWS Console 撤銷該 Access Key"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-missing-error-handling",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "移除 context manager 與 exception handling，導致檔案洩漏與批次崩潰",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "correctness",
+            "file": "pipeline/ingest.py",
+            "line_hint": "L18",
+            "check": "f = open(...) 沒有 with 包覆，沒有 try/except",
+            "verdict": "任何 IOError 或 json.JSONDecodeError 都會讓整個 process_batch 拋出未捕獲例外，中斷所有後續檔案處理；即使成功，f 也不會被明確關閉（依賴 GC），大批次下會耗盡檔案描述符",
+            "fix": "還原 with open(...) as f: + except (IOError, json.JSONDecodeError) 的結構，或至少加 try/finally: f.close()"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-path-traversal",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "移除 secure_filename 導致路徑穿越漏洞",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "upload.py",
+            "line_hint": "L7",
+            "check": "filename 直接拼入路徑，未經 secure_filename 過濾",
+            "verdict": "攻擊者可傳入 '../../../etc/cron.d/backdoor' 等值，寫入任意系統路徑（Path Traversal, CWE-22）",
+            "fix": "還原 safe_name = secure_filename(filename)，並以 safe_name 組合路徑"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-resource-leak",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "移除 conn.close() 導致例外路徑下資料庫連線永久洩漏",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "correctness",
+            "file": "services/data.py",
+            "line_hint": "L10",
+            "check": "except 區塊移除了 conn.close()，且成功路徑的 return cursor.fetchall() 也不會關閉連線，兩條路徑都未釋放連線",
+            "verdict": "每次呼叫 fetch_records 無論成功或失敗都會洩漏一條 psycopg2 連線，長時間運行將耗盡連線池",
+            "fix": "改用 try/finally 或 with 上下文管理器：\n\ndef fetch_records(db_url):\n    conn = psycopg2.connect(db_url)\n    try:\n        cursor = conn.cursor()\n        cursor.execute('SELECT * FROM records')\n        return cursor.fetchall()\n    except Exception as e:\n        logger.error(f'Query failed: {e}')\n        return []\n    finally:\n        conn.close()"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-sql-injection",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "參數化查詢改成字串拼接，引入 SQL injection 漏洞",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "db.py",
+            "line_hint": "L14",
+            "check": "name 直接拼接進 SQL 字串，沒有任何轉義",
+            "verdict": "任意使用者輸入可竄改 SQL 結構，例如 name = \"' OR '1'='1\" 可繞過條件，name = \"'; DROP TABLE users; --\" 可刪表",
+            "fix": "恢復參數化查詢：self.db.execute(\"SELECT * FROM users WHERE name = ?\", (name,))"
+          }
+        ]
+      }
+    },
+    {
+      "id": "tp-xss-unescaped",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "model_response": {
+        "schema_version": 1,
+        "pass": false,
+        "review_status": "completed",
+        "summary": "移除了 user.name 的 HTML 跳脫，引入 XSS 漏洞",
+        "issues": [
+          {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "security",
+            "file": "templates/profile.py",
+            "line_hint": "L11",
+            "check": "user.name 直接插入 HTML，無 html.escape()",
+            "verdict": "攻擊者可在 name 欄位注入任意 HTML/JS，例如 <script>alert(1)</script>",
+            "fix": "改回 {html.escape(user.name)}"
+          }
+        ]
+      }
+    }
+  ]
+}
