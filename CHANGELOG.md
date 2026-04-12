@@ -1,5 +1,15 @@
 # Changelog
 
+## v1.9.2 — README factual alignment
+
+README described v1.4-era behavior. Updated 6 areas to match v1.9 reality:
+
+- **Intro** — "zero-context" → "cold-read". Deep reviews now described as seeing diff + context + detector hints; shallow reviews as diff-only.
+- **Pipeline diagram** — 3-step sketch → 10-step numbered pipeline with triage, context, detector, FP memory, and calibration.
+- **Output example** — added evidence-bound fields (evidence, what_would_falsify_this, suggested_validation, abstain_condition) with explanations of automatic downgrade rules.
+- **Install command** — added missing `cold-review-prompt-shallow.txt`.
+- **Eval numbers** — 24 cases / 5 categories → 33 cases / 7 categories (3 locations).
+
 ## v1.9.1 — Prompt self-disclosure + deploy fix
 
 - **Deep prompt rewritten** — removed "零 context" / "只看到 git diff" claims. Prompt now explicitly describes the 3 input types the model may receive: git diff, context block (v1.6.0+), detector hints (v1.8.0+). Each described with source, purpose, and limitations.

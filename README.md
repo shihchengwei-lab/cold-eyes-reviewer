@@ -2,9 +2,9 @@
 
 ![Tests](https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/workflows/test.yml/badge.svg)
 
-A zero-context code reviewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
+A cold-read code reviewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
 
-Cold Eyes is a second-pass gate, not a full code review. It sees only the git diff — no conversation context, no project history, no requirements. It catches surface-level correctness, security, and consistency issues. It does not understand your intent.
+Cold Eyes is a second-pass gate, not a full code review. It has no conversation context and no requirements. Deep reviews see the git diff plus limited structured context (recent commits, co-changed files) and regex-based detector hints. Shallow reviews see only the diff. It catches surface-level correctness, security, and consistency issues. It does not understand your intent.
 
 ## How it works
 
@@ -20,19 +20,27 @@ Claude Code session ends
        ▼
   cold_eyes/cli.py → engine.py (all review logic)
        │
-       ├─ collect files → filter → risk-rank → build diff (token-budgeted)
-       ├─ call Claude CLI with system prompt
-       ├─ parse review → confidence hard-filter → policy decision
+       ├─ 1. collect files → 2. filter (.cold-review-ignore) → 3. risk-rank
+       ├─ 4. triage: skip (docs/generated) / shallow (test-only) / deep (source/risk)
+       │      skip → exit immediately, no model call
+       │      shallow → lighter model (sonnet) + critical-only prompt
+       │      deep → full pipeline below
+       ├─ 5. build diff (token-budgeted, high-risk files first)
+       ├─ 6. context retrieval (deep only: recent commits + co-changed files from git)
+       ├─ 7. detector hints (deep only: regex state/invariant signals + repo-type focus)
+       ├─ 8. call Claude CLI with system prompt
+       ├─ 9. parse review → FP memory lookup → evidence calibration → confidence filter
+       ├─ 10. policy decision
        │
        ├─ block mode: issues at or above threshold → block → Claude fixes
        ├─ report mode: log review → pass
-       └─ engine-level exits logged to ~/.claude/cold-review-history.jsonl
+       └─ all engine-level exits logged to ~/.claude/cold-review-history.jsonl
           (shell guard skips — off, recursion, no git repo, lock — are not logged)
 ```
 
 ## Output format
 
-Every issue includes severity, confidence, category, file, line_hint, and a three-part structure (check / verdict / fix):
+Every issue includes severity, confidence, category, file, line_hint, a three-part structure (check / verdict / fix), and evidence-bound fields:
 
 ```json
 {
@@ -49,11 +57,20 @@ Every issue includes severity, confidence, category, file, line_hint, and a thre
       "line_hint": "L43",
       "check": "index.html line 43 links to ch3-en.html but this is the Chinese page",
       "verdict": "Cross-language reference.",
-      "fix": "Change to ch3.html"
+      "fix": "Change to ch3.html",
+      "evidence": ["line 43: href=\"ch3-en.html\" in a zh-TW page block"],
+      "what_would_falsify_this": "If ch3-en.html is intentionally linked as a cross-language reference",
+      "suggested_validation": "Check if other zh pages also link to -en variants",
+      "abstain_condition": ""
     }
   ]
 }
 ```
+
+- `evidence` — specific diff lines or facts supporting the claim. Issues with high confidence but empty evidence are automatically downgraded to medium.
+- `what_would_falsify_this` — conditions under which the claim would not hold.
+- `suggested_validation` — how to verify the claim (run a test, check a file, etc.).
+- `abstain_condition` — hidden context the claim assumes. Issues with abstain conditions are downgraded by one confidence level.
 
 - `schema_version` — output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
 - `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain. Displayed with `~` prefix (e.g., `(~L42)`) to indicate it is an estimate, not a precise location. In block mode, verify the line number before acting on it.
@@ -73,7 +90,7 @@ bash install.sh
 
 # Option B: manual copy
 mkdir -p ~/.claude/scripts
-cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt ~/.claude/scripts/
+cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt cold-review-prompt-shallow.txt ~/.claude/scripts/
 ```
 
 ### 2. Add Stop hook to `~/.claude/settings.json`
@@ -361,7 +378,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 | `cold_eyes/` | Python package: engine, git, filter, policy, review, schema, history, doctor, CLI, model adapter, override token |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | System prompt template (schema_version, line_hint, categories, severity/confidence definitions) |
-| `evals/` | Evaluation framework: 24 case fixtures (5 categories) + eval runner (deterministic/benchmark/sweep) + structured pipeline |
+| `evals/` | Evaluation framework: 33 case fixtures (7 categories) + eval runner (deterministic/benchmark/sweep) + structured pipeline |
 | `docs/` | Architecture, failure modes, troubleshooting, evaluation, scope strategy, history schema, tuning, support policy, roadmap, version policy, agent setup, release checklist, sample outputs |
 | `pyproject.toml` | Package metadata and ruff/lint config (optional `pip install -e .` for `cold-eyes` CLI command) |
 | `install.sh` / `uninstall.sh` | Deploy to / remove from `~/.claude/scripts/` |
@@ -418,7 +435,7 @@ Returns `{"action": "verify-install", "ok": true, "failures": []}` if the 3 crit
 ### Evaluation
 
 ```bash
-# Deterministic eval — 24 cases, no model calls
+# Deterministic eval — 33 cases, no model calls
 python cold_eyes/cli.py eval --eval-mode deterministic
 
 # Threshold sweep — precision/recall/F1 for all threshold x confidence combos
@@ -434,7 +451,7 @@ python cold_eyes/cli.py eval --save --format both
 python cold_eyes/cli.py eval --save --compare evals/results/deterministic_prev.json
 ```
 
-The eval framework tests the decision boundary (`parse_review_output` + `apply_policy`) against 24 cases across 5 categories: 8 true positives, 4 acceptable changes, 3 false negatives, 5 stress cases, and 4 edge cases. Reports include version metadata and can be saved as JSON/markdown and compared across runs. See `docs/evaluation.md` and `docs/trust-model.md` for details.
+The eval framework tests the decision boundary (`parse_review_output` + `apply_policy`) against 33 cases across 7 categories: 10 true positives, 4 acceptable changes, 4 false negatives, 5 stress cases, 4 edge cases, 3 evidence-bound cases, and 3 FP memory cases. Reports include version metadata and can be saved as JSON/markdown and compared across runs. See `docs/evaluation.md` and `docs/trust-model.md` for details.
 
 ### Override aggregation
 
