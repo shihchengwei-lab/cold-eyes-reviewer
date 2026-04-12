@@ -15,6 +15,7 @@ mkdir -p "$SCRIPTS_DIR/cold_eyes"
 # Copy shell shim + prompt template
 cp "$SRC_DIR/cold-review.sh" "$SCRIPTS_DIR/"
 cp "$SRC_DIR/cold-review-prompt.txt" "$SCRIPTS_DIR/"
+cp "$SRC_DIR/cold-review-prompt-shallow.txt" "$SCRIPTS_DIR/"
 
 # Copy Python package
 cp "$SRC_DIR"/cold_eyes/*.py "$SCRIPTS_DIR/cold_eyes/"

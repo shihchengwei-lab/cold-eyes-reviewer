@@ -34,7 +34,8 @@ def estimate_tokens(text):
 def git_cmd(*args):
     """Run a git command, return stdout.  Raise GitCommandError on failure."""
     r = subprocess.run(
-        ["git"] + list(args), capture_output=True, text=True, encoding="utf-8"
+        ["git"] + list(args), capture_output=True, text=True,
+        encoding="utf-8", errors="replace"
     )
     if r.returncode != 0:
         raise GitCommandError(list(args), r.returncode, r.stderr.strip())
@@ -65,7 +66,7 @@ def collect_files(scope="working", base=None):
     else:  # working
         staged = set(filter(None, git_cmd("diff", "--cached", "--name-only").split("\n")))
         unstaged = set(filter(None, git_cmd("diff", "--name-only").split("\n")))
-        untracked = set(filter(None, git_cmd("ls-files", "--others", "--exclude-standard").split("\n")))
+        untracked = set(filter(None, git_cmd("ls-files", "--others", "--exclude-standard", "--full-name").split("\n")))
         return sorted(staged | unstaged | untracked), untracked
 
 
@@ -129,7 +130,7 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
         if chunk_tokens > remaining:
             char_limit = remaining * 2
             chunk = chunk[:char_limit] + f"\n[truncated: {f}]"
-            chunk_tokens = remaining
+            chunk_tokens = estimate_tokens(chunk)
             partial_files.append(f)
 
         parts.append(chunk)

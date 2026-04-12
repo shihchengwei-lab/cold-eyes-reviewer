@@ -15,7 +15,10 @@ def parse_review_output(raw_json_str):
             cleaned = result_str.strip()
             if cleaned.startswith("```"):
                 lines = cleaned.split("\n")
-                lines = [l for l in lines if not l.strip().startswith("```")]
+                if lines and lines[0].strip().startswith("```"):
+                    lines = lines[1:]
+                if lines and lines[-1].strip().startswith("```"):
+                    lines = lines[:-1]
                 cleaned = "\n".join(lines).strip()
             result = json.loads(cleaned)
         else:

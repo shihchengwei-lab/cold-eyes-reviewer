@@ -71,7 +71,7 @@ def build_context(files, max_tokens=2000):
     if token_count > max_tokens:
         char_limit = max_tokens * 2
         context_text = context_text[:char_limit] + "\n[context truncated]\n"
-        token_count = max_tokens
+        token_count = estimate_tokens(context_text)
 
     file_count = len(sections)
     return {

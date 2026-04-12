@@ -365,13 +365,13 @@ class TestEstimateTokens:
         assert estimate_tokens("") == 0
 
     def test_build_context_respects_cjk_budget(self):
-        """Context with CJK should not undercount tokens."""
+        """Context with CJK should report accurate token count after truncation."""
         with patch("cold_eyes.context._recent_commits",
                    return_value=["abc1234 修復嚴重漏洞"]), \
              patch("cold_eyes.context._co_changed_files",
                    return_value=["auth.py"]):
             result = build_context(["some_file.py"], max_tokens=5)
-        assert result["token_count"] <= 5
+        assert result["token_count"] == estimate_tokens(result["context_text"])
 
 
 # ---------------------------------------------------------------------------

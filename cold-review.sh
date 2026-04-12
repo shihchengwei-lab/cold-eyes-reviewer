@@ -125,10 +125,10 @@ trap - EXIT
 # --- Parse result and act (fail-closed) ---
 # Any failure to get valid engine output is an infrastructure failure.
 # Block mode: emit block decision.  Report mode: warn to stderr only.
-echo "$RESULT" | "$PYTHON_CMD" -c "
-import json, sys
+echo "$RESULT" | COLD_REVIEW_PARSE_MODE="$MODE" "$PYTHON_CMD" -c "
+import json, sys, os
 
-mode = '$MODE'
+mode = os.environ.get('COLD_REVIEW_PARSE_MODE', 'block')
 raw = sys.stdin.read().strip()
 
 def infra_fail(detail):

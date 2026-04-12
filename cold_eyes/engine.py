@@ -28,7 +28,13 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
         return cast(cli_val) if cast else cli_val
     env = os.environ.get(env_name)
     if env is not None:
-        return cast(env) if cast else env
+        if cast:
+            try:
+                return cast(env)
+            except (ValueError, TypeError):
+                pass  # fall through to policy / default
+        else:
+            return env
     pol = policy.get(policy_key)
     if pol is not None:
         return cast(pol) if cast else pol
@@ -157,7 +163,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         review = _infra_review(str(exc))
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
                                override_reason=override_reason, language=language)
-        log_to_history(cwd, mode, model, outcome["state"],
+        log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason)
         return outcome
@@ -168,6 +174,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     truncated = diff_meta["truncated"]
     skipped_files = (diff_meta["partial_files"] + diff_meta["skipped_budget"]
                      + diff_meta["skipped_binary"] + diff_meta["skipped_unreadable"])
+    diff_line_count = diff_text.count("\n") + 1
 
     # --- Total input budget enforcement ---
     input_remaining = max_input_tokens - token_count
@@ -222,7 +229,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         review = _infra_review(f"claude exit {invocation.exit_code}")
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
                                override_reason=override_reason, language=language)
-        log_to_history(cwd, mode, model, outcome["state"],
+        log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason,
                        failure_kind=failure_kind, stderr_excerpt=stderr_excerpt)
@@ -233,7 +240,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         review = _infra_review("empty output")
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
                                override_reason=override_reason, language=language)
-        log_to_history(cwd, mode, model, outcome["state"],
+        log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason,
                        failure_kind=failure_kind, stderr_excerpt=stderr_excerpt)
@@ -276,7 +283,6 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         )
 
     # 11. Log
-    diff_line_count = diff_text.count("\n") + 1
     log_to_history(
         cwd, mode, effective_model, outcome["state"],
         review=review, file_count=file_count,

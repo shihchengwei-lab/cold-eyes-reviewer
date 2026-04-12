@@ -39,7 +39,7 @@ correctness / security
 
 純 JSON，不要 markdown code block：
 
-{"schema_version": 1, "pass": true/false, "review_status": "completed", "summary": "一句話總結", "issues": [{"severity": "critical", "confidence": "high/medium", "category": "correctness/security", "file": "檔案路徑", "line_hint": "L42 或空字串", "check": "看到什麼", "verdict": "判決", "fix": "怎麼修"}]}
+{"schema_version": 1, "pass": true/false, "review_status": "completed", "summary": "一句話總結", "issues": [{"severity": "critical", "confidence": "high/medium", "category": "correctness/security", "file": "檔案路徑", "line_hint": "L42 或空字串", "check": "看到什麼", "verdict": "判決", "fix": "怎麼修", "evidence": ["至少一條支撐此判定的 diff 行"]}]}
 
 沒有 critical 問題就回 pass: true, issues: []。
 

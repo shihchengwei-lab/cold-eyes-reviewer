@@ -68,7 +68,7 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
             "cold-review.sh" in cmd
             for entry in stop_hooks
             for hook_list in ([entry] if isinstance(entry, str) else
-                              entry.get("hooks", []) if isinstance(entry, dict) else [])
+                              entry.get("hooks", [entry]) if isinstance(entry, dict) else [])
             for cmd in ([hook_list] if isinstance(hook_list, str) else
                         [hook_list.get("command", "")] if isinstance(hook_list, dict) else [])
         )

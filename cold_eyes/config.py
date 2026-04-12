@@ -10,9 +10,10 @@ import sys
 POLICY_FILENAME = ".cold-review-policy.yml"
 
 # Keys we recognise and their expected types.
-_INT_KEYS = {"max_tokens", "context_tokens"}
+_INT_KEYS = {"max_tokens", "context_tokens", "max_input_tokens"}
 _VALID_KEYS = {
     "mode", "model", "shallow_model", "max_tokens", "context_tokens",
+    "max_input_tokens",
     "block_threshold", "threshold", "confidence", "language", "scope",
     "base", "truncation_policy",
 }

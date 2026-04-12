@@ -1639,7 +1639,7 @@ class TestDiffMetadata:
 
     def test_budget_exhausted_in_skipped_budget(self, tmp_path):
         f1 = tmp_path / "a.py"
-        f1.write_text("a" * 400)  # 400 chars → 100 tokens, fills budget
+        f1.write_text("a" * 377)  # 377 chars + 23 header = 400 → exactly 100 tokens
         f2 = tmp_path / "b.py"
         f2.write_text("b")
         old_cwd = os.getcwd()

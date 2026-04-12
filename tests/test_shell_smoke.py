@@ -248,10 +248,12 @@ class TestShellParserFailClosed:
         return "".join(parser_lines)
 
     def _run_parser(self, mode, stdin_data):
-        code = self._extract_parser_code().replace("'$MODE'", f"'{mode}'")
+        code = self._extract_parser_code()
+        env = {**os.environ, "COLD_REVIEW_PARSE_MODE": mode}
         return subprocess.run(
             ["python", "-c", code],
             input=stdin_data, capture_output=True, text=True, timeout=10,
+            env=env,
         )
 
     # --- Block mode: must block on failures ---
