@@ -1833,3 +1833,33 @@ class TestQualityReport:
         result = quality_report(h)
         assert result["top_issue_categories"][0]["category"] == "security"
         assert result["top_issue_categories"][0]["count"] == 2
+
+    def _write_entry_depth(self, path, state, review_depth, cwd="/tmp"):
+        entry = {
+            "version": 2, "state": state, "mode": "block", "model": "opus",
+            "timestamp": "2026-04-10T12:00:00Z", "cwd": cwd,
+            "review_depth": review_depth,
+        }
+        with open(path, "a", encoding="utf-8") as f:
+            f.write(json.dumps(entry) + "\n")
+
+    def test_triage_distribution(self, tmp_path):
+        h = str(tmp_path / "h.jsonl")
+        self._write_entry_depth(h, STATE_SKIPPED, "skip")
+        self._write_entry_depth(h, STATE_SKIPPED, "skip")
+        self._write_entry_depth(h, STATE_PASSED, "shallow")
+        self._write_entry_depth(h, STATE_PASSED, "deep")
+        self._write_entry_depth(h, STATE_BLOCKED, "deep")
+        result = quality_report(h)
+        assert "by_review_depth" in result
+        assert result["by_review_depth"]["skip"] == 2
+        assert result["by_review_depth"]["shallow"] == 1
+        assert result["by_review_depth"]["deep"] == 2
+
+    def test_triage_distribution_missing_depth(self, tmp_path):
+        """Entries without review_depth should count as 'unknown'."""
+        h = str(tmp_path / "h.jsonl")
+        self._write_entry(h, STATE_PASSED)
+        result = quality_report(h)
+        assert "by_review_depth" in result
+        assert result["by_review_depth"].get("unknown", 0) == 1

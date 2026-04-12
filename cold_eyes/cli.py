@@ -59,6 +59,10 @@ def main():
                         help="Keep most recent N entries (for history-prune)")
     parser.add_argument("--before", default=None,
                         help="Archive entries before date YYYY-MM-DD (for history-archive)")
+    parser.add_argument("--shallow-model", default=None,
+                        help="Model for shallow reviews (default: sonnet)")
+    parser.add_argument("--context-tokens", type=int, default=None,
+                        help="Token budget for context retrieval in deep reviews (default: 2000)")
     parser.add_argument("--truncation-policy", default=None,
                         choices=["warn", "soft-pass", "fail-closed"],
                         help="How to handle truncated diffs (default: warn)")
@@ -140,7 +144,9 @@ def main():
                      confidence=args.confidence, language=args.language,
                      scope=args.scope, base=args.base,
                      override_reason=args.override_reason,
-                     truncation_policy=args.truncation_policy)
+                     truncation_policy=args.truncation_policy,
+                     shallow_model=args.shallow_model,
+                     context_tokens=args.context_tokens)
     print(json.dumps(result, ensure_ascii=False))
 
 

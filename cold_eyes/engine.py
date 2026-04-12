@@ -6,6 +6,7 @@ from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED
 from cold_eyes.git import git_cmd, collect_files, build_diff, GitCommandError, ConfigError
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.triage import classify_depth
+from cold_eyes.context import build_context
 from cold_eyes.prompt import build_prompt_text
 from cold_eyes.claude import ClaudeCliAdapter
 from cold_eyes.review import parse_review_output
@@ -30,12 +31,15 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
 
 def run(mode=None, model=None, max_tokens=None, threshold=None,
         confidence=None, language=None, scope=None, override_reason=None,
-        adapter=None, base=None, truncation_policy=None):
+        adapter=None, base=None, truncation_policy=None, shallow_model=None,
+        context_tokens=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
     base: base branch for pr-diff scope (e.g. 'main').
     truncation_policy: 'warn' (default), 'soft-pass', or 'fail-closed'.
+    shallow_model: model override for shallow reviews (default: sonnet).
+    context_tokens: token budget for context retrieval in deep reviews (default: 2000).
     """
     cwd = os.getcwd()
     try:
@@ -60,6 +64,10 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     language = _resolve(language, "COLD_REVIEW_LANGUAGE", policy, "language", None)
     truncation_policy = _resolve(truncation_policy, "COLD_REVIEW_TRUNCATION_POLICY",
                                  policy, "truncation_policy", "warn")
+    shallow_model = _resolve(shallow_model, "COLD_REVIEW_SHALLOW_MODEL",
+                             policy, "shallow_model", "sonnet")
+    context_tokens = _resolve(context_tokens, "COLD_REVIEW_CONTEXT_TOKENS",
+                              policy, "context_tokens", 2000, cast=int)
 
     # mode=off: skip immediately (normally caught by shell, but policy file may set it)
     if mode == "off":
@@ -125,7 +133,9 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         result["why_depth_selected"] = triage["why_depth_selected"]
         return result
 
-    # shallow currently falls through to deep (placeholder for future lighter model)
+    # Shallow: use lighter model + shallow prompt
+    effective_model = shallow_model if review_depth == "shallow" else model
+    prompt_depth = "shallow" if review_depth == "shallow" else "deep"
 
     # 5. Build diff
     try:
@@ -146,6 +156,14 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     skipped_files = (diff_meta["partial_files"] + diff_meta["skipped_budget"]
                      + diff_meta["skipped_binary"] + diff_meta["skipped_unreadable"])
 
+    # Context retrieval for deep path
+    context_meta = None
+    if review_depth == "deep" and context_tokens > 0:
+        context_meta = build_context(ranked, max_tokens=context_tokens)
+        if context_meta["context_text"]:
+            diff_text = context_meta["context_text"] + "\n" + diff_text
+            token_count += context_meta["token_count"]
+
     # Coverage visibility
     total_candidates = len(ranked)
     reviewed_count = file_count
@@ -158,10 +176,10 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         return _skip("no diff content")
 
     # 5. Build prompt
-    prompt_text = build_prompt_text(language)
+    prompt_text = build_prompt_text(language, depth=prompt_depth)
 
     # 6. Call model via adapter
-    invocation = adapter.review(diff_text, prompt_text, model)
+    invocation = adapter.review(diff_text, prompt_text, effective_model)
 
     # 7. Handle errors
     failure_kind = invocation.failure_kind
@@ -204,11 +222,13 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     outcome["coverage_pct"] = coverage_pct
     outcome["review_depth"] = review_depth
     outcome["why_depth_selected"] = triage["why_depth_selected"]
+    if context_meta and context_meta["context_text"]:
+        outcome["context_summary"] = context_meta["context_summary"]
 
     # 11. Log
     diff_line_count = diff_text.count("\n") + 1
     log_to_history(
-        cwd, mode, model, outcome["state"],
+        cwd, mode, effective_model, outcome["state"],
         review=review, file_count=file_count,
         line_count=diff_line_count, truncated=truncated,
         token_count=token_count, min_confidence=min_confidence,

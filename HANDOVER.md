@@ -2,147 +2,148 @@
 
 ## 現況
 
-- **版本：** v1.5.0（master，`5ebd884`，2026-04-12）
+- **版本：** v1.6.0（master，pending commit，2026-04-12）
 - **分支：** master
-- **測試：** 346 passed（coverage 82%，門檻 75%）
-- **部署：** `~/.claude/scripts/` 已同步（triage.py + constants/engine/history/__init__ 全部更新）
-- **版本訊號：** 六訊號對齊
-  - `__init__.py` = 1.5.0
-  - CHANGELOG = v1.5.0
-  - About = 346 tests
-  - pytest = 346 passed
-  - tag = v1.5.0
-  - Release = v1.5.0（CI ✓）
-- **CI：** Tests ✓ + Release ✓
+- **測試：** 382 passed（coverage 82%，門檻 75%）
+- **版本訊號：** 待對齊（commit + tag + release + About 更新後完成）
+  - `__init__.py` = 1.6.0
+  - CHANGELOG = v1.6.0
+  - About = 待更新（382 tests）
+  - pytest = 382 passed
+  - tag = 待建立
+  - Release = 待建立
+- **CI：** 待推送驗證
+- **Lint：** ruff clean
+- **Eval：** 24/24 deterministic，regression check pass（baseline v1.4.1 相容）
 
 ## 架構
 
-v1.5.0 新增 triage 層。
+v1.6.0 新增 shallow 分化 + context retrieval。
 
 ```
 cold-review.sh              Stop hook shim
   └→ cold_eyes/cli.py       CLI entry → engine.py → 各模組
 
 cold_eyes/
-  triage.py                  NEW — classify_file_role() + classify_depth()
-  constants.py               UPDATED — RISK_CATEGORIES (8 categories), DEPLOY_FILES +triage
-  engine.py                  UPDATED — triage step between rank and build_diff
-  history.py                 UPDATED — review_depth field in log entries
-  （其餘模組同 v1.4.1）
+  context.py                 NEW — build_context() from git log + co-changed files
+  prompt.py                  UPDATED — build_prompt_text(depth=) selects template
+  constants.py               UPDATED — PROMPT_TEMPLATE_SHALLOW, DEPLOY_FILES +context/prompt
+  engine.py                  UPDATED — shallow model/prompt, context injection for deep
+  config.py                  UPDATED — shallow_model, context_tokens in policy keys
+  cli.py                     UPDATED — --shallow-model, --context-tokens flags
+  history.py                 UPDATED — by_review_depth in quality_report()
+  triage.py                  （同 v1.5.0，無變更）
+  （其餘模組同 v1.5.0）
 
-evals/                       Evaluation framework（同 v1.4.1，無變更）
-  eval_runner.py             deterministic / benchmark / sweep + regression_check()
+cold-review-prompt-shallow.txt  NEW — critical-only 輕量 prompt
+
+evals/                       （同 v1.5.0，無變更）
   baseline.json              canonical baseline (24/24 pass, critical/medium)
-  manifest.json              24 cases 分類索引（5 categories）
-  cases/                     24 eval case fixtures
-
-.github/workflows/test.yml  CI: pytest + deterministic eval + regression check
 
 docs/
-  roadmap.md                 UPDATED — Phase 1 marked complete, triage section added
-  （其餘 docs 同 v1.4.1）
+  roadmap.md                 UPDATED — v1.6.0 section added
 ```
 
 ### Engine pipeline 流程
 
 ```
-collect → filter → rank → triage → build_diff → prompt → model → parse → policy
-                          ^^^^^^^^
-                          NEW: skip/shallow/deep 三段式分流
+collect → filter → rank → triage → build_diff → [context] → prompt → model → parse → policy
+                          ^^^^^^^^   ^^^^^^^^^^
+                          skip/shallow/deep    deep 加 context injection
 ```
 
 - `review_depth=skip` → 直接回傳 skip（不 build diff、不 call model）
-- `review_depth=shallow` → 目前走 deep 流程（佔位，留 hook 給未來 lighter model）
-- `review_depth=deep` → 現有完整流程
+- `review_depth=shallow` → shallow prompt + shallow_model（default: sonnet）
+- `review_depth=deep` → full prompt + main model + context injection
 
 ## 本次會話做了什麼（2026-04-12）
 
 ### 起點
 
-接手 v1.4.1（`77bb65b`，306 tests）。HANDOVER 指定：性價比階段 1「先砍浪費」— skip/shallow/deep 三段式分流。
+接手 v1.5.0（`5ebd884`，346 tests）。HANDOVER 指定：性價比階段 2「Shallow 分化 + Context Retrieval」。
 
 ### 執行
 
-| # | 做了什麼 | 檔案 | 測試變化 | Commit |
-|---|---------|------|---------|--------|
-| WP1 | 加 `RISK_CATEGORIES`（8 structured risk categories）| `cold_eyes/constants.py` | 0 | `5ebd884` |
-| WP1 | `DEPLOY_FILES` 加 `triage.py` | `cold_eyes/constants.py` | 0 | `5ebd884` |
-| WP2 | 新增 `classify_file_role(path)` — 6 roles（test/docs/config/generated/migration/source）| `cold_eyes/triage.py` | 0 | `5ebd884` |
-| WP2 | 新增 `classify_depth(files)` — rule-based skip/shallow/deep | `cold_eyes/triage.py` | 0 | `5ebd884` |
-| WP3 | engine `run()` 加 triage step，skip 不進 model call | `cold_eyes/engine.py` | 0 | `5ebd884` |
-| WP3 | outcome 加 `review_depth` + `why_depth_selected` 欄位 | `cold_eyes/engine.py` | 0 | `5ebd884` |
-| WP3 | `log_to_history()` 加 `review_depth` 參數 + entry 欄位 | `cold_eyes/history.py` | 0 | `5ebd884` |
-| WP4 | 新增 40 tests：file role (23), depth (15), engine integration (2) | `tests/test_triage.py` | +40 | `5ebd884` |
-| WP5 | `__init__.py` 1.4.1 → 1.5.0 | `cold_eyes/__init__.py` | 0 | `5ebd884` |
-| WP5 | CHANGELOG 加 v1.5.0 entry | `CHANGELOG.md` | 0 | `5ebd884` |
-| WP5 | `docs/roadmap.md` Phase 1 marked complete + triage section | `docs/roadmap.md` | 0 | `5ebd884` |
-| — | tag `v1.5.0` + push | — | 0 | tag |
-| — | GitHub About 更新（346 tests, skip/shallow/deep triage）| — | 0 | — |
-| — | 部署到 `~/.claude/scripts/` | — | 0 | — |
+| # | 做了什麼 | 檔案 | 測試變化 |
+|---|---------|------|---------|
+| WP1 | 新增 `cold-review-prompt-shallow.txt`（critical-only prompt）| `cold-review-prompt-shallow.txt` | 0 |
+| WP1 | `build_prompt_text(depth=)` 支援 shallow/deep 選擇 | `cold_eyes/prompt.py` | 0 |
+| WP1 | `PROMPT_TEMPLATE_SHALLOW` 常數 + DEPLOY_FILES 更新 | `cold_eyes/constants.py` | 0 |
+| WP1 | Engine shallow 走不同 model + prompt（不再 fallthrough）| `cold_eyes/engine.py` | 0 |
+| WP1 | `shallow_model` policy key + `COLD_REVIEW_SHALLOW_MODEL` env var | `cold_eyes/config.py`, `engine.py` | 0 |
+| WP1 | CLI `--shallow-model` flag | `cold_eyes/cli.py` | 0 |
+| WP1 | 13 tests：shallow prompt (10) + engine model selection (3) | `tests/test_shallow_and_context.py` | +13 |
+| WP2 | 新增 `cold_eyes/context.py`（recent commits + co-changed files）| `cold_eyes/context.py` | 0 |
+| WP2 | Engine deep path context injection（prepend to diff）| `cold_eyes/engine.py` | 0 |
+| WP2 | `context_tokens` policy key + `COLD_REVIEW_CONTEXT_TOKENS` env var | `cold_eyes/config.py`, `engine.py` | 0 |
+| WP2 | CLI `--context-tokens` flag | `cold_eyes/cli.py` | 0 |
+| WP2 | 12 tests：context retrieval (9) + engine integration (3) | `tests/test_shallow_and_context.py` | +12 |
+| WP3 | `by_review_depth` 加入 quality_report() | `cold_eyes/history.py` | 0 |
+| WP3 | 11 tests：triage safety (9) + quality-report triage (2) | `tests/test_triage.py`, `test_engine.py` | +11 |
+| WP4 | `__init__.py` 1.5.0 → 1.6.0 | `cold_eyes/__init__.py` | 0 |
+| WP4 | CHANGELOG 加 v1.6.0 entry | `CHANGELOG.md` | 0 |
+| WP4 | `docs/roadmap.md` v1.6.0 section added | `docs/roadmap.md` | 0 |
 
 ### 驗證結果
 
-- 346 tests passed
+- 382 tests passed
 - Deterministic eval: 24/24
 - Regression check vs baseline: no regression, exit 0
 - Lint (ruff): clean
-- CI: Tests ✓, Release ✓
 
 ---
 
 ## 下次 Session 要做什麼
 
-### 目標：性價比階段 2「Shallow 分化 + Context Retrieval」
+### 目標：性價比階段 3「Evidence-Bound Claim Schema」
 
-依 `cold-eyes-reviewer_cost_effective_roadmap_extreme.md` 階段 2。核心效果：shallow 層用更短 prompt 或更輕 model（haiku），加 context retrieval 讓 deep 更精準。
+依 `cold-eyes-reviewer_cost_effective_roadmap_extreme.md` 階段 3。核心效果：把 reviewer 輸出從「講評論」變成「提出可檢查 claim」。
 
-### WP1: Shallow prompt / lighter model
+### WP1: Evidence-bound issue schema
 
-讓 `review_depth=shallow` 走不同於 deep 的審查流程：
+每個 issue 加上可驗證的 evidence chain：
 
-1. **Shallow prompt** — 新增 `cold-review-prompt-shallow.txt`（或 prompt.py 加 shallow variant）。精簡版，只看明顯問題（critical only），不做深度分析。
-2. **Model 降級** — shallow 用 `haiku` 或 `sonnet`（可 config），deep 用現有 model。
-3. **Engine 整合** — `review_depth=shallow` 走 shallow prompt + lighter model path。
-4. **測試** — shallow path 用不同 prompt/model 的 integration test。
+1. **Schema 擴充** — issue 新增 `evidence`（list of strings）、`what_would_falsify_this`、`suggested_validation` 欄位。
+2. **Prompt 更新** — deep prompt 要求 evidence chain。issue 沒有 evidence 應降權或不輸出。
+3. **Parse 更新** — `parse_review_output()` 接受新欄位（optional，向下相容）。
+4. **Policy 整合** — 沒有 evidence 的 high-confidence issue 降為 medium。
+5. **測試** — schema validation、parse、policy 降權。
 
-### WP2: Context retrieval for deep
+### WP2: Abstain / falsifier calibration
 
-為 deep 路徑加 context（提升精準度，減少 FP）：
+讓 reviewer 明確表達不確定性：
 
-1. **`cold_eyes/context.py`** — 新模組，從 git blame / recent commits / related files 提取上下文。
-2. **Prompt 加 context section** — deep prompt 注入 context（最近修改者、相關檔案、commit message）。
-3. **Token budget 分配** — diff + context 共用 token budget，context 佔比可設定。
-4. **測試** — context extraction unit tests。
+1. **Abstain condition** — issue 加 `abstain_condition` 欄位（什麼情況下這個 claim 不成立）。
+2. **Prompt 更新** — 「需要假設隱藏 context 才成立的 claim，應降低 confidence」。
+3. **Policy 整合** — 有 abstain_condition 的 issue 自動 -1 confidence level。
+4. **測試** — abstain calibration。
 
-### WP3: 分流統計 + 調整
+### WP3: Eval 擴充
 
-1. **Triage stats** — `quality-report` 加 triage 分布統計（skip/shallow/deep 比例）。
-2. **閾值調整** — 根據實際 skip 率調整 classify_depth 規則。
-3. **Eval 擴充** — 加 triage-specific eval cases（確認 skip 不漏掉真問題）。
+1. 加 evidence-bound eval cases（issue 有/無 evidence 的 ground truth）。
+2. 更新 baseline。
 
 ### WP4: 收尾
 
 1. Eval regression check
-2. 版本 bump（1.5.0 → 1.6.0）
-3. 更新 baseline（如果 eval 有變化）
-4. HANDOVER 重寫
+2. 版本 bump（1.6.0 → 1.7.0）
+3. HANDOVER 重寫
 
 ### 注意事項
 
-- Shallow 分化是 engine 層改動，會影響 runtime hook 行為。部署後 shallow diff 會走不同 model。
-- Context retrieval 會增加每次 deep review 的 git 呼叫量（blame + log），需注意效能。
-- eval deterministic mode 直接呼叫 `_evaluate_case()`，不經過 `engine.run()`，所以 triage 不影響 eval 結果。
+- Evidence schema 是 prompt 層改動。現有 eval cases 的 mock_response 不含新欄位，向下相容靠 parse 的 optional handling。
+- Abstain calibration 會改 policy.py 的 confidence 邏輯，需仔細測試不影響現有 eval 結果。
 - 性價比計畫全文見 `C:\Users\kk789\Downloads\cold-eyes-reviewer_cost_effective_roadmap_extreme.md`。
 
 ## 環境變數
 
-（同 v1.4.1，無變更）
-
 | 變數 | 預設 | 說明 |
 |---|---|---|
 | `COLD_REVIEW_MODE` | `block` | block / report / off |
-| `COLD_REVIEW_MODEL` | `opus` | opus / sonnet / haiku |
+| `COLD_REVIEW_MODEL` | `opus` | deep review 的 model |
+| `COLD_REVIEW_SHALLOW_MODEL` | `sonnet` | **NEW** — shallow review 的 model |
 | `COLD_REVIEW_MAX_TOKENS` | `12000` | diff 的 token 預算 |
+| `COLD_REVIEW_CONTEXT_TOKENS` | `2000` | **NEW** — context section 的 token 預算（0=停用）|
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | 擋的 severity 門檻 |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | confidence 硬過濾門檻 |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | 輸出語言 |
@@ -152,8 +153,10 @@ collect → filter → rank → triage → build_diff → prompt → model → p
 
 ## CLI 命令
 
-（同 v1.4.1，無新增 CLI 命令。triage 是 engine 內部行為，不需 CLI flag。）
+新增 flags：
+- `--shallow-model <model>` — shallow review 用的 model
+- `--context-tokens <int>` — context 的 token 預算
 
 ## 已知問題
 
-- （同 v1.4.1，無新增）
+- （同 v1.5.0，無新增）

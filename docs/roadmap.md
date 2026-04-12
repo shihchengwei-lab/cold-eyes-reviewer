@@ -26,6 +26,13 @@ Based on external review, the project follows a phased trust engineering plan. T
 - [x] Skip / shallow / deep three-tier triage in engine pipeline
 - [x] Skip path: zero model calls for docs/generated/config-only changes
 
+### Shallow differentiation + context retrieval (v1.6.0)
+
+- [x] Shallow prompt (critical-only, shorter template)
+- [x] Lighter model for shallow reviews (configurable, default sonnet)
+- [x] Context retrieval from git history for deep reviews
+- [x] Triage distribution in quality report
+
 ### Phase 2 — External evidence (future)
 
 - Release-by-release assurance notes (`docs/reports/vX.Y.Z-assurance.md`)

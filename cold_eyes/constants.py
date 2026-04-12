@@ -7,6 +7,7 @@ _PKG_DIR = os.path.dirname(os.path.abspath(__file__))
 SCRIPTS_DIR = os.path.dirname(_PKG_DIR)
 
 PROMPT_TEMPLATE = os.path.join(SCRIPTS_DIR, "cold-review-prompt.txt")
+PROMPT_TEMPLATE_SHALLOW = os.path.join(SCRIPTS_DIR, "cold-review-prompt-shallow.txt")
 HISTORY_FILE = os.path.join(
     os.path.expanduser("~"), ".claude", "cold-review-history.jsonl"
 )
@@ -61,4 +62,5 @@ DEPLOY_FILES = [
     "cold_eyes/policy.py", "cold_eyes/history.py", "cold_eyes/config.py",
     "cold_eyes/override.py", "cold_eyes/doctor.py",
     "cold_eyes/schema.py", "cold_eyes/triage.py",
+    "cold_eyes/context.py", "cold-review-prompt-shallow.txt",
 ]

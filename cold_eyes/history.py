@@ -283,12 +283,19 @@ def quality_report(history_path=None, last=None):
         key=lambda x: x["count"], reverse=True,
     )
 
+    # Triage depth distribution
+    depth_counts = {}
+    for e in entries:
+        d = e.get("review_depth", "unknown")
+        depth_counts[d] = depth_counts.get(d, 0) + 1
+
     return {
         "action": "quality-report",
         "period": period,
         "total": total,
         "by_state": state_counts,
         "rates": rates,
+        "by_review_depth": depth_counts,
         "top_noisy_paths": noisy_paths[:10],
         "top_issue_categories": top_categories[:10],
     }

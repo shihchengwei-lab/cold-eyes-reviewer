@@ -175,6 +175,56 @@ class TestClassifyDepth:
 
 
 # ---------------------------------------------------------------------------
+# Triage safety — skip must not miss real problems
+# ---------------------------------------------------------------------------
+
+class TestTriageSafety:
+    def test_config_with_password_keyword_not_skipped(self):
+        """Config files containing password-related names should not be skipped."""
+        result = classify_depth(["config/password_policy.yml"])
+        assert result["review_depth"] != "skip"
+
+    def test_env_production_not_skipped(self):
+        result = classify_depth([".env.production"])
+        assert result["review_depth"] == "deep"
+
+    def test_config_with_token_keyword_not_skipped(self):
+        result = classify_depth(["settings/api_token.toml"])
+        assert result["review_depth"] != "skip"
+
+    def test_docs_plus_source_not_skipped(self):
+        """Docs + source mix should deep-review (source dominates)."""
+        result = classify_depth(["README.md", "src/auth.py"])
+        assert result["review_depth"] == "deep"
+
+    def test_generated_plus_migration_not_skipped(self):
+        """Generated + migration mix should deep-review."""
+        result = classify_depth(["dist/bundle.js", "migrations/002_alter.sql"])
+        assert result["review_depth"] == "deep"
+
+    def test_pure_generated_stays_skip(self):
+        """Pure generated files should still be skipped."""
+        result = classify_depth(["dist/bundle.js", "assets/app.min.css"])
+        assert result["review_depth"] == "skip"
+
+    def test_test_with_auth_keyword_goes_deep(self):
+        """Test files with auth keywords hit risk category → deep (risk overrides role)."""
+        result = classify_depth(["tests/test_auth.py", "tests/test_permissions.py"])
+        assert result["review_depth"] == "deep"
+        assert "auth_permission" in result["risk_types"]
+
+    def test_pure_test_files_shallow(self):
+        """Test files without risk keywords should be shallow."""
+        result = classify_depth(["tests/test_utils.py", "tests/test_math.py"])
+        assert result["review_depth"] == "shallow"
+
+    def test_single_source_file_deep(self):
+        """Even a single plain source file should get deep review."""
+        result = classify_depth(["lib/utils.py"])
+        assert result["review_depth"] == "deep"
+
+
+# ---------------------------------------------------------------------------
 # Engine triage integration
 # ---------------------------------------------------------------------------
 

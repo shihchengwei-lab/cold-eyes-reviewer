@@ -1,5 +1,38 @@
 # Changelog
 
+## v1.6.0 — Shallow Differentiation + Context Retrieval (Phase 2)
+
+Shallow path now uses a lighter model and critical-only prompt. Deep path gets git-history context injection. 382 tests (was 346).
+
+### Shallow differentiation (WP1)
+
+- **Shallow prompt** — `cold-review-prompt-shallow.txt`: critical-only, shorter template. Shallow reviews skip minor/major checks.
+- **Lighter model for shallow** — `COLD_REVIEW_SHALLOW_MODEL` env var (default: `sonnet`). Shallow reviews use a lighter model; deep reviews keep the main model.
+- **`build_prompt_text(depth=)`** — prompt.py now selects template by depth. Fallback text covers both shallow and deep.
+- **Engine differentiation** — `review_depth=shallow` now uses shallow prompt + shallow model instead of falling through to deep.
+
+### Context retrieval (WP2)
+
+- **`cold_eyes/context.py`** — new module. `build_context(files)` extracts recent commit messages and co-changed files from git history.
+- **Deep path context injection** — context prepended to diff text before model call. Deep reviews now see git history alongside the diff.
+- **`COLD_REVIEW_CONTEXT_TOKENS`** env var (default: 2000). Token budget for context section. Set to 0 to disable.
+- **Outcome field** — `context_summary` added to deep review outcomes when context is present.
+
+### Triage stats (WP3)
+
+- **`by_review_depth`** in quality-report — triage distribution (skip/shallow/deep counts) now included in quality report output.
+- **Triage safety tests** — 9 new tests confirming skip doesn't miss real problems (config with secrets keywords, mixed file types, risk category override).
+
+### Configuration
+
+- **New env vars** — `COLD_REVIEW_SHALLOW_MODEL`, `COLD_REVIEW_CONTEXT_TOKENS`.
+- **New CLI flags** — `--shallow-model`, `--context-tokens`.
+- **Policy file keys** — `shallow_model`, `context_tokens` added to `.cold-review-policy.yml`.
+
+### Tests
+
+- 382 tests (+36): shallow prompt (10), engine model selection (3), context retrieval (9), engine context integration (3), triage safety (9), quality-report triage (2).
+
 ## v1.5.0 — Cost-Effective Triage (Phase 1)
 
 Skip / shallow / deep three-tier review depth triage. Diffs that don't need model review (docs, generated, config-only) are skipped at zero cost. 346 tests (was 306).
