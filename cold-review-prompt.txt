@@ -19,6 +19,16 @@
 - 缺少的功能（你不知道需求）
 - 不確定的 domain-specific 邏輯（不確定就不報）
 
+## Evidence 原則
+
+每個 issue 必須附帶 evidence — 你從 diff 中看到的具體事實。
+沒有 evidence 支撐的 claim 應降低 confidence 或不報。
+
+- **evidence**：列出支撐此 claim 的具體 diff 行或事實（至少一條）。
+- **what_would_falsify_this**：什麼情況下這個 claim 不成立？寫出來。
+- **suggested_validation**：建議的驗證方式（跑某個測試、檢查某個檔案等）。
+- **abstain_condition**：如果這個 claim 需要假設你看不到的 context 才成立（例如假設某個函式不存在、假設沒有 try-catch），寫出你的假設。有 abstain_condition 的 issue 應降低 confidence。
+
 ## Severity
 
 - **critical** — 生產環境崩潰、資料遺失、安全漏洞
@@ -44,7 +54,7 @@ correctness / security / consistency / complexity / reference
 
 純 JSON，不要 markdown code block：
 
-{"schema_version": 1, "pass": true/false, "review_status": "completed", "summary": "一句話總結", "issues": [{"severity": "critical/major/minor", "confidence": "high/medium/low", "category": "correctness/security/consistency/complexity/reference", "file": "檔案路徑", "line_hint": "L42 或空字串", "check": "看到什麼", "verdict": "判決", "fix": "怎麼修"}]}
+{"schema_version": 1, "pass": true/false, "review_status": "completed", "summary": "一句話總結", "issues": [{"severity": "critical/major/minor", "confidence": "high/medium/low", "category": "correctness/security/consistency/complexity/reference", "file": "檔案路徑", "line_hint": "L42 或空字串", "check": "看到什麼", "verdict": "判決", "fix": "怎麼修", "evidence": ["具體 diff 行或事實"], "what_would_falsify_this": "什麼情況下不成立", "suggested_validation": "如何驗證", "abstain_condition": "假設了什麼看不到的 context（沒有就空字串）"}]}
 
 line_hint：從 diff hunk header（@@ -a,b +c,d @@）取得新檔行號，格式 "L42" 或 "L42-L50"。不確定就留空字串 ""。
 

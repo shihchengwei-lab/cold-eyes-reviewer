@@ -270,7 +270,8 @@ class TestConfidenceFilter:
             "pass": False, "review_status": "completed",
             "issues": [
                 {"severity": "critical", "confidence": "low", "check": "a", "verdict": "b", "fix": "c"},
-                {"severity": "critical", "confidence": "high", "check": "x", "verdict": "y", "fix": "z"},
+                {"severity": "critical", "confidence": "high", "check": "x", "verdict": "y", "fix": "z",
+                 "evidence": ["line 5 uses eval()"]},
             ],
             "summary": "test",
         }

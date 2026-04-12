@@ -180,8 +180,10 @@ Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`
 | Variable | Default | Options | Description |
 |---|---|---|---|
 | `COLD_REVIEW_MODE` | `block` | `block`, `report`, `off` | Block and force fix / log only / disable |
-| `COLD_REVIEW_MODEL` | `opus` | `opus`, `sonnet`, `haiku` | Which model runs the review |
-| `COLD_REVIEW_MAX_TOKENS` | `12000` | any integer | Token budget for diff (UTF-8 byte÷4 estimation) |
+| `COLD_REVIEW_MODEL` | `opus` | `opus`, `sonnet`, `haiku` | Which model runs the deep review |
+| `COLD_REVIEW_SHALLOW_MODEL` | `sonnet` | `opus`, `sonnet`, `haiku` | Which model runs the shallow review |
+| `COLD_REVIEW_MAX_TOKENS` | `12000` | any integer | Token budget for diff |
+| `COLD_REVIEW_CONTEXT_TOKENS` | `2000` | any integer (0 = off) | Token budget for context section (deep review only) |
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | `critical`, `major` | Minimum severity that triggers a block |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | `high`, `medium`, `low` | Minimum confidence to keep (hard filter) |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |

@@ -1,0 +1,13 @@
+{
+  "id": "evidence-with-chain",
+  "category": "evidence",
+  "description": "Critical issue with full evidence chain — should block normally",
+  "diff": "--- a/src/handler.py\n+++ b/src/handler.py\n@@ -10,3 +10,5 @@\n def process(request):\n-    data = json.loads(request.body)\n+    query = request.GET.get('q')\n+    results = db.execute(f\"SELECT * FROM items WHERE name = '{query}'\")\n+    return JsonResponse({'items': results})\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"SQL injection via string interpolation\",\"verdict\":\"User input from request.GET inserted directly into SQL query\",\"fix\":\"Use parameterized queries: db.execute('SELECT * FROM items WHERE name = %s', [query])\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"src/handler.py\",\"line_hint\":\"L12\",\"evidence\":[\"line 12: f\\\"SELECT * FROM items WHERE name = '{query}'\\\" uses f-string with user input\",\"line 11: query comes from request.GET.get('q') — unvalidated user input\"],\"what_would_falsify_this\":\"If query is validated/escaped before reaching this line, or if db.execute auto-parameterizes f-strings\",\"suggested_validation\":\"Check if db.execute handles f-string parameterization (it does not in standard Django/SQLAlchemy)\",\"abstain_condition\":\"\"}],\"summary\":\"SQL injection via unparameterized query\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

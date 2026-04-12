@@ -31,6 +31,10 @@ def parse_review_output(raw_json_str):
             issue.setdefault("category", "correctness")
             issue.setdefault("file", "unknown")
             issue.setdefault("line_hint", "")
+            issue.setdefault("evidence", [])
+            issue.setdefault("what_would_falsify_this", "")
+            issue.setdefault("suggested_validation", "")
+            issue.setdefault("abstain_condition", "")
         ok, errors = validate_review(result)
         if not ok:
             result["validation_errors"] = errors

@@ -11,6 +11,7 @@ if PROJECT_ROOT not in sys.path:
 
 from cold_eyes.prompt import build_prompt_text
 from cold_eyes.context import build_context, _recent_commits, _co_changed_files
+from cold_eyes.git import estimate_tokens
 
 
 # ---------------------------------------------------------------------------
@@ -336,6 +337,48 @@ class TestEngineContextIntegration:
         assert result["review_depth"] == "shallow"
         assert "context_summary" not in result
 
+# ---------------------------------------------------------------------------
+# Token estimation (CJK-aware)
+# ---------------------------------------------------------------------------
+
+class TestEstimateTokens:
+    def test_ascii_only(self):
+        text = "hello world"  # 11 ASCII chars → 11 // 4 = 2
+        assert estimate_tokens(text) == 11 // 4
+
+    def test_cjk_only(self):
+        text = "你好世界"  # 4 CJK chars → 4 tokens (1 char ≈ 1 token)
+        assert estimate_tokens(text) == 4
+
+    def test_mixed_content(self):
+        text = "hello 你好"  # 6 ASCII + 2 CJK → 6//4 + 2 = 3
+        assert estimate_tokens(text) == 6 // 4 + 2
+
+    def test_cjk_higher_than_old_method(self):
+        """CJK text should estimate higher than the old UTF-8 bytes // 4."""
+        text = "這是一段中文測試文字用來驗證估算"  # 15 CJK chars
+        old_estimate = len(text.encode("utf-8")) // 4  # 45 bytes // 4 = 11
+        new_estimate = estimate_tokens(text)  # 15 tokens
+        assert new_estimate > old_estimate
+
+    def test_empty_string(self):
+        assert estimate_tokens("") == 0
+
+    def test_build_context_respects_cjk_budget(self):
+        """Context with CJK should not undercount tokens."""
+        with patch("cold_eyes.context._recent_commits",
+                   return_value=["abc1234 修復嚴重漏洞"]), \
+             patch("cold_eyes.context._co_changed_files",
+                   return_value=["auth.py"]):
+            result = build_context(["some_file.py"], max_tokens=5)
+        assert result["token_count"] <= 5
+
+
+# ---------------------------------------------------------------------------
+# WP2: Engine context integration (continued)
+# ---------------------------------------------------------------------------
+
+class TestEngineContextIntegrationContinued:
     def test_context_disabled_with_zero_tokens(self):
         """context_tokens=0 should skip context retrieval."""
         from cold_eyes import engine

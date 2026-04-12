@@ -47,9 +47,11 @@ RISK_CATEGORIES = {
     "public_api": re.compile(
         r"(api|endpoint|route|handler|controller)", re.IGNORECASE),
     "async_concurrency": re.compile(
-        r"(async|await|thread|lock|mutex|queue|worker)", re.IGNORECASE),
+        r"(async|await|thread|lock|mutex|queue|(?<!service[-_])worker)",
+        re.IGNORECASE),
     "secrets_privacy": re.compile(
-        r"(secret|credential|token|password|key|env)", re.IGNORECASE),
+        r"(secret|credential|password|token(?!iz)|key(?!board|frame|stone|press|word|note|map|bind|stroke)|env(?!iron))",
+        re.IGNORECASE),
     "cache_retry": re.compile(
         r"(cache|retry|timeout|circuit.?breaker)", re.IGNORECASE),
 }

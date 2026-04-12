@@ -6,6 +6,32 @@ from cold_eyes.constants import (
 )
 
 
+_CONFIDENCE_DOWNGRADE = {"high": "medium", "medium": "low", "low": "low"}
+
+
+def calibrate_evidence(issues):
+    """Adjust confidence based on evidence and abstain conditions.
+
+    Rules applied in order per issue:
+    1. confidence=high with empty evidence → medium
+    2. has non-empty abstain_condition → confidence -1 level
+    Returns new list (shallow copies).
+    """
+    calibrated = []
+    for issue in issues:
+        issue = dict(issue)
+        evidence = issue.get("evidence", [])
+        # Rule 1: high confidence without evidence → medium
+        if issue.get("confidence") == "high" and not evidence:
+            issue["confidence"] = "medium"
+        # Rule 2: has abstain_condition → -1 level
+        if issue.get("abstain_condition"):
+            issue["confidence"] = _CONFIDENCE_DOWNGRADE.get(
+                issue["confidence"], issue["confidence"])
+        calibrated.append(issue)
+    return calibrated
+
+
 def filter_by_confidence(issues, min_confidence="medium"):
     """Remove issues below the confidence threshold. Deterministic hard filter."""
     threshold = CONFIDENCE_ORDER.get(min_confidence, 2)
@@ -100,8 +126,11 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
             "display": f"cold-review: report logged (infra failure: {error_detail})",
         }
 
+    # --- Evidence calibration (before confidence filter) ---
+    calibrated_issues = calibrate_evidence(review.get("issues", []))
+
     # --- Confidence filter (hard gate) ---
-    filtered_issues = filter_by_confidence(review.get("issues", []), min_confidence)
+    filtered_issues = filter_by_confidence(calibrated_issues, min_confidence)
     review = {**review, "issues": filtered_issues}
 
     # --- Review completed ---

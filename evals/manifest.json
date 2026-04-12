@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "total_cases": 24,
+  "total_cases": 27,
   "categories": {
     "true_positive": {
       "description": "Real issues Cold Eyes should block",
@@ -55,10 +55,19 @@
         "edge-empty-mock-response",
         "edge-config-only-change"
       ]
+    },
+    "evidence": {
+      "description": "Evidence-bound claim schema: evidence chains, abstain calibration, backward compat",
+      "count": 3,
+      "cases": [
+        "evidence-with-chain",
+        "evidence-abstain-demotes",
+        "evidence-backward-compat"
+      ]
     }
   },
   "ground_truth_summary": {
-    "should_block_true": 8,
-    "should_block_false": 16
+    "should_block_true": 10,
+    "should_block_false": 17
   }
 }

@@ -225,6 +225,63 @@ class TestTriageSafety:
 
 
 # ---------------------------------------------------------------------------
+# Regex false-positive exclusions
+# ---------------------------------------------------------------------------
+
+class TestRegexFalsePositives:
+    """RISK_CATEGORIES should not match common non-risk filenames."""
+
+    def test_environment_ts_no_secrets(self):
+        result = classify_depth(["src/environment.ts"])
+        assert "secrets_privacy" not in result["risk_types"]
+
+    def test_keyboard_py_no_secrets(self):
+        result = classify_depth(["utils/keyboard.py"])
+        assert "secrets_privacy" not in result["risk_types"]
+
+    def test_tokenizer_py_no_secrets(self):
+        result = classify_depth(["lib/tokenizer.py"])
+        assert "secrets_privacy" not in result["risk_types"]
+
+    def test_keynote_no_secrets(self):
+        result = classify_depth(["docs/keynote.md"])
+        assert "secrets_privacy" not in result["risk_types"]
+
+    def test_keyword_no_secrets(self):
+        result = classify_depth(["src/keyword_parser.py"])
+        assert "secrets_privacy" not in result["risk_types"]
+
+    def test_service_worker_no_async(self):
+        result = classify_depth(["public/service-worker.js"])
+        assert "async_concurrency" not in result["risk_types"]
+
+    def test_service_worker_underscore_no_async(self):
+        result = classify_depth(["src/service_worker.py"])
+        assert "async_concurrency" not in result["risk_types"]
+
+    # True positives still match
+    def test_dotenv_still_matches_secrets(self):
+        result = classify_depth([".env.production"])
+        assert "secrets_privacy" in result["risk_types"]
+
+    def test_api_key_still_matches_secrets(self):
+        result = classify_depth(["config/api_key.py"])
+        assert "secrets_privacy" in result["risk_types"]
+
+    def test_auth_token_still_matches_secrets(self):
+        result = classify_depth(["src/auth_token.py"])
+        assert "secrets_privacy" in result["risk_types"]
+
+    def test_worker_pool_still_matches_async(self):
+        result = classify_depth(["lib/worker_pool.py"])
+        assert "async_concurrency" in result["risk_types"]
+
+    def test_background_worker_still_matches_async(self):
+        result = classify_depth(["jobs/background_worker.py"])
+        assert "async_concurrency" in result["risk_types"]
+
+
+# ---------------------------------------------------------------------------
 # Engine triage integration
 # ---------------------------------------------------------------------------
 

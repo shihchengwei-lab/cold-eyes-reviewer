@@ -1,0 +1,13 @@
+{
+  "id": "evidence-backward-compat",
+  "category": "evidence",
+  "description": "Old-format response without evidence fields — high→medium downgrade, still blocks with default confidence=medium",
+  "diff": "--- a/app/auth.py\n+++ b/app/auth.py\n@@ -1,5 +1,5 @@\n def login(username, password):\n-    user = db.query(User).filter_by(username=username, password=hash(password)).first()\n+    user = db.query(User).filter_by(username=username, password=password).first()\n     if user:\n         return create_session(user)\n     return None\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Password compared in plaintext\",\"verdict\":\"Removed password hashing — passwords now stored/compared as plaintext\",\"fix\":\"Restore hash(password) or use a proper password hashing library like bcrypt\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"security\",\"file\":\"app/auth.py\",\"line_hint\":\"L2\"}],\"summary\":\"Password hashing removed\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

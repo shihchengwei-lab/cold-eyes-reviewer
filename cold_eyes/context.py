@@ -1,6 +1,6 @@
 """Context retrieval for deep review — recent commits and co-changed files."""
 
-from cold_eyes.git import git_cmd, GitCommandError
+from cold_eyes.git import git_cmd, estimate_tokens, GitCommandError
 
 
 def _recent_commits(filepath, limit=5):
@@ -67,9 +67,9 @@ def build_context(files, max_tokens=2000):
     )
 
     # Enforce token budget
-    token_count = len(context_text.encode("utf-8")) // 4
+    token_count = estimate_tokens(context_text)
     if token_count > max_tokens:
-        char_limit = max_tokens * 4
+        char_limit = max_tokens * 2
         context_text = context_text[:char_limit] + "\n[context truncated]\n"
         token_count = max_tokens
 

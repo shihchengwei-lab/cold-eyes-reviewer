@@ -1,0 +1,12 @@
+{
+  "id": "evidence-abstain-demotes",
+  "category": "evidence",
+  "description": "Medium-confidence issue with abstain condition — demoted to low, filtered out, should not block",
+  "diff": "--- a/src/cache.py\n+++ b/src/cache.py\n@@ -5,4 +5,6 @@\n class Cache:\n     def get(self, key):\n-        return self._store.get(key)\n+        value = self._store.get(key)\n+        if value is None:\n+            return self._fallback(key)\n+        return value\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Possible infinite recursion if _fallback calls get()\",\"verdict\":\"_fallback may call self.get() creating infinite loop\",\"fix\":\"Add recursion guard or verify _fallback does not call get()\",\"severity\":\"critical\",\"confidence\":\"medium\",\"category\":\"correctness\",\"file\":\"src/cache.py\",\"line_hint\":\"L9\",\"evidence\":[\"line 9: self._fallback(key) is called when cache miss\"],\"what_would_falsify_this\":\"If _fallback never calls self.get() — its implementation is not in the diff\",\"suggested_validation\":\"Read _fallback implementation to verify it does not call get()\",\"abstain_condition\":\"Assumes _fallback may call self.get(), but _fallback implementation is not visible in the diff\"}],\"summary\":\"Potential recursion in cache fallback\"}"
+  },
+  "ground_truth": {
+    "should_block": false
+  }
+}

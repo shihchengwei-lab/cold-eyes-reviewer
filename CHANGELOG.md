@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.7.0 — Evidence-Bound Claim Schema (Phase 3)
+
+Review output is now auditable: each issue carries an evidence chain, falsifier, and optional abstain condition. Issues without evidence or with hidden-context assumptions are automatically downgraded. 421 tests (was 400).
+
+### Evidence-bound issue schema (WP1)
+
+- **New issue fields** — `evidence` (list of strings), `what_would_falsify_this`, `suggested_validation`, `abstain_condition`. All optional (backward compatible).
+- **Deep prompt updated** — requires evidence chains. Issues without evidence should lower confidence.
+- **Parse defaults** — `parse_review_output()` sets empty defaults for all four fields.
+- **Schema validation** — type checks on new fields if present (evidence must be list, others must be string).
+
+### Abstain / falsifier calibration (WP2)
+
+- **`calibrate_evidence()`** in policy.py — runs before confidence filter. Two rules:
+  1. `confidence=high` + no evidence → downgraded to `medium`.
+  2. Non-empty `abstain_condition` → confidence -1 level (high→medium, medium→low).
+- **Stacking** — both rules apply in order. high + no evidence + abstain → low.
+- **Backward compatible** — old-format responses (no evidence fields) get high→medium downgrade but still pass default medium confidence filter.
+
+### Eval (WP3)
+
+- **3 new eval cases** — `evidence-with-chain` (block), `evidence-abstain-demotes` (pass), `evidence-backward-compat` (block).
+- **27/27 deterministic**, regression check pass (baseline v1.4.1 compatible).
+
+### Bugfixes (pre-Phase 3)
+
+- **Triage regex narrowed** — `secrets_privacy` no longer matches `environment.ts`, `keyboard.py`, `tokenizer.py`. `async_concurrency` no longer matches `service-worker.js`. Negative lookaheads exclude common non-risk filenames.
+- **CJK token estimation** — `estimate_tokens()` replaces `len(text.encode("utf-8")) // 4`. ASCII: ~4 chars/token, non-ASCII: ~1 char/token. Fixes systematic undercount for Chinese text.
+- **README env var table** — added `COLD_REVIEW_SHALLOW_MODEL` and `COLD_REVIEW_CONTEXT_TOKENS`.
+- **Shell guard consistency** — engine-not-found guard now emits block JSON in block mode (matches Python-not-found guard).
+
+### Tests
+
+- 421 tests (+39): evidence schema (6), parse defaults (2), calibrate_evidence (9), policy integration (4), regex false positives (12), token estimation (6).
+
 ## v1.6.0 — Shallow Differentiation + Context Retrieval (Phase 2)
 
 Shallow path now uses a lighter model and critical-only prompt. Deep path gets git-history context injection. 382 tests (was 346).

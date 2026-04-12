@@ -53,7 +53,13 @@ if [[ -z "$PYTHON_CMD" ]]; then
 fi
 
 # --- Guard: engine must exist ---
-[[ ! -f "$ENGINE" ]] && { echo "cold-review: engine not found at $ENGINE" >&2; exit 0; }
+if [[ ! -f "$ENGINE" ]]; then
+  echo "cold-review: engine not found at $ENGINE" >&2
+  if [[ "$MODE" == "block" ]]; then
+    echo '{"decision":"block","reason":"Cold Eyes Review — infrastructure failure: engine not found"}'
+  fi
+  exit 0
+fi
 
 # --- Atomic lock (mkdir-based) ---
 acquire_lock() {

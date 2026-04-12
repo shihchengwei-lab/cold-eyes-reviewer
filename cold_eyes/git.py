@@ -20,6 +20,17 @@ class ConfigError(RuntimeError):
     pass
 
 
+def estimate_tokens(text):
+    """Estimate token count for mixed ASCII/CJK text.
+
+    ASCII: ~4 chars per token.  Non-ASCII (CJK etc.): ~1 char per token.
+    Conservative (over-estimates) to avoid budget overruns with CJK content.
+    """
+    ascii_count = sum(1 for c in text if ord(c) < 128)
+    non_ascii_count = len(text) - ascii_count
+    return ascii_count // 4 + non_ascii_count
+
+
 def git_cmd(*args):
     """Run a git command, return stdout.  Raise GitCommandError on failure."""
     r = subprocess.run(
@@ -114,9 +125,9 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
         if not chunk:
             continue
 
-        chunk_tokens = len(chunk.encode("utf-8")) // 4
+        chunk_tokens = estimate_tokens(chunk)
         if chunk_tokens > remaining:
-            char_limit = remaining * 4
+            char_limit = remaining * 2
             chunk = chunk[:char_limit] + f"\n[truncated: {f}]"
             chunk_tokens = remaining
             partial_files.append(f)

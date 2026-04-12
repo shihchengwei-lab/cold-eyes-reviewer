@@ -33,6 +33,15 @@ Based on external review, the project follows a phased trust engineering plan. T
 - [x] Context retrieval from git history for deep reviews
 - [x] Triage distribution in quality report
 
+### Evidence-bound claim schema (v1.7.0)
+
+- [x] Evidence chain fields on issues (evidence, what_would_falsify_this, suggested_validation)
+- [x] Abstain condition field + confidence downgrade
+- [x] calibrate_evidence() in policy pipeline (before confidence filter)
+- [x] Deep prompt updated to require evidence chains
+- [x] 3 evidence-bound eval cases (27 total)
+- [x] Bugfixes: triage regex, CJK token estimation, README env vars, shell guard
+
 ### Phase 2 — External evidence (future)
 
 - Release-by-release assurance notes (`docs/reports/vX.Y.Z-assurance.md`)

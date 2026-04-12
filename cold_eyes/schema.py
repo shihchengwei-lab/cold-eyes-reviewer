@@ -50,6 +50,15 @@ def validate_review(review):
                     errors.append(f"issue[{i}] invalid severity: {issue['severity']}")
                 if "confidence" in issue and issue["confidence"] not in VALID_CONFIDENCES:
                     errors.append(f"issue[{i}] invalid confidence: {issue['confidence']}")
+                # Optional evidence-bound fields — validate type if present
+                if "evidence" in issue and not isinstance(issue["evidence"], list):
+                    errors.append(f"issue[{i}] 'evidence' must be a list")
+                if "what_would_falsify_this" in issue and not isinstance(issue["what_would_falsify_this"], str):
+                    errors.append(f"issue[{i}] 'what_would_falsify_this' must be a string")
+                if "suggested_validation" in issue and not isinstance(issue["suggested_validation"], str):
+                    errors.append(f"issue[{i}] 'suggested_validation' must be a string")
+                if "abstain_condition" in issue and not isinstance(issue["abstain_condition"], str):
+                    errors.append(f"issue[{i}] 'abstain_condition' must be a string")
 
     sv = review.get("schema_version")
     if sv is not None and sv != SCHEMA_VERSION:

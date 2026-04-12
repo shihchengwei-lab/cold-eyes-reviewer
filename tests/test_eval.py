@@ -25,7 +25,7 @@ from evals.eval_runner import (
 class TestCaseLoading:
     def test_loads_all_cases(self):
         cases = load_cases(CASES_DIR)
-        assert len(cases) == 24
+        assert len(cases) == 27
 
     def test_required_fields_present(self):
         cases = load_cases(CASES_DIR)
@@ -36,7 +36,7 @@ class TestCaseLoading:
 
     def test_valid_categories(self):
         cases = load_cases(CASES_DIR)
-        valid = {"true_positive", "acceptable", "stress", "false_negative", "edge"}
+        valid = {"true_positive", "acceptable", "stress", "false_negative", "edge", "evidence"}
         for case in cases:
             assert case["category"] in valid, f"{case['id']} has invalid category"
 
@@ -120,7 +120,7 @@ class TestDeterministic:
 
     def test_total_equals_case_count(self):
         report = run_deterministic(CASES_DIR)
-        assert report["total"] == 24
+        assert report["total"] == 27
 
 
 # ---------------------------------------------------------------------------
