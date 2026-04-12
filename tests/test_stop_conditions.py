@@ -74,7 +74,8 @@ class TestShouldStop:
     def test_fix_scope_expanding(self):
         briefs = [
             {"probable_failure_types": ["a"], "retry_strategy": "x", "minimal_fix_scope": ["a.py"]},
-            {"probable_failure_types": ["b"], "retry_strategy": "y", "minimal_fix_scope": ["a.py", "b.py", "c.py", "d.py", "e.py", "f.py"]},
+            {"probable_failure_types": ["b"], "retry_strategy": "y",
+             "minimal_fix_scope": ["a.py", "b.py", "c.py", "d.py", "e.py", "f.py"]},
         ]
         s = _session_with_briefs(briefs)
         stop, reason = should_stop(s)

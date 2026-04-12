@@ -36,7 +36,10 @@ class TestExtractRuff:
     def test_lint_violation(self):
         gr = {
             "gate_name": "lint_checker",
-            "findings": [{"type": "lint_violation", "file": "src/x.py", "line": "10", "code": "E501", "message": "E501 line too long"}],
+            "findings": [
+                {"type": "lint_violation", "file": "src/x.py",
+                 "line": "10", "code": "E501", "message": "E501 line too long"},
+            ],
         }
         signals = extract_signals(gr)
         assert len(signals) == 1
@@ -48,7 +51,10 @@ class TestExtractLlmReview:
     def test_review_finding(self):
         gr = {
             "gate_name": "llm_review",
-            "findings": [{"type": "review_finding", "check": "null check", "severity": "critical", "file": "auth.py", "message": "unsafe"}],
+            "findings": [
+                {"type": "review_finding", "check": "null check",
+                 "severity": "critical", "file": "auth.py", "message": "unsafe"},
+            ],
         }
         signals = extract_signals(gr)
         assert any("auth.py" in s for s in signals)

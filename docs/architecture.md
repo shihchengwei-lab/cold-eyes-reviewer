@@ -10,12 +10,13 @@ Layer 1 — Shell shim (cold-review.sh)
   Invokes Layer 2, translates JSON output to hook decision
   Fail-closed: any parse failure in block mode emits a block decision
 
-Layer 2 — CLI + Engine (cli.py → engine.py)
-  CLI dispatches to engine.run() or diagnostic subcommands
-  Engine orchestrates the full review pipeline (see Data Flow below)
+Layer 2 — CLI + Engine (cli.py → engine.py or session_runner.py)
+  CLI dispatches to engine.run() (v1 default) or run_session() (v2, --v2 flag)
+  Engine orchestrates the review pipeline (see Data Flow below)
 
-Layer 3 — Modules (15 files in cold_eyes/)
-  Each module has a single responsibility, no circular imports
+Layer 3 — Modules (19 top-level + 6 sub-packages in cold_eyes/)
+  v1 core: 19 modules, each with a single responsibility, no circular imports
+  v2 sub-packages: session, contract, gates, retry, noise, runner
 ```
 
 ## Data flow (engine.run)
@@ -52,8 +53,15 @@ Layer 3 — Modules (15 files in cold_eyes/)
 | `override.py` | `arm_override` / `consume_override` (file-based, TTL expiry) |
 | `doctor.py` | `run_doctor` (11 checks), `verify_install`, `run_doctor_fix`, `run_init` |
 | `engine.py` | `run()` orchestrator, `_resolve()` settings, `_skip()`, `_infra_review()` |
-| `cli.py` | argparse dispatcher for 11 subcommands + `--version` |
+| `cli.py` | argparse dispatcher for 11 subcommands + `--version` + `--v2` flag |
+| `type_defs.py` | Shared TypedDict definitions + helpers (generate_id, now_iso) for v2 |
 | `__init__.py` | `__version__` (single source of truth for package version) |
+| `session/` | Session record schema, JSONL store, state machine (v2) |
+| `contract/` | Correctness contract generation and quality checking (v2) |
+| `gates/` | Risk classification, gate catalog, selection, orchestration, result parsing (v2) |
+| `retry/` | Failure taxonomy, retry brief, signal parsing, strategy, stop conditions (v2) |
+| `noise/` | Dedup, retry suppression, FP memory, calibration (v2) |
+| `runner/` | Top-level `run_session()` entry point, metrics collection (v2) |
 
 ## Key design decisions
 

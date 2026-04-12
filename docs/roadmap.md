@@ -59,6 +59,23 @@ Based on external review, the project follows a phased trust engineering plan. T
 - [x] Engine wiring: extract_fp_patterns() runs before apply_policy()
 - [x] 3 FP memory eval cases (33 total)
 
+### Correctness session engine (v1.10.0)
+
+- [x] 6 sub-packages: session, contract, gates, retry, noise, runner
+- [x] `run_session()` orchestrates contract → gate → noise → retry loop
+- [x] 5 builtin gates (llm_review wraps v1 engine.run(), 4 external subprocess gates)
+- [x] Failure taxonomy (11 categories), 8 retry strategies, 5 stop conditions
+- [x] Noise suppression: dedup, retry suppression, FP memory, calibration
+- [x] 773 tests (+242), 0 failures
+
+### v2 activation path (v1.11.0)
+
+- [x] `--v2` CLI flag: opt-in session pipeline via `cli.py run --v2`
+- [x] Session persistence: `SessionStore.save()` writes to `sessions.jsonl`
+- [x] `DEPLOY_FILES` covers all v2 sub-packages (53 files total)
+- [x] Shell hook compatible: output preserves `action`/`display`/`reason` keys
+- [x] install.sh copies v2 sub-packages
+
 ### Phase 2 — External evidence (future)
 
 - Release-by-release assurance notes (`docs/reports/vX.Y.Z-assurance.md`)
