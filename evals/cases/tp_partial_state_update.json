@@ -1,0 +1,13 @@
+{
+  "id": "tp-partial-state-update",
+  "category": "true_positive",
+  "description": "Partial state update — status changed but related fields not updated",
+  "diff": "--- a/src/subscription.py\n+++ b/src/subscription.py\n@@ -15,8 +15,7 @@ class Subscription:\n     def renew(self):\n         self.status = 'active'\n         self.start_date = datetime.now()\n-        self.end_date = self.start_date + timedelta(days=30)\n-        self.payment_due = self.calculate_payment()\n+        # end_date and payment will be set by the billing job\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"Partial state update — end_date and payment_due not set during renew\",\"verdict\":\"renew() sets status=active and start_date but defers end_date and payment to an external billing job, creating a window where the subscription is active with no end_date\",\"fix\":\"Set end_date and payment_due synchronously, or add a transitional status like 'renewing' until billing job completes\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"correctness\",\"file\":\"src/subscription.py\",\"line_hint\":\"L17-L20\",\"evidence\":[\"status set to 'active' at L17 — subscription is immediately considered active\",\"end_date assignment removed at L18 — active subscription has no expiry\",\"comment says billing job will set these, but no guarantee of timing or success\"],\"what_would_falsify_this\":\"If the billing job runs synchronously before renew() returns, or if code downstream never reads end_date for active subscriptions\",\"suggested_validation\":\"Check if any code path reads end_date when status is active — if so, this is a real gap\",\"abstain_condition\":\"\"}],\"summary\":\"Partial state update leaves active subscription without end_date\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}

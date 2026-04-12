@@ -1,5 +1,39 @@
 # Changelog
 
+## v1.8.0 — State/Invariant Detector + Repo-Specific Focus (Phase 4)
+
+Two detectors added to the deep review path: a fixed state/invariant detector and a repo-type-adaptive focus selector. Both are regex-based pre-model analysis that enrich the prompt with targeted hints. 469 tests (was 421).
+
+### State/invariant detector (WP1)
+
+- **`cold_eyes/detector.py`** — new module. `detect_state_signals(diff_text)` scans diff for 5 pattern types: state_check, transition_call, fsm_pattern, rollback_pattern, state_assignment.
+- **Hint injection** — when state signals are found, detector hints are prepended to the diff text, guiding the model to check for missing pre-checks, incomplete transitions, missing rollback, and broken validation order.
+- **Pattern ordering** — more specific patterns match first (state_check before state_assignment) to avoid false classification.
+
+### Repo-specific detector (WP2)
+
+- **`classify_repo_type(files)`** — classifies changed files into 5 repo types: web_backend, sdk_library, db_data, infra_async, general.
+- **Focus profiles** — each repo type maps to a secondary detector focus with 3 targeted checks:
+  - web_backend → auth / permission (bypass, authorization gap, missing middleware)
+  - sdk_library → contract break (breaking API, missing deprecation, type contract)
+  - db_data → migration / persistence (schema drift, missing reverse migration, serialization)
+  - infra_async → concurrency / staleness (race condition, stale data, error handling)
+- **`build_detector_hints(diff_text, files)`** — combines state signals + repo focus into a single hint block.
+
+### Engine integration
+
+- **Deep path only** — detectors run after context retrieval, before prompt. Shallow/skip paths unaffected.
+- **Outcome fields** — `detector_repo_type`, `detector_focus`, `state_signal_count` added to deep review outcomes when hints are present.
+
+### Eval (WP3)
+
+- **3 new eval cases** — `tp-state-missing-precheck` (block), `tp-partial-state-update` (block), `fn-legitimate-state-change` (pass).
+- **30/30 deterministic**, regression check pass.
+
+### Tests
+
+- 469 tests (+48): state signal detection (22), repo classification (11), focus profiles (6), hint integration (9).
+
 ## v1.7.0 — Evidence-Bound Claim Schema (Phase 3)
 
 Review output is now auditable: each issue carries an evidence chain, falsifier, and optional abstain condition. Issues without evidence or with hidden-context assumptions are automatically downgraded. 421 tests (was 400).

@@ -1,0 +1,13 @@
+{
+  "id": "fn-legitimate-state-change",
+  "category": "false_negative",
+  "description": "Legitimate state refactor — extracting guard to decorator, should NOT block",
+  "diff": "--- a/src/task.py\n+++ b/src/task.py\n@@ -5,10 +5,8 @@ from decorators import require_status\n class Task:\n+    @require_status('pending')\n     def start(self):\n-        if self.status != 'pending':\n-            raise InvalidTransition('must be pending')\n         self.status = 'running'\n         self.started_at = datetime.now()\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":true,\"issues\":[],\"summary\":\"Guard extracted to @require_status decorator — equivalent behavior\"}"
+  },
+  "ground_truth": {
+    "should_block": false,
+    "min_severity": null
+  }
+}

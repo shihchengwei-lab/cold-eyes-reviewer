@@ -7,6 +7,7 @@ from cold_eyes.git import git_cmd, collect_files, build_diff, GitCommandError, C
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.triage import classify_depth
 from cold_eyes.context import build_context
+from cold_eyes.detector import build_detector_hints
 from cold_eyes.prompt import build_prompt_text
 from cold_eyes.claude import ClaudeCliAdapter
 from cold_eyes.review import parse_review_output
@@ -164,6 +165,13 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             diff_text = context_meta["context_text"] + "\n" + diff_text
             token_count += context_meta["token_count"]
 
+    # Detector hints for deep path
+    detector_meta = None
+    if review_depth == "deep":
+        detector_meta = build_detector_hints(diff_text, ranked)
+        if detector_meta["hint_text"]:
+            diff_text = detector_meta["hint_text"] + "\n" + diff_text
+
     # Coverage visibility
     total_candidates = len(ranked)
     reviewed_count = file_count
@@ -224,6 +232,10 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     outcome["why_depth_selected"] = triage["why_depth_selected"]
     if context_meta and context_meta["context_text"]:
         outcome["context_summary"] = context_meta["context_summary"]
+    if detector_meta and detector_meta["hint_text"]:
+        outcome["detector_repo_type"] = detector_meta["repo_type"]
+        outcome["detector_focus"] = detector_meta["detector_focus"]
+        outcome["state_signal_count"] = len(detector_meta["state_signals"])
 
     # 11. Log
     diff_line_count = diff_text.count("\n") + 1

@@ -25,7 +25,7 @@ from evals.eval_runner import (
 class TestCaseLoading:
     def test_loads_all_cases(self):
         cases = load_cases(CASES_DIR)
-        assert len(cases) == 27
+        assert len(cases) == 30
 
     def test_required_fields_present(self):
         cases = load_cases(CASES_DIR)
@@ -36,7 +36,7 @@ class TestCaseLoading:
 
     def test_valid_categories(self):
         cases = load_cases(CASES_DIR)
-        valid = {"true_positive", "acceptable", "stress", "false_negative", "edge", "evidence"}
+        valid = {"true_positive", "acceptable", "stress", "false_negative", "edge", "evidence",}
         for case in cases:
             assert case["category"] in valid, f"{case['id']} has invalid category"
 
@@ -60,10 +60,10 @@ class TestCaseLoading:
         by_cat = {}
         for c in cases:
             by_cat.setdefault(c["category"], []).append(c["id"])
-        assert len(by_cat["true_positive"]) == 8
+        assert len(by_cat["true_positive"]) == 10
         assert len(by_cat["acceptable"]) == 4
         assert len(by_cat["stress"]) == 5
-        assert len(by_cat["false_negative"]) == 3
+        assert len(by_cat["false_negative"]) == 4
         assert len(by_cat["edge"]) == 4
 
 
@@ -120,7 +120,7 @@ class TestDeterministic:
 
     def test_total_equals_case_count(self):
         report = run_deterministic(CASES_DIR)
-        assert report["total"] == 27
+        assert report["total"] == 30
 
 
 # ---------------------------------------------------------------------------
@@ -249,7 +249,7 @@ class TestNewCategories:
     def test_false_negatives_pass(self):
         report = run_deterministic(CASES_DIR)
         fn_cases = [c for c in report["cases"] if c["category"] == "false_negative"]
-        assert len(fn_cases) == 3
+        assert len(fn_cases) == 4
         for c in fn_cases:
             assert c["expected_block"] is False, f"{c['id']} should not expect block"
             assert c["actual_action"] in ("pass", "skip"), f"{c['id']} should pass"

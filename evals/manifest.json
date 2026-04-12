@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "total_cases": 27,
+  "total_cases": 30,
   "categories": {
     "true_positive": {
       "description": "Real issues Cold Eyes should block",
-      "count": 8,
+      "count": 10,
       "cases": [
         "tp-sql-injection",
         "tp-hardcoded-secret",
@@ -13,7 +13,9 @@
         "tp-missing-error-handling",
         "tp-dangling-import",
         "tp-path-traversal",
-        "tp-eval-injection"
+        "tp-eval-injection",
+        "tp-state-missing-precheck",
+        "tp-partial-state-update"
       ]
     },
     "acceptable": {
@@ -28,11 +30,12 @@
     },
     "false_negative": {
       "description": "Changes that look risky but are acceptable — should NOT block",
-      "count": 3,
+      "count": 4,
       "cases": [
         "fn-env-var-not-secret",
         "fn-test-fixture-secret",
-        "fn-intentional-shell-true"
+        "fn-intentional-shell-true",
+        "fn-legitimate-state-change"
       ]
     },
     "stress": {
@@ -67,7 +70,7 @@
     }
   },
   "ground_truth_summary": {
-    "should_block_true": 10,
-    "should_block_false": 17
+    "should_block_true": 14,
+    "should_block_false": 16
   }
 }

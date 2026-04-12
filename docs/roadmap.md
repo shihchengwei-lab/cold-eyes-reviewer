@@ -42,6 +42,15 @@ Based on external review, the project follows a phased trust engineering plan. T
 - [x] 3 evidence-bound eval cases (27 total)
 - [x] Bugfixes: triage regex, CJK token estimation, README env vars, shell guard
 
+### State/invariant + repo-specific detectors (v1.8.0)
+
+- [x] State/invariant detector: 5 signal patterns (state_check, transition_call, fsm, rollback, assignment)
+- [x] Repo-type classifier (web_backend, sdk_library, db_data, infra_async, general)
+- [x] 4 focus profiles with targeted checks per repo type
+- [x] Detector hints injected into deep review path before model call
+- [x] Engine outcome fields: detector_repo_type, detector_focus, state_signal_count
+- [x] 3 state/invariant eval cases (30 total)
+
 ### Phase 2 — External evidence (future)
 
 - Release-by-release assurance notes (`docs/reports/vX.Y.Z-assurance.md`)

@@ -1,0 +1,13 @@
+{
+  "id": "tp-state-missing-precheck",
+  "category": "true_positive",
+  "description": "State transition without pre-condition check — should block",
+  "diff": "--- a/src/order.py\n+++ b/src/order.py\n@@ -20,6 +20,8 @@ class Order:\n     def cancel(self):\n-        if self.status == 'active':\n-            self.status = 'cancelled'\n-            self.refund()\n+        self.status = 'cancelled'\n+        self.refund()\n",
+  "mock_response": {
+    "result": "{\"review_status\":\"completed\",\"pass\":false,\"issues\":[{\"check\":\"State transition removed pre-condition check\",\"verdict\":\"cancel() now sets status to cancelled without verifying current status is active\",\"fix\":\"Restore the status == active guard before transitioning\",\"severity\":\"critical\",\"confidence\":\"high\",\"category\":\"correctness\",\"file\":\"src/order.py\",\"line_hint\":\"L22\",\"evidence\":[\"Removed line: if self.status == 'active' guard was deleted\",\"Added line: self.status = 'cancelled' now executes unconditionally\",\"refund() called without verifying order is in cancellable state\"],\"what_would_falsify_this\":\"If cancel() is only reachable from a caller that already verifies active status\",\"suggested_validation\":\"Add test: call cancel() on an already-cancelled order and verify it does not double-refund\",\"abstain_condition\":\"\"}],\"summary\":\"State transition guard removed — cancel() can now double-refund\"}"
+  },
+  "ground_truth": {
+    "should_block": true,
+    "min_severity": "critical"
+  }
+}
