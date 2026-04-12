@@ -21,6 +21,82 @@ from cold_eyes.override import arm_override
 from cold_eyes import __version__
 
 
+def _run_v2(args):
+    """Run the v2 session pipeline and return a shell-compatible result dict."""
+    from cold_eyes.git import collect_files, git_cmd, GitCommandError, ConfigError
+    from cold_eyes.config import load_policy
+    from cold_eyes.engine import _resolve
+    from cold_eyes.runner.session_runner import run_session
+    from cold_eyes.session.store import SessionStore
+
+    # Resolve scope/base the same way engine.run() does (CLI > env > policy > default)
+    try:
+        repo_root = git_cmd("rev-parse", "--show-toplevel")
+    except GitCommandError:
+        repo_root = ""
+    policy = load_policy(repo_root)
+    scope = _resolve(args.scope, "COLD_REVIEW_SCOPE", policy, "scope", "working")
+    base = _resolve(args.base, "COLD_REVIEW_BASE", policy, "base", None)
+
+    try:
+        all_files, _untracked = collect_files(scope, base=base)
+    except (GitCommandError, ConfigError) as exc:
+        return {"action": "pass", "state": "infra_failed",
+                "reason": str(exc),
+                "display": f"cold-review: infrastructure failure — {exc}"}
+
+    if not all_files:
+        return {"action": "pass", "state": "skipped", "reason": "no changes",
+                "display": "cold-review: skipped (no changes)"}
+
+    # Build engine_kwargs so the internal engine.run() call picks up CLI settings
+    engine_kwargs = {}
+    for attr, key in [
+        ("mode", "mode"), ("model", "model"), ("max_tokens", "max_tokens"),
+        ("threshold", "threshold"), ("confidence", "confidence"),
+        ("language", "language"), ("scope", "scope"), ("base", "base"),
+        ("override_reason", "override_reason"),
+        ("truncation_policy", "truncation_policy"),
+        ("shallow_model", "shallow_model"),
+        ("context_tokens", "context_tokens"),
+        ("max_input_tokens", "max_input_tokens"),
+    ]:
+        val = getattr(args, attr, None)
+        if val is not None:
+            engine_kwargs[key] = val
+
+    task_desc = f"review {scope} changes ({len(all_files)} files)"
+
+    session = run_session(
+        task_description=task_desc,
+        changed_files=all_files,
+        engine_kwargs=engine_kwargs,
+    )
+
+    # Persist session record
+    try:
+        store = SessionStore()
+        store.save(session)
+    except Exception:
+        pass  # persistence failure must not block the review outcome
+
+    # Extract final_outcome and add shell-compatible fields
+    outcome = session.get("final_outcome", {"action": "pass", "state": "unknown"})
+    state = outcome.get("state", "unknown")
+    action = outcome.get("action", "pass")
+
+    if action == "block":
+        reason = outcome.get("stop_reason", "review failed")
+        display = f"cold-review: BLOCKED — {reason}"
+    else:
+        display = f"cold-review: {state}"
+        reason = ""
+
+    outcome.setdefault("display", display)
+    outcome.setdefault("reason", reason)
+    return outcome
+
+
 def main():
     parser = argparse.ArgumentParser(description="Cold Eyes Reviewer engine")
     parser.add_argument("--version", action="version",
@@ -68,6 +144,8 @@ def main():
     parser.add_argument("--truncation-policy", default=None,
                         choices=["warn", "soft-pass", "fail-closed"],
                         help="How to handle truncated diffs (default: warn)")
+    parser.add_argument("--v2", action="store_true",
+                        help="Use v2 session pipeline (opt-in)")
     parser.add_argument("--eval-mode", default="deterministic",
                         choices=["deterministic", "benchmark", "sweep"],
                         help="Eval mode: deterministic (mock), benchmark (real model), sweep")
@@ -141,15 +219,18 @@ def main():
         from cold_eyes.doctor import verify_install
         result = verify_install()
     else:
-        result = run(mode=args.mode, model=args.model,
-                     max_tokens=args.max_tokens, threshold=args.threshold,
-                     confidence=args.confidence, language=args.language,
-                     scope=args.scope, base=args.base,
-                     override_reason=args.override_reason,
-                     truncation_policy=args.truncation_policy,
-                     shallow_model=args.shallow_model,
-                     context_tokens=args.context_tokens,
-                     max_input_tokens=args.max_input_tokens)
+        if getattr(args, "v2", False):
+            result = _run_v2(args)
+        else:
+            result = run(mode=args.mode, model=args.model,
+                         max_tokens=args.max_tokens, threshold=args.threshold,
+                         confidence=args.confidence, language=args.language,
+                         scope=args.scope, base=args.base,
+                         override_reason=args.override_reason,
+                         truncation_policy=args.truncation_policy,
+                         shallow_model=args.shallow_model,
+                         context_tokens=args.context_tokens,
+                         max_input_tokens=args.max_input_tokens)
     print(json.dumps(result, ensure_ascii=False))
 
 

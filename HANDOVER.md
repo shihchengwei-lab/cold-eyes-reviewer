@@ -2,39 +2,30 @@
 
 ## 現況
 
-- **版本：** v1.10.0（master，`4024329`，2026-04-12）
+- **版本：** v1.11.0（master，2026-04-12）
 - **分支：** master
 - **測試：** 773 passed / 0 failed
-- **部署：** 已同步 `~/.claude/scripts/`（v1 + v2 全部模組）
+- **部署：** 待同步 `~/.claude/scripts/`
 - **版本訊號：**
-  - `__init__.py` = 1.10.0
-  - CHANGELOG = v1.10.0
-  - tag = v1.10.0
-  - Release = v1.10.0
+  - `__init__.py` = 1.11.0
+  - CHANGELOG = v1.11.0
+  - tag = v1.11.0
   - pytest = 773 passed
 
-## 本次會話做了什麼（2026-04-12，Session 2 — Debug Review）
+## 本次會話做了什麼（2026-04-12，Session 3 — v2 Activation）
 
 ### 起點
 
-接手 v1.9.2（`b282ed2`）+ 31 untracked v2 files（前一 session 寫的，772 passed / 1 failed）。
+接手 v1.10.0（`ff238eb`）。HANDOVER 列出 4 項待辦：通電、持久化、補測試、DEPLOY_FILES。
 
 ### 完成內容
 
-1. **修 4 個 lint issues** — unused var/imports（`risk_classifier`、`calibration`、`strategy`、`taxonomy`）
-2. **修 circular import** — `types.py` shadow stdlib `types`，重命名為 `type_defs.py`，更新 10 個 import
-3. **修 Windows path bug** — `_parse_ruff()` 的 `:` split 在 `C:\` 路徑壞掉，加 drive letter 偵測
-4. **修 code quality** — `session_runner.py` ternary side-effect → `if`、`translator.py` dead code 移除、`Literal.__args__` → explicit lists
-5. **完整 debug checklist 審查** — 邏輯正確性 6 項、邊界條件 5 項、整合性 4 項、測試覆蓋 4 項
-6. **升版 v1.10.0** — `__init__`、CHANGELOG、tag、GitHub Release 全對齊
-7. **部署** — `cp` 至 `~/.claude/scripts/`
-
-### Commits
-
-| Hash | 說明 |
-|------|------|
-| `67a0873` | feat(v2): add correctness session engine (Phase A-E) + debug review |
-| `4024329` | chore: bump version to v1.10.0, align CHANGELOG and HANDOVER |
+1. **通電** — `cli.py` 加 `--v2` flag，新增 `_run_v2()` 函數接 `run_session()`
+2. **持久化** — `_run_v2()` 結束後呼叫 `SessionStore().save(session)`
+3. **scope 解析修正** — `_run_v2` 改用 `_resolve(CLI > env > policy > default)`，與 `engine.run()` 一致
+4. **collect_files 錯誤處理** — 失敗時回傳 `infra_failed`（不再吞掉錯誤）
+5. **DEPLOY_FILES** — 加入 31 個 v2 檔案（6 sub-packages）
+6. **升版 v1.11.0** — `__init__`、CHANGELOG、tag 全對齊
 
 ## 架構
 
@@ -150,21 +141,10 @@ cold_eyes/
 
 ## 下次 Session 要做的事
 
-### 通電：把 v2 接上 production path
-
-目前 `cold-review.sh` → `cli.py` → `engine.run()` 是 v1 直連。`run_session()` 已寫好但沒有 caller。
-
-要做的事：在 `cli.py`（或新增 CLI subcommand）讓 production hook 走 `run_session()` 而非直接 `engine.run()`。`engine.run()` 會被 `gates/orchestrator.py` 內部呼叫，不需要外面再叫。
-
-需要決定：
-- 直接替換 `cli.py` 的 main flow（v2 取代 v1），還是加 `--v2` flag 做 opt-in？
-- `run_session()` 的 `engine_kwargs` 需要從 CLI 的 env/config 組裝（目前是空 dict）
-
-### 其他
-
-1. **接入持久化** — `run_session()` 接 `SessionStore.save()` 和 `history.log_to_history()`
-2. **補測試覆蓋** — `available_gate_ids=None` auto-detection、`engine_adapter` 實際使用
-3. **constants.py DEPLOY_FILES** — 未包含 v2 sub-packages，目前靠手動 cp
+1. **E2E 驗證** — 在真實 repo 跑 `python cli.py run --v2`，確認完整 pipeline 能走通（目前只有 unit tests）
+2. **shell hook 啟用** — 確認可行後在 `cold-review.sh` 加 `--v2` flag（或環境變數控制）
+3. **補測試覆蓋** — `available_gate_ids=None` auto-detection、`engine_adapter` 實際使用、`_run_v2` integration test
+4. **部署** — `cp` 至 `~/.claude/scripts/`
 
 ---
 

@@ -1,5 +1,14 @@
 # Changelog
 
+## v1.11.0 — v2 activation path
+
+- **`--v2` CLI flag** — `cli.py run --v2` 走 `run_session()` pipeline，opt-in。v1 預設路徑不變。
+- **持久化** — v2 session 結束後自動寫入 `SessionStore`（`~/.claude/cold-review-sessions/sessions.jsonl`）。
+- **scope 解析對齊** — `_run_v2` 用 `_resolve(CLI > env > policy > default)`，與 `engine.run()` 一致。
+- **shell hook 相容** — 輸出保留 `action`/`display`/`reason`，`cold-review.sh` 無需修改。
+- **DEPLOY_FILES** — 加入 31 個 v2 檔案（6 sub-packages 全覆蓋）。
+- 773 tests，0 failures。
+
 ## v1.10.0 — Correctness session engine (v2)
 
 v1 pipeline 完全未修改。v2 在上層新增 session engine，包裝 `engine.run()` 為 `llm_review` gate。
