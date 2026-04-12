@@ -148,12 +148,23 @@ cold_eyes/
 
 ---
 
-## 下次 Session 可做的事
+## 下次 Session 要做的事
 
-1. **接入持久化** — `run_session()` 接 `SessionStore.save()` 和 `history.log_to_history()`，讓 v2 session 被 v1 stats/quality-report 看到
-2. **補測試覆蓋** — `available_gate_ids=None` auto-detection、`engine_adapter` 實際使用、`grouping.py` edge cases
-3. **接入真實 gate** — external gates 的 subprocess wiring 完整但未實際跑過
-4. **constants.py DEPLOY_FILES** — 未包含 v2 sub-packages，目前靠手動 cp
+### 通電：把 v2 接上 production path
+
+目前 `cold-review.sh` → `cli.py` → `engine.run()` 是 v1 直連。`run_session()` 已寫好但沒有 caller。
+
+要做的事：在 `cli.py`（或新增 CLI subcommand）讓 production hook 走 `run_session()` 而非直接 `engine.run()`。`engine.run()` 會被 `gates/orchestrator.py` 內部呼叫，不需要外面再叫。
+
+需要決定：
+- 直接替換 `cli.py` 的 main flow（v2 取代 v1），還是加 `--v2` flag 做 opt-in？
+- `run_session()` 的 `engine_kwargs` 需要從 CLI 的 env/config 組裝（目前是空 dict）
+
+### 其他
+
+1. **接入持久化** — `run_session()` 接 `SessionStore.save()` 和 `history.log_to_history()`
+2. **補測試覆蓋** — `available_gate_ids=None` auto-detection、`engine_adapter` 實際使用
+3. **constants.py DEPLOY_FILES** — 未包含 v2 sub-packages，目前靠手動 cp
 
 ---
 
