@@ -18,7 +18,8 @@ Claude Code session ends
        ├─ atomic lock held by another review → exit
        │
        ▼
-  cold_eyes/cli.py → engine.py (all review logic)
+  cold_eyes/cli.py → engine.py (v1 default)
+                   → session_runner.py (v2, opt-in via --v2)
        │
        ├─ 1. collect files → 2. filter (.cold-review-ignore) → 3. risk-rank
        ├─ 4. triage: skip (docs/generated) / shallow (test-only) / deep (source/risk)
@@ -378,7 +379,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package (18 modules): engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token |
+| `cold_eyes/` | Python package (19 top-level modules + 6 v2 sub-packages: session, contract, gates, retry, noise, runner). v1 core: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token. v2 adds session engine, contract generation, multi-gate orchestration, retry loop, noise suppression. |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | Deep review system prompt: input type descriptions, check items, evidence principles, severity/confidence/category definitions, output schema |
 | `cold-review-prompt-shallow.txt` | Shallow review system prompt: critical-only checks, minimal schema |
@@ -399,7 +400,8 @@ The difference: Cinder watched in real time and commented. Cold Eyes reviews aft
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (v2 format includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`). Build a dashboard, filter by state, chart trends over time. Use `stats` and `aggregate-overrides` commands to query it.
+- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`). Build a dashboard, filter by state, chart trends over time. Use `stats` and `aggregate-overrides` commands to query it.
+- **`cold-review-sessions/sessions.jsonl`** — v2 session records (`--v2` only). Each line is a full session: contracts, gate plan, gate results, retry briefs, events timeline, final outcome. Path: `~/.claude/cold-review-sessions/sessions.jsonl`.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 - **`.cold-review-policy.yml`** — Flat key-value config. Set per-repo defaults for mode, model, threshold, etc.
@@ -509,6 +511,7 @@ python ~/.claude/scripts/cold_eyes/cli.py history-archive --before 2026-01-01
 - **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. Check history for patterns.
 - **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
 - **Windows (Git Bash) lock caveats.** The atomic `mkdir` lock and `kill -0` stale PID check work in Git Bash but are less reliable than on native Unix. Concurrent Claude Code sessions on Windows may occasionally bypass the lock.
+- **v2 session store has no prune mechanism.** `~/.claude/cold-review-sessions/sessions.jsonl` grows indefinitely. v1 history has `history-prune` and `history-archive`; v2 sessions do not yet.
 
 ## Uninstall
 
