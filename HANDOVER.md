@@ -2,48 +2,39 @@
 
 ## 現況
 
-- **版本：** v1.10.0（master）
+- **版本：** v1.10.0（master，`4024329`，2026-04-12）
 - **分支：** master
 - **測試：** 773 passed / 0 failed
-- **v1 模組：** 完全未修改，531 既有測試不受影響
-- **v2 模組：** 26 tasks across 5 phases，debug review 完成，242 新測試
-- **Lint：** clean
-- **狀態：** 已 commit、已升版、尚未部署
+- **部署：** 已同步 `~/.claude/scripts/`（v1 + v2 全部模組）
+- **版本訊號：**
+  - `__init__.py` = 1.10.0
+  - CHANGELOG = v1.10.0
+  - tag = v1.10.0
+  - Release = v1.10.0
+  - pytest = 773 passed
 
-## 本次會話做了什麼（2026-04-12）
+## 本次會話做了什麼（2026-04-12，Session 2 — Debug Review）
 
 ### 起點
 
-接手 v1.9.2（`b282ed2`，531 tests）。用戶提供 v2 任務拆分文件 `cold-eyes-reviewer_v2_task_breakdown.md`，目標是把系統從 AI reviewer 重構成 **Agent coding correctness layer**。
+接手 v1.9.2（`b282ed2`）+ 31 untracked v2 files（前一 session 寫的，772 passed / 1 failed）。
 
 ### 完成內容
 
-按計畫執行 5 個 Phase（A→E），26 個 task 全部交付：
+1. **修 4 個 lint issues** — unused var/imports（`risk_classifier`、`calibration`、`strategy`、`taxonomy`）
+2. **修 circular import** — `types.py` shadow stdlib `types`，重命名為 `type_defs.py`，更新 10 個 import
+3. **修 Windows path bug** — `_parse_ruff()` 的 `:` split 在 `C:\` 路徑壞掉，加 drive letter 偵測
+4. **修 code quality** — `session_runner.py` ternary side-effect → `if`、`translator.py` dead code 移除、`Literal.__args__` → explicit lists
+5. **完整 debug checklist 審查** — 邏輯正確性 6 項、邊界條件 5 項、整合性 4 項、測試覆蓋 4 項
+6. **升版 v1.10.0** — `__init__`、CHANGELOG、tag、GitHub Release 全對齊
+7. **部署** — `cp` 至 `~/.claude/scripts/`
 
-| Phase | 內容 | 新模組 | 新測試 |
-|-------|------|--------|--------|
-| A — Data Skeleton | types, session, contract | 7 files | 93 tests |
-| B — Gate Orchestration | risk classifier, catalog, selection, orchestrator, result | 5 files | 52 tests |
-| C — Retry Loop | taxonomy, brief, signal parser, translator, strategy, stop | 6 files | 53 tests |
-| D — Noise Suppression | dedup, grouping, suppression, fp_memory, calibration | 5 files | 30 tests |
-| E — E2E Integration | session_runner, metrics + 5 scenario tests | 3 files | 13 tests |
+### Commits
 
-**v2 新增：** 31 Python 檔案，2356 行程式碼，2076 行測試。
-
-### 關鍵設計決策
-
-1. v1 `engine.run()` **完全未動**，被包裝為 `llm_review` gate
-2. 新增 6 個 sub-package：`session/`, `contract/`, `gates/`, `retry/`, `noise/`, `runner/`
-3. 共用型別定義在 `cold_eyes/type_defs.py`（TypedDict + helpers）
-4. 全部 rule-based deterministic，無 LLM 參與 orchestration
-5. 純 stdlib，無新增外部依賴
-
-### v2 核心入口
-
-```python
-from cold_eyes.runner.session_runner import run_session
-session = run_session("fix auth bug", ["src/auth.py"])
-```
+| Hash | 說明 |
+|------|------|
+| `67a0873` | feat(v2): add correctness session engine (Phase A-E) + debug review |
+| `4024329` | chore: bump version to v1.10.0, align CHANGELOG and HANDOVER |
 
 ## 架構
 
@@ -105,7 +96,7 @@ cold_eyes/
     quality_checker.py           quality score + warnings
   gates/
     risk_classifier.py           session-level risk aggregation
-    catalog.py                   gate registry (llm_review, test_runner, lint_checker, type_checker, build_checker)
+    catalog.py                   gate registry (5 builtin gates)
     selection.py                 contract-driven + risk-escalation gate selection
     orchestrator.py              sequential gate execution, wraps engine.run()
     result.py                    gate-specific output parsers (pytest, ruff, llm_review)
@@ -115,7 +106,7 @@ cold_eyes/
     signal_parser.py             extract actionable signals from gate output
     translator.py                gate failures → retry brief
     strategy.py                  8 retry strategies + escalation logic
-    stop.py                      5 stop conditions (max retries, repeated failure, no progress, scope expanding, all passing)
+    stop.py                      5 stop conditions
   noise/
     dedup.py                     (type, file, check) deduplication
     grouping.py                  proximity + same-check root-cause clustering
@@ -129,7 +120,7 @@ cold_eyes/
 
 ---
 
-## Debug Review 結果（2026-04-12，第二次會話）
+## Debug Review 結果
 
 ### 修了什麼（6 bugs + 2 code quality）
 
@@ -144,8 +135,6 @@ cold_eyes/
 | 7 | `session_runner.py:176` | ternary side-effect | 改為 `if` statement |
 | 8 | `translator.py:122` | dead code `return "low"` | 移除 |
 
-同時修了 `Literal.__args__`（CPython impl detail）→ explicit lists。
-
 ### 審查後不需修的項目
 
 | 項目 | 結論 |
@@ -157,18 +146,20 @@ cold_eyes/
 | `catalog.py` `shutil.which()` | Windows 已處理 `.exe` |
 | `fp_memory.py` try/except | 標準 optional dependency pattern |
 
-### 下次 Session 可做的事
+---
 
-- 升版（v2.0.0 或 v1.10.0）
-- `run_session()` 接入 `SessionStore.save()` 和 `history.log_to_history()`
-- 補測試覆蓋：`available_gate_ids=None` auto-detection、`engine_adapter` 實際使用
-- 接入真實 gate（目前 external gates 靠 subprocess，但 wiring 完整）
+## 下次 Session 可做的事
+
+1. **接入持久化** — `run_session()` 接 `SessionStore.save()` 和 `history.log_to_history()`，讓 v2 session 被 v1 stats/quality-report 看到
+2. **補測試覆蓋** — `available_gate_ids=None` auto-detection、`engine_adapter` 實際使用、`grouping.py` edge cases
+3. **接入真實 gate** — external gates 的 subprocess wiring 完整但未實際跑過
+4. **constants.py DEPLOY_FILES** — 未包含 v2 sub-packages，目前靠手動 cp
 
 ---
 
 ## 環境變數
 
-（與 v1.9.2 相同，v2 新增模組不引入新的環境變數）
+（v2 新增模組不引入新的環境變數，全部沿用 v1）
 
 | 變數 | 預設 | 說明 |
 |---|---|---|
@@ -187,10 +178,9 @@ cold_eyes/
 
 ## 注意事項
 
-- v2 新增檔案尚未 commit。所有變更都是 untracked files。
 - v1 pipeline 完全未修改。`engine.run()` 被 `gates/orchestrator.py` 包裝，不是替換。
 - v2 純 stdlib，無新增依賴。`pyproject.toml` 的 `include = ["cold_eyes*"]` 已自動涵蓋 sub-packages。
 - Session store 用 JSONL（同 v1 history），路徑 `~/.claude/cold-review-sessions/sessions.jsonl`。
 - Gate catalog 目前 5 個 builtin gates，只有 `llm_review` 是 v1 整合；其餘 4 個 external gates 靠 subprocess。
+- `max_retries` 語義是 "max briefs allowed"（`>=` check），不是 "retries after initial attempt"。
 - v2 task breakdown 原始文件在 `C:\Users\kk789\Downloads\cold-eyes-reviewer_v2_task_breakdown.md`。
-- 實作計畫在 `C:\Users\kk789\.claude\plans\effervescent-zooming-gray.md`。
