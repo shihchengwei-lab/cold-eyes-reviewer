@@ -2,18 +2,18 @@
 
 ## 現況
 
-- **版本：** v1.9.0（master，未 commit，2026-04-12）
+- **版本：** v1.9.0（master，`8082f4e`，2026-04-12）
 - **分支：** master
 - **測試：** 525 passed（coverage 87%，門檻 75%）
-- **部署：** 待同步 `~/.claude/scripts/`
+- **部署：** 已同步 `~/.claude/scripts/`
 - **版本訊號：**
   - `__init__.py` = 1.9.0 ✓
   - CHANGELOG = v1.9.0 ✓
-  - About = 待更新
+  - About = 已更新 ✓
   - pytest = 525 passed ✓
-  - tag = 待建
-  - Release = 待建
-- **CI：** 待確認
+  - tag = v1.9.0 ✓
+  - Release = v1.9.0 ✓
+- **CI：** Tests ✓ + Release ✓
 - **Lint：** ruff clean（cold_eyes/ + tests/）
 - **Eval：** 33/33 deterministic，regression check pass
 
@@ -67,6 +67,7 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 - `calibrate_evidence()` Rule 3：每匹配一種模式 → confidence -1（最多 -2）
 - `calibrate_evidence()` Rule 4：高 override ratio 的 category → confidence 上限（>=0.5 → low，>=0.3 → medium）
 - `compute_category_baselines()` 用 total_overrides * 3 估算 total_reviews，計算 category ratio
+- engine.py 和 policy.py 對 memory module 的 import 有 try/except fallback，部署不同步時 graceful no-op
 
 ## 本次會話做了什麼（2026-04-12）
 
@@ -99,9 +100,13 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 | WP4 | Manifest updated (33 cases, ground_truth 15/18) | `evals/manifest.json` | 0 |
 | WP4 | Eval runner: fp_patterns passthrough | `evals/eval_runner.py` | 0 |
 | WP4 | Eval test counts + FP memory test class (5) | `tests/test_eval.py` | +4 |
-| WP4 | `__init__.py` 1.8.0 → 1.9.0 | `cold_eyes/__init__.py` | 0 |
+| WP4 | Version bump 1.8.0 → 1.9.0 | `cold_eyes/__init__.py` | 0 |
 | WP4 | CHANGELOG v1.9.0 entry | `CHANGELOG.md` | 0 |
 | WP4 | `docs/roadmap.md` v1.9.0 section | `docs/roadmap.md` | 0 |
+
+### Bugfix（stop hook 觸發時發現）
+
+- **Import guard for memory module** — engine.py 和 policy.py 對 `cold_eyes.memory` 的 import 加上 `try/except ImportError` fallback。原因：部署到 `~/.claude/scripts/` 時若 memory.py 尚未同步，import 失敗會導致 stop hook infra failure。加 guard 後 FP memory 在 module 缺失時 graceful no-op。
 
 ### 驗證結果
 
@@ -110,19 +115,17 @@ collect → filter → rank → triage → build_diff → [context] → [detecto
 - Lint (ruff): clean
 - Coverage: 87%
 
+### Commits
+
+| Hash | 說明 |
+|------|------|
+| `8082f4e` | v1.9.0 Phase 5 commit + tag |
+
 ---
 
 ## 下次 Session 要做什麼
 
-### 收尾
-
-1. Commit + tag `v1.9.0`
-2. Push to remote
-3. CI 確認 Tests ✓ + Release ✓
-4. Deploy to `~/.claude/scripts/`
-5. GitHub About 更新（525 tests, FP memory + confidence calibration）
-
-### 目標：性價比計畫全部完成 — 下一步方向
+### 性價比計畫全部完成 — 下一步方向
 
 Phase 1-5 全部完成。接下來有兩個方向可選：
 
