@@ -183,6 +183,10 @@ def main():
                         help="Path to baseline JSON for regression check (exit 1 on regression)")
     args = parser.parse_args()
 
+    if getattr(args, "v2", False) and args.command != "run":
+        print(f"warning: --v2 flag is ignored for '{args.command}' (only applies to 'run')",
+              file=sys.stderr)
+
     if args.command == "init":
         result = run_init()
     elif args.command == "doctor":
@@ -215,6 +219,9 @@ def main():
         cases_dir = args.cases_dir or os.path.join(_root, "evals", "cases")
         regression_path = getattr(args, "regression_check", None)
         if regression_path:
+            if args.save or args.compare:
+                print("warning: --save and --compare are ignored when --regression-check is used "
+                      "(regression-check exits early)", file=sys.stderr)
             result = regression_check(
                 regression_path, cases_dir,
                 threshold=args.threshold or "critical",

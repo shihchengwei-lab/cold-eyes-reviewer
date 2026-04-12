@@ -42,41 +42,47 @@ def consume_override(repo_root):
 
     Returns (True, reason) if a valid token was consumed.
     Returns (False, "") otherwise (missing, expired, wrong repo).
+
+    Uses atomic os.rename to avoid TOCTOU race between concurrent consumers.
     """
     if not repo_root:
         return False, ""
     path = os.path.join(TOKEN_DIR, f"{_repo_hash(repo_root)}.json")
-    if not os.path.isfile(path):
+
+    # Atomically claim the token by renaming to a process-unique temp name.
+    # If rename succeeds, this process owns the token. If it fails, another
+    # process consumed it first.
+    tmp_path = path + ".consuming." + str(os.getpid())
+    try:
+        os.rename(path, tmp_path)
+    except (FileNotFoundError, OSError):
         return False, ""
 
     try:
-        with open(path, "r", encoding="utf-8") as f:
-            token = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        _safe_remove(path)
-        return False, ""
-
-    # Validate repo_root match
-    stored = os.path.normpath(token.get("repo_root", ""))
-    expected = os.path.normpath(repo_root)
-    if os.path.normcase(stored) != os.path.normcase(expected):
-        return False, ""
-
-    # Check expiry
-    expires_str = token.get("expires_at", "")
-    try:
-        expires = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
-        if datetime.now(timezone.utc) > expires:
-            _safe_remove(path)
+        try:
+            with open(tmp_path, "r", encoding="utf-8") as f:
+                token = json.load(f)
+        except (json.JSONDecodeError, OSError):
             return False, ""
-    except (ValueError, TypeError):
-        _safe_remove(path)
-        return False, ""
 
-    # Consume: delete first, then return
-    reason = token.get("reason", "")
-    _safe_remove(path)
-    return True, reason
+        # Validate repo_root match
+        stored = os.path.normpath(token.get("repo_root", ""))
+        expected = os.path.normpath(repo_root)
+        if os.path.normcase(stored) != os.path.normcase(expected):
+            return False, ""
+
+        # Check expiry
+        expires_str = token.get("expires_at", "")
+        try:
+            expires = datetime.fromisoformat(expires_str.replace("Z", "+00:00"))
+            if datetime.now(timezone.utc) > expires:
+                return False, ""
+        except (ValueError, TypeError):
+            return False, ""
+
+        return True, token.get("reason", "")
+    finally:
+        _safe_remove(tmp_path)
 
 
 def _safe_remove(path):

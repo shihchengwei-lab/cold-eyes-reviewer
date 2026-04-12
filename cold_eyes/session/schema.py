@@ -44,7 +44,7 @@ def add_event(session: SessionRecord, event_type: str, data: dict | None = None)
     event = SessionEvent(
         event_type=event_type,
         timestamp=now_iso(),
-        data=data or {},
+        data=dict(data) if data else {},
     )
     session["events"].append(event)
     session["updated_at"] = now_iso()

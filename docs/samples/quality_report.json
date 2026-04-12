@@ -1,20 +1,31 @@
 {
   "action": "quality-report",
   "period": "last 7d",
-  "total_reviews": 42,
+  "total": 42,
+  "by_state": {
+    "passed": 20,
+    "blocked": 8,
+    "overridden": 2,
+    "skipped": 11,
+    "infra_failed": 1
+  },
   "rates": {
     "block_rate": 0.19,
-    "override_rate": 0.05,
-    "infra_failure_rate": 0.02,
-    "skip_rate": 0.31
+    "override_rate": 0.048,
+    "infra_failure_rate": 0.024
+  },
+  "by_review_depth": {
+    "deep": 25,
+    "shallow": 10,
+    "unknown": 7
   },
   "top_noisy_paths": [
-    {"path": "/home/user/project-a", "block_count": 4},
-    {"path": "/home/user/project-b", "block_count": 2}
+    {"path": "/home/user/project-a", "noise_count": 4, "noise_rate": 0.5, "total": 8, "blocked": 3, "overridden": 1},
+    {"path": "/home/user/project-b", "noise_count": 2, "noise_rate": 0.333, "total": 6, "blocked": 2, "overridden": 0}
   ],
   "top_issue_categories": [
     {"category": "security", "count": 5},
     {"category": "correctness", "count": 3},
-    {"category": "code_quality", "count": 1}
+    {"category": "consistency", "count": 1}
   ]
 }

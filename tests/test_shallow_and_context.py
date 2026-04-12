@@ -1,5 +1,6 @@
 """Tests for shallow review path (WP1) and context retrieval (WP2)."""
 
+import json
 import os
 import sys
 import pytest
@@ -91,7 +92,7 @@ class TestEngineShallowModel:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = '{"pass": true, "review_status": "completed", "issues": [], "summary": "ok"}'
+        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -101,9 +102,9 @@ class TestEngineShallowModel:
              patch.object(engine, "collect_files",
                           return_value=(["tests/test_foo.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value={
                  "diff_text": "--- a/tests/test_foo.py\n+++ b/tests/test_foo.py\n@@ -1 +1 @@\n-old\n+new",
                  "file_count": 1, "token_count": 50, "truncated": False,
@@ -130,7 +131,7 @@ class TestEngineShallowModel:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = '{"pass": true, "review_status": "completed", "issues": [], "summary": "ok"}'
+        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -140,9 +141,9 @@ class TestEngineShallowModel:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value={
                  "diff_text": "--- a/src/main.py\n+++ b/src/main.py\n@@ -1 +1 @@\n-old\n+new",
                  "file_count": 1, "token_count": 50, "truncated": False,
@@ -168,7 +169,7 @@ class TestEngineShallowModel:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = '{"pass": true, "review_status": "completed", "issues": [], "summary": "ok"}'
+        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -178,9 +179,9 @@ class TestEngineShallowModel:
              patch.object(engine, "collect_files",
                           return_value=(["tests/test_foo.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value={
                  "diff_text": "diff content",
                  "file_count": 1, "token_count": 50, "truncated": False,
@@ -263,7 +264,7 @@ class TestEngineContextIntegration:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = '{"pass": true, "review_status": "completed", "issues": [], "summary": "ok"}'
+        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -279,9 +280,9 @@ class TestEngineContextIntegration:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value={
                  "diff_text": "--- a/src/main.py\n+++ b/src/main.py\n@@ -1 +1 @@\n-old\n+new",
                  "file_count": 1, "token_count": 50, "truncated": False,
@@ -297,9 +298,10 @@ class TestEngineContextIntegration:
             result = engine.run(adapter=mock_adapter)
 
         mock_ctx.assert_called_once()
-        # diff_text sent to adapter should start with context
+        # diff_text sent to adapter should contain context after the diff
         sent_diff = mock_adapter.review.call_args[0][0]
-        assert sent_diff.startswith("[Cold Eyes: Context]")
+        assert "[Cold Eyes: Context]" in sent_diff
+        assert sent_diff.index("--- a/src/main.py") < sent_diff.index("[Cold Eyes: Context]")
         assert result.get("context_summary") == "recent commits for 1 file(s)"
 
     def test_shallow_path_no_context(self):
@@ -308,7 +310,7 @@ class TestEngineContextIntegration:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = '{"pass": true, "review_status": "completed", "issues": [], "summary": "ok"}'
+        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -318,9 +320,9 @@ class TestEngineContextIntegration:
              patch.object(engine, "collect_files",
                           return_value=(["tests/test_foo.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value={
                  "diff_text": "diff content",
                  "file_count": 1, "token_count": 50, "truncated": False,
@@ -386,7 +388,7 @@ class TestEngineContextIntegrationContinued:
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = '{"pass": true, "review_status": "completed", "issues": [], "summary": "ok"}'
+        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -396,9 +398,9 @@ class TestEngineContextIntegrationContinued:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value={
                  "diff_text": "diff content",
                  "file_count": 1, "token_count": 50, "truncated": False,
@@ -423,9 +425,9 @@ def _make_mock_adapter(stdout=None):
     """Helper: mock adapter returning a passing review."""
     mock_invocation = MagicMock()
     mock_invocation.exit_code = 0
-    mock_invocation.stdout = stdout or (
-        '{"pass": true, "review_status": "completed", '
-        '"issues": [], "summary": "ok"}'
+    mock_invocation.stdout = stdout or json.dumps(
+        {"result": json.dumps({"pass": True, "review_status": "completed",
+                               "issues": [], "summary": "ok"})}
     )
     mock_invocation.failure_kind = None
     adapter = MagicMock()
@@ -473,9 +475,9 @@ class TestMaxInputTokensBudget:
         with patch.object(engine, "git_cmd", return_value=p["git_cmd_rv"]), \
              patch.object(engine, "collect_files", return_value=p["files"]), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value=p["diff"]), \
              patch("cold_eyes.engine.load_policy", return_value={}), \
              patch("cold_eyes.engine.consume_override",
@@ -506,9 +508,9 @@ class TestMaxInputTokensBudget:
         with patch.object(engine, "git_cmd", return_value=p["git_cmd_rv"]), \
              patch.object(engine, "collect_files", return_value=p["files"]), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value=big_diff), \
              patch("cold_eyes.engine.load_policy", return_value={}), \
              patch("cold_eyes.engine.consume_override",
@@ -536,9 +538,9 @@ class TestMaxInputTokensBudget:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value=full_diff), \
              patch("cold_eyes.engine.load_policy", return_value={}), \
              patch("cold_eyes.engine.consume_override",
@@ -566,9 +568,9 @@ class TestMaxInputTokensBudget:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value=big_diff), \
              patch("cold_eyes.engine.load_policy", return_value={}), \
              patch("cold_eyes.engine.consume_override",
@@ -596,9 +598,9 @@ class TestMaxInputTokensBudget:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value=p["diff"]), \
              patch("cold_eyes.engine.load_policy", return_value={}), \
              patch("cold_eyes.engine.consume_override",
@@ -625,9 +627,9 @@ class TestMaxInputTokensBudget:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value=p["diff"]), \
              patch("cold_eyes.engine.load_policy", return_value={}), \
              patch("cold_eyes.engine.consume_override",

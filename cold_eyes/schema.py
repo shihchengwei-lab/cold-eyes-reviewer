@@ -60,6 +60,21 @@ def validate_review(review):
                 if "abstain_condition" in issue and not isinstance(issue["abstain_condition"], str):
                     errors.append(f"issue[{i}] 'abstain_condition' must be a string")
 
+    # Validate pass/issues consistency
+    if review.get("pass") is True and isinstance(review.get("issues"), list):
+        dominated = [
+            i for i in review["issues"]
+            if isinstance(i, dict) and i.get("severity") in ("critical", "major")
+        ]
+        if dominated:
+            severities = [i["severity"] for i in dominated]
+            errors.append(
+                f"pass=true contradicts {len(dominated)} "
+                f"{'/'.join(sorted(set(severities)))} issue(s); "
+                f"setting pass to false"
+            )
+            review["pass"] = False
+
     sv = review.get("schema_version")
     if sv is not None and sv != SCHEMA_VERSION:
         errors.append(f"schema_version mismatch: expected {SCHEMA_VERSION}, got {sv}")

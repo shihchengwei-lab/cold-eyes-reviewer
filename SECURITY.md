@@ -62,7 +62,7 @@ Cold Eyes never `eval()`s, `exec()`s, or dynamically imports anything from model
 
 ### Override tokens
 
-- File-based in `~/.claude/`, TTL-bound (default 5 minutes), single-use
+- File-based in `~/.claude/`, TTL-bound (default 10 minutes), single-use
 - Consumed on first review cycle after creation
 - Cannot be created remotely — requires local CLI access
 

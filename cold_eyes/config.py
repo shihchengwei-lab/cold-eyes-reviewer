@@ -79,8 +79,8 @@ def load_policy(repo_root):
         # Type conversion
         if canon in _INT_KEYS:
             try:
-                policy[canon] = int(val)
-            except ValueError:
+                policy[canon] = int(str(val).replace("_", ""))
+            except (ValueError, TypeError):
                 continue
         else:
             if val:  # skip empty values

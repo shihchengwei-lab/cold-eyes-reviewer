@@ -54,8 +54,11 @@ class TestIsAvailable:
 class TestAvailableGates:
     @patch("cold_eyes.gates.catalog.shutil.which", return_value="/usr/bin/tool")
     def test_all_available(self, mock_which):
+        # Note: patches shutil.which globally so all gates appear available;
+        # this verifies the count matches the catalog, not real system state.
         gates = available_gates()
-        assert len(gates) >= 5
+        expected_count = len(list_gates())
+        assert len(gates) == expected_count
 
     @patch("cold_eyes.gates.catalog.shutil.which", return_value=None)
     def test_none_available(self, mock_which):

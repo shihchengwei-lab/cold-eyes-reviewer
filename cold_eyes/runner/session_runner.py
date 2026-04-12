@@ -146,6 +146,17 @@ def run_session(
         # Check stop conditions
         stop, reason = should_stop(session, max_retries=max_retries)
         if stop:
+            if reason == "all gates passing — no retry needed":
+                transition(session, "passed")
+                session["final_outcome"] = {
+                    "action": "pass",
+                    "state": "passed",
+                    "stop_reason": reason,
+                    "iteration": iteration,
+                    "total_findings": len(all_findings),
+                }
+                add_event(session, "session_passed", session["final_outcome"])
+                return session
             transition(session, "gates_failed")
             transition(session, "failed_terminal", reason=reason)
             session["final_outcome"] = {
@@ -195,7 +206,7 @@ def run_session(
             gates_to_run = gate_plan["selected_gates"]
 
     # Exhausted all iterations
-    if session["state"] == "gates_running":
+    if session["state"] == "retrying":
         transition(session, "gates_failed")
     if session["state"] != "failed_terminal":
         transition(session, "failed_terminal", reason="max iterations exhausted")

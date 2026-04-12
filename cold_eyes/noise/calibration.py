@@ -15,16 +15,13 @@ except ImportError:
 
 def calibrate(
     findings: list[dict],
-    session_context: dict | None = None,
     history_path: str | None = None,
 ) -> list[dict]:
     """Apply confidence calibration to v2 findings.
 
     Rules:
     1. Use v1 calibrate_evidence if available (handles evidence, abstain, FP)
-    2. Session-level calibration: if gate had >80% FP in prior sessions,
-       downgrade remaining findings from that gate.
-    3. No-evidence downgrade: high confidence without supporting signals -> medium.
+    2. No-evidence downgrade: high confidence without supporting signals -> medium.
     """
     result: list[dict] = []
 
@@ -33,10 +30,13 @@ def calibrate(
     if _HAS_POLICY and _HAS_MEMORY:
         try:
             fp_patterns = extract_fp_patterns(history_path=history_path)
-            # Convert to v1 issues, calibrate, convert back
             v1_issues = [_to_v1_issue(f) for f in findings]
             calibrated = calibrate_evidence(v1_issues, fp_patterns)
-            result = [_merge_calibration(findings[i], calibrated[i]) for i in range(len(findings))]
+            for i, f in enumerate(findings):
+                try:
+                    result.append(_merge_calibration(f, calibrated[i]))
+                except Exception:
+                    result.append(dict(f))
             v1_applied = True
         except Exception:
             result = [dict(f) for f in findings]
@@ -45,15 +45,18 @@ def calibrate(
 
     # Additional v2-specific calibration
     for i, f in enumerate(result):
-        # Skip v2 downgrade if v1 already changed this finding's confidence
-        if v1_applied and f.get("confidence") != findings[i].get("confidence"):
-            continue
-        # No supporting signals + high confidence -> downgrade
-        supporting = f.get("supporting", f.get("supporting_signals", []))
-        message = f.get("message", "")
-        if f.get("confidence") == "high" and not supporting and not message:
-            f["confidence"] = "medium"
-            f.setdefault("calibration_notes", []).append("no evidence → medium")
+        try:
+            # Skip v2 downgrade if v1 already changed this finding's confidence
+            if v1_applied and f.get("confidence") != findings[i].get("confidence"):
+                continue
+            # No supporting signals + high confidence -> downgrade
+            supporting = f.get("supporting", f.get("supporting_signals", []))
+            message = f.get("message", "")
+            if f.get("confidence") == "high" and not supporting and not message:
+                f["confidence"] = "medium"
+                f.setdefault("calibration_notes", []).append("no evidence → medium")
+        except Exception:
+            pass
 
     return result
 

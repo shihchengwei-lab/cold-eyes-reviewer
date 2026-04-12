@@ -295,9 +295,9 @@ class TestEngineTriageIntegration:
              patch.object(engine, "collect_files",
                           return_value=(["README.md", "CHANGELOG.md"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.load_policy", return_value={}), \
              patch("cold_eyes.engine.consume_override",
                    return_value=(False, "")), \
@@ -310,11 +310,12 @@ class TestEngineTriageIntegration:
 
     def test_deep_path_calls_model(self):
         """Engine deep path should proceed to model call."""
+        import json
         from cold_eyes import engine
 
         mock_invocation = MagicMock()
         mock_invocation.exit_code = 0
-        mock_invocation.stdout = '{"pass": true, "review_status": "clean", "issues": [], "summary": "ok"}'
+        mock_invocation.stdout = json.dumps({"result": json.dumps({"pass": True, "review_status": "completed", "issues": [], "summary": "ok"})})
         mock_invocation.failure_kind = None
 
         mock_adapter = MagicMock()
@@ -324,9 +325,9 @@ class TestEngineTriageIntegration:
              patch.object(engine, "collect_files",
                           return_value=(["src/main.py"], set())), \
              patch("cold_eyes.engine.filter_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.rank_file_list",
-                   side_effect=lambda f, _: f), \
+                   side_effect=lambda f, _=None: f), \
              patch("cold_eyes.engine.build_diff", return_value={
                  "diff_text": "--- a/src/main.py\n+++ b/src/main.py\n@@ -1 +1 @@\n-old\n+new",
                  "file_count": 1, "token_count": 50, "truncated": False,

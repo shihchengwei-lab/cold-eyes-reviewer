@@ -127,7 +127,9 @@ def _evaluate_case(case, threshold="critical", confidence="medium"):
     # Check severity if specified
     severity_ok = True
     if "min_severity" in gt and not gt.get("should_block", False):
-        pass  # Only check severity for expected blocks
+        # Non-blocking ground truths: severity validation is not applicable
+        # because the case should pass regardless of issue severity.
+        pass
     elif "min_severity" in gt and actual_block:
         issues = review.get("issues", [])
         if issues:
@@ -183,7 +185,7 @@ def run_deterministic(cases_dir, threshold="critical", confidence="medium"):
 # Threshold sweep
 # ---------------------------------------------------------------------------
 
-_THRESHOLDS = ["critical", "major"]
+_THRESHOLDS = ["critical", "major", "minor"]
 _CONFIDENCES = ["high", "medium", "low"]
 
 
@@ -292,8 +294,8 @@ def run_benchmark(cases_dir, model="opus", adapter=None, save_dir=None,
         invocation = adapter.review(diff, prompt_text, model)
         raw_response = invocation.stdout or ""
 
-        # Save response
-        resp_path = os.path.join(save_dir, f"{case['id']}_response.json")
+        # Save response (raw text, may not be valid JSON)
+        resp_path = os.path.join(save_dir, f"{case['id']}_response.txt")
         with open(resp_path, "w", encoding="utf-8") as f:
             f.write(raw_response)
 

@@ -54,8 +54,15 @@ def collect_files(scope="working", base=None):
     if scope == "pr-diff":
         if not base:
             raise ConfigError("pr-diff scope requires --base")
-        pr = set(filter(None, git_cmd(
-            "diff", f"{base}...HEAD", "--name-only").split("\n")))
+        try:
+            pr = set(filter(None, git_cmd(
+                "diff", f"{base}...HEAD", "--name-only").split("\n")))
+        except GitCommandError as exc:
+            raise GitCommandError(
+                exc.cmd, exc.returncode,
+                f"{exc.stderr} — hint: base branch '{base}' not found locally"
+                f" — try 'git fetch origin {base}'"
+            ) from exc
         return sorted(pr), set()
     elif scope == "staged":
         staged = set(filter(None, git_cmd("diff", "--cached", "--name-only").split("\n")))
@@ -134,8 +141,10 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
 
         chunk_tokens = estimate_tokens(chunk)
         if chunk_tokens > remaining:
-            char_limit = remaining * 2
-            chunk = chunk[:char_limit] + f"\n[truncated: {f}]"
+            truncation_notice = f"\n[truncated: {f}]"
+            notice_chars = len(truncation_notice)
+            char_limit = max(remaining * 2 - notice_chars, 0)
+            chunk = chunk[:char_limit] + truncation_notice
             chunk_tokens = estimate_tokens(chunk)
             if chunk_tokens > remaining:
                 chunk = chunk[:remaining]

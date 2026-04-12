@@ -68,3 +68,5 @@ class TestTranslate:
     def test_empty_gate_results(self):
         brief = translate([])
         assert brief["failure_summary"] == "unknown failure"
+        ok, errors = validate_brief(brief)
+        assert ok, errors

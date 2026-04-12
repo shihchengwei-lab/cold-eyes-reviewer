@@ -19,7 +19,6 @@ def translate(
     failed_gates: list[str] = []
     failure_types: list[str] = []
     root_causes: list[str] = []
-    fix_scope: list[str] = []
     files_to_inspect: list[str] = []
     signals: list[str] = []
     must_preserve: list[str] = []
@@ -81,7 +80,7 @@ def translate(
         failed_gates=failed_gates,
         probable_failure_types=failure_types,
         most_likely_root_causes=root_causes,
-        minimal_fix_scope=fix_scope or files_to_inspect[:5],
+        minimal_fix_scope=files_to_inspect[:5],
         files_to_reinspect=files_to_inspect[:10],
         must_preserve_constraints=must_preserve,
         tests_to_run_after_fix=tests_to_run,

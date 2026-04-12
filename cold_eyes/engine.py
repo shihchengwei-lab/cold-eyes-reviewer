@@ -51,7 +51,7 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
 def run(mode=None, model=None, max_tokens=None, threshold=None,
         confidence=None, language=None, scope=None, override_reason=None,
         adapter=None, base=None, truncation_policy=None, shallow_model=None,
-        context_tokens=None, max_input_tokens=None):
+        context_tokens=None, max_input_tokens=None, history_path=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
@@ -173,7 +173,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
 
     # 5. Build diff
     try:
-        diff_meta = build_diff(ranked, untracked, max_tokens, scope, base=base)
+        diff_token_limit = min(max_tokens, max_input_tokens)
+        diff_meta = build_diff(ranked, untracked, diff_token_limit, scope, base=base)
     except GitCommandError as exc:
         review = _infra_review(str(exc))
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
@@ -206,7 +207,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         effective_ctx_budget = min(context_tokens, input_remaining)
         context_meta = build_context(ranked, max_tokens=effective_ctx_budget)
         if context_meta["context_text"]:
-            diff_text = context_meta["context_text"] + "\n" + diff_text
+            diff_text = diff_text + "\n" + context_meta["context_text"]
             token_count += context_meta["token_count"]
             input_remaining -= context_meta["token_count"]
 
@@ -217,7 +218,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         if detector_meta["hint_text"]:
             hint_tokens = estimate_tokens(detector_meta["hint_text"])
             if hint_tokens <= input_remaining:
-                diff_text = detector_meta["hint_text"] + "\n" + diff_text
+                diff_text = diff_text + "\n" + detector_meta["hint_text"]
                 input_remaining -= hint_tokens
                 token_count += hint_tokens
             else:
@@ -271,7 +272,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     review = parse_review_output(invocation.stdout)
 
     # 8.5 FP memory — extract patterns from override history
-    fp_patterns = _extract_fp() if _extract_fp else None
+    fp_patterns = _extract_fp(history_path=history_path) if _extract_fp else None
 
     # 9-10. Apply policy (with truncation context + FP memory)
     outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,

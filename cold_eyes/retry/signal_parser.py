@@ -33,22 +33,32 @@ def _extract_generic(gate_result: dict) -> list[str]:
 
 def _extract_pytest(gate_result: dict) -> list[str]:
     signals: list[str] = []
+    seen_files: set[str] = set()
     for f in gate_result.get("findings", []):
         loc = f.get("location", "")
         msg = f.get("message", "")
         if f.get("type") == "test_failure":
             signals.append(f"test failed: {loc}" + (f" — {msg}" if msg else ""))
+            file_part = loc.split("::")[0] if "::" in loc else loc
+            if file_part:
+                seen_files.add(file_part)
         elif f.get("type") == "test_error":
             signals.append(f"test error: {loc}")
+            file_part = loc.split("::")[0] if "::" in loc else loc
+            if file_part:
+                seen_files.add(file_part)
 
     # Try to extract file:line from raw output tracebacks
     raw = gate_result.get("raw_output", "")
     for match in re.finditer(r'File "([^"]+)", line (\d+)', raw):
         filepath, line = match.group(1), match.group(2)
         if "site-packages" not in filepath:
+            if filepath in seen_files:
+                continue
             signal = f"traceback: {filepath}:{line}"
             if signal not in signals:
                 signals.append(signal)
+                seen_files.add(filepath)
 
     return signals
 

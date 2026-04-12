@@ -43,9 +43,8 @@ def classify_risk(
         factors.append(f"large change: {source_count} source files")
 
     # --- Risk category matching ---
-    combined_paths = " ".join(changed_files)
     for cat_name, pattern in RISK_CATEGORIES.items():
-        if pattern.search(combined_paths):
+        if any(pattern.search(f) for f in changed_files):
             matched_cats.add(cat_name)
             factors.append(f"risk category: {cat_name}")
 

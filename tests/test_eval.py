@@ -137,7 +137,7 @@ class TestSweep:
 
     def test_sweep_covers_all_combinations(self):
         report = threshold_sweep(CASES_DIR)
-        assert report["combinations"] == 6  # 2 thresholds x 3 confidences
+        assert report["combinations"] == 9  # 3 thresholds x 3 confidences
 
     def test_sweep_entry_structure(self):
         report = threshold_sweep(CASES_DIR)

@@ -162,20 +162,27 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
 def verify_install(scripts_dir=None, settings_path=None, repo_root=None):
     """Machine-readable install verification.
 
-    Runs the 3 critical checks (deploy_files, settings_hook, git_repo)
-    and returns a simple pass/fail dict for scripted verification.
+    Runs critical install checks (deploy_files, settings_hook) and reports
+    git_repo status separately as an environment check.
     """
     report = run_doctor(scripts_dir, settings_path, repo_root)
-    critical_checks = {"deploy_files", "settings_hook", "git_repo"}
+    critical_checks = {"deploy_files", "settings_hook"}
     failures = [
         {"name": c["name"], "detail": c["detail"]}
         for c in report["checks"]
         if c["name"] in critical_checks and c["status"] == "fail"
     ]
+    env_checks = {"git_repo"}
+    env_warnings = [
+        {"name": c["name"], "detail": c["detail"]}
+        for c in report["checks"]
+        if c["name"] in env_checks and c["status"] == "fail"
+    ]
     return {
         "action": "verify-install",
         "ok": len(failures) == 0,
         "failures": failures,
+        "env_warnings": env_warnings,
     }
 
 

@@ -76,8 +76,7 @@ def generate_contracts(
 def _match_risks(files: list[str], explicit_risks: list[str]) -> list[str]:
     """Return risk category names matched by file paths or explicit list."""
     matched: set[str] = set(explicit_risks)
-    combined = " ".join(files)
     for cat_name, pattern in RISK_CATEGORIES.items():
-        if pattern.search(combined):
+        if any(pattern.search(f) for f in files):
             matched.add(cat_name)
     return sorted(matched)

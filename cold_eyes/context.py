@@ -69,7 +69,10 @@ def build_context(files, max_tokens=2000):
     # Enforce token budget
     token_count = estimate_tokens(context_text)
     if token_count > max_tokens:
-        char_limit = max_tokens * 2
+        ascii_count = sum(1 for c in context_text if ord(c) < 128)
+        non_ascii_count = len(context_text) - ascii_count
+        ratio = (ascii_count * 4 + non_ascii_count) / max(len(context_text), 1)
+        char_limit = int(max_tokens * ratio)
         context_text = context_text[:char_limit] + "\n[context truncated]\n"
         token_count = estimate_tokens(context_text)
 

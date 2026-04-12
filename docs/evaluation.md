@@ -63,17 +63,19 @@ Each case is a JSON file in `evals/cases/` (see `evals/schema.md` for the formal
 4. Run `python cold_eyes/cli.py eval` to verify
 5. Run `pytest tests/test_eval.py` to check all tests still pass
 
-All 24 cases are indexed in `evals/manifest.json` with per-category counts. `validate_manifest()` checks manifest-to-file consistency.
+All 33 cases are indexed in `evals/manifest.json` with per-category counts. `validate_manifest()` checks manifest-to-file consistency.
 
 ## Current eval set
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| true_positive | 8 | SQL injection, hardcoded secrets, XSS, resource leak, missing error handling, dangling import, path traversal, eval injection |
+| true_positive | 10 | SQL injection, hardcoded secrets, XSS, resource leak, missing error handling, dangling import, path traversal, eval injection, state missing precheck, partial state update |
 | acceptable | 4 | Variable rename, docstring update, test addition, README typo |
-| false_negative | 3 | Cases that look dangerous but are acceptable (boundary testing) |
+| false_negative | 4 | Cases that look dangerous but are acceptable (boundary testing) |
 | stress | 5 | Large diff (truncation), binary-only, empty diff, mixed severity, all-minor issues |
 | edge | 4 | CJK comments, unicode identifiers, empty model response, config-only changes |
+| evidence | 3 | Evidence chains, abstain calibration, backward compatibility |
+| fp_memory | 3 | FP pattern matching, category caps, no-match pass-through |
 
 ## Threshold sweep results
 
@@ -157,6 +159,6 @@ See also: `docs/trust-model.md` (capability boundaries), `docs/assurance-matrix.
 
 ## Limitations
 
-- The deterministic eval set (24 cases) tests the decision boundary, not model quality. Add more cases as you encounter real-world false positives or missed issues.
+- The deterministic eval set (33 cases) tests the decision boundary, not model quality. Add more cases as you encounter real-world false positives or missed issues.
 - Stress and edge cases cover truncation, unicode, and boundary conditions but not all combinations of scope, model, and diff size.
 - Precision/recall numbers reflect mock responses, not real model behavior. Use benchmark mode for model-specific evaluation.

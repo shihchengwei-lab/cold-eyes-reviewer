@@ -1,12 +1,12 @@
 {
-  "cold_eyes_version": "1.4.1",
-  "timestamp": "2026-04-12T03:53:51.347383Z",
+  "cold_eyes_version": "1.11.2",
+  "timestamp": "2026-04-12T17:32:53.732420Z",
   "eval_schema_version": 1,
   "mode": "deterministic",
   "threshold": "critical",
   "confidence": "medium",
-  "total": 24,
-  "passed": 24,
+  "total": 33,
+  "passed": 33,
   "failed": 0,
   "cases": [
     {
@@ -50,6 +50,36 @@
       "actual_state": "passed"
     },
     {
+      "id": "evidence-abstain-demotes",
+      "category": "evidence",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "evidence-backward-compat",
+      "category": "evidence",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "evidence-with-chain",
+      "category": "evidence",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
       "id": "fn-env-var-not-secret",
       "category": "false_negative",
       "expected_block": false,
@@ -70,6 +100,16 @@
       "actual_state": "passed"
     },
     {
+      "id": "fn-legitimate-state-change",
+      "category": "false_negative",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
       "id": "fn-test-fixture-secret",
       "category": "false_negative",
       "expected_block": false,
@@ -78,6 +118,36 @@
       "severity_ok": true,
       "actual_action": "pass",
       "actual_state": "passed"
+    },
+    {
+      "id": "fp-memory-category-cap",
+      "category": "fp_memory",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "fp-memory-known-pattern",
+      "category": "fp_memory",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "fp-memory-no-match",
+      "category": "fp_memory",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
     },
     {
       "id": "ok-comment-update",
@@ -210,6 +280,16 @@
       "actual_state": "blocked"
     },
     {
+      "id": "tp-partial-state-update",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
       "id": "tp-path-traversal",
       "category": "true_positive",
       "expected_block": true,
@@ -231,6 +311,16 @@
     },
     {
       "id": "tp-sql-injection",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-state-missing-precheck",
       "category": "true_positive",
       "expected_block": true,
       "actual_block": true,

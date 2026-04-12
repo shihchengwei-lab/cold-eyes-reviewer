@@ -102,7 +102,7 @@ class TestParseReviewOutput:
         })
         r = engine.parse_review_output(raw)
         assert r["review_status"] == "completed"
-        assert r["pass"] is True
+        assert r["pass"] is False  # corrected: major issue forces pass=false
         issue = r["issues"][0]
         assert issue["severity"] == "major"
         assert issue["confidence"] == "medium"

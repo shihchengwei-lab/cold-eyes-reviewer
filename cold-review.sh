@@ -64,7 +64,7 @@ fi
 # --- Atomic lock (mkdir-based) ---
 acquire_lock() {
   if mkdir "$LOCKDIR" 2>/dev/null; then
-    echo $$ > "$LOCKDIR/pid"
+    echo $$ > "$LOCKDIR/pid" || { rm -rf "$LOCKDIR"; return 1; }
     return 0
   fi
   # Lock exists — check for stale
@@ -76,7 +76,7 @@ acquire_lock() {
   # Stale lock — remove and retry once
   rm -rf "$LOCKDIR"
   if mkdir "$LOCKDIR" 2>/dev/null; then
-    echo $$ > "$LOCKDIR/pid"
+    echo $$ > "$LOCKDIR/pid" || { rm -rf "$LOCKDIR"; return 1; }
     return 0
   fi
   return 1
@@ -93,8 +93,11 @@ fi
 trap 'release_lock' EXIT
 
 # --- Read hook input, check stop_hook_active ---
-INPUT=$(cat)
-STOP_ACTIVE=$(echo "$INPUT" | "$PYTHON_CMD" -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('stop_hook_active') else 'false')" 2>/dev/null || echo "false")
+INPUT=$(head -c 1048576)  # 1 MB cap to prevent unbounded reads
+# If the hook input JSON has stop_hook_active=true, another stop hook is
+# already active (e.g. the agent itself).  Skip to avoid recursion.
+# Fallback to "false" on any parse error so we proceed with the review.
+STOP_ACTIVE=$(echo "$INPUT" | "$PYTHON_CMD" -c "import json,sys; d=json.load(sys.stdin); print('true' if d.get('stop_hook_active') is True else 'false')" 2>/dev/null || echo "false")
 [[ "$STOP_ACTIVE" == "true" ]] && exit 0
 
 # --- Guard: must be in a git repo ---
@@ -105,12 +108,12 @@ fi
 
 # --- Build engine args ---
 ENGINE_ARGS=(run)
-[[ -n "${COLD_REVIEW_MODE+x}" ]]            && ENGINE_ARGS+=(--mode "$MODE")
-[[ -n "${COLD_REVIEW_MODEL+x}" ]]           && ENGINE_ARGS+=(--model "${COLD_REVIEW_MODEL}")
-[[ -n "${COLD_REVIEW_MAX_TOKENS+x}" ]]      && ENGINE_ARGS+=(--max-tokens "${COLD_REVIEW_MAX_TOKENS}")
-[[ -n "${COLD_REVIEW_BLOCK_THRESHOLD+x}" ]] && ENGINE_ARGS+=(--threshold "${COLD_REVIEW_BLOCK_THRESHOLD}")
-[[ -n "${COLD_REVIEW_CONFIDENCE+x}" ]]      && ENGINE_ARGS+=(--confidence "${COLD_REVIEW_CONFIDENCE}")
-[[ -n "${COLD_REVIEW_SCOPE+x}" ]]           && ENGINE_ARGS+=(--scope "${COLD_REVIEW_SCOPE}")
+[[ -n "${COLD_REVIEW_MODE:-}" ]]             && ENGINE_ARGS+=(--mode "$MODE")
+[[ -n "${COLD_REVIEW_MODEL:-}" ]]            && ENGINE_ARGS+=(--model "${COLD_REVIEW_MODEL}")
+[[ -n "${COLD_REVIEW_MAX_TOKENS:-}" ]]       && ENGINE_ARGS+=(--max-tokens "${COLD_REVIEW_MAX_TOKENS}")
+[[ -n "${COLD_REVIEW_BLOCK_THRESHOLD:-}" ]]  && ENGINE_ARGS+=(--threshold "${COLD_REVIEW_BLOCK_THRESHOLD}")
+[[ -n "${COLD_REVIEW_CONFIDENCE:-}" ]]       && ENGINE_ARGS+=(--confidence "${COLD_REVIEW_CONFIDENCE}")
+[[ -n "${COLD_REVIEW_SCOPE:-}" ]]            && ENGINE_ARGS+=(--scope "${COLD_REVIEW_SCOPE}")
 [[ -n "${COLD_REVIEW_LANGUAGE:-}" ]]         && ENGINE_ARGS+=(--language "${COLD_REVIEW_LANGUAGE}")
 [[ -n "${COLD_REVIEW_BASE:-}" ]]             && ENGINE_ARGS+=(--base "${COLD_REVIEW_BASE}")
 [[ -n "${COLD_REVIEW_OVERRIDE_REASON:-}" ]]  && ENGINE_ARGS+=(--override-reason "${COLD_REVIEW_OVERRIDE_REASON}")
@@ -144,8 +147,18 @@ if not raw:
 try:
     d = json.loads(raw)
 except Exception:
-    infra_fail('invalid JSON from engine')
-    sys.exit(0)
+    # Engine may print non-JSON to stdout; try to extract JSON object
+    start = raw.find('{')
+    end = raw.rfind('}')
+    if start >= 0 and end > start:
+        try:
+            d = json.loads(raw[start:end+1])
+        except Exception:
+            infra_fail('invalid JSON from engine (extraction failed)')
+            sys.exit(0)
+    else:
+        infra_fail('invalid JSON from engine (no JSON object found)')
+        sys.exit(0)
 
 if not isinstance(d, dict) or 'action' not in d:
     infra_fail('malformed engine output (missing action)')

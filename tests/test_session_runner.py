@@ -72,7 +72,7 @@ class TestScenarioTestFailureRetry:
             )
 
         # Should eventually pass after retry
-        assert session["state"] in ("passed", "failed_terminal")
+        assert session["state"] == "passed"
         assert len(session["gate_results"]) >= 2
         ok, _ = validate_session(session)
         assert ok

@@ -18,6 +18,10 @@ _ROLE_PATTERNS = [
     ("migration", re.compile(
         r"(^|[/\\])(migrations?[/\\]|alembic[/\\])|[/\\]migrate[/\\]",
         re.IGNORECASE)),
+    ("test_support", re.compile(
+        r"(^|[/\\])(conftest|fixtures?|factories|fake[s_]|mock[s_]|stubs?|test_?utils)"
+        r"(\.py)?$",
+        re.IGNORECASE)),
 ]
 
 

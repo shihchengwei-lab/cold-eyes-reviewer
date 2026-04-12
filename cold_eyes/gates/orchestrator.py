@@ -102,7 +102,7 @@ def _run_external(
             encoding="utf-8",
             errors="replace",
         )
-        raw = proc.stdout + proc.stderr
+        raw = proc.stdout
         exit_code = proc.returncode
     except subprocess.TimeoutExpired:
         raw = f"gate {gate_id} timed out after {timeout}s"

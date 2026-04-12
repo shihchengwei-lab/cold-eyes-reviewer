@@ -72,6 +72,9 @@ class ClaudeCliAdapter(ModelAdapter):
             fk = "cli_error" if r.returncode != 0 else None
             return ReviewInvocation(r.stdout.strip(), r.stderr.strip(), r.returncode, fk)
         except subprocess.TimeoutExpired:
+            # subprocess.run internally calls proc.kill() before raising.
+            # On Windows, orphan grandchild processes may survive because
+            # kill() only terminates the direct child, not the process tree.
             return ReviewInvocation("", "", -1, "timeout")
         except FileNotFoundError:
             return ReviewInvocation("", "", -2, "cli_not_found")

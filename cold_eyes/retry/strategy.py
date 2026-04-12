@@ -18,7 +18,7 @@ def select_strategy(
     failed_gates = retry_brief.get("failed_gates", [])
 
     # --- Escalation / abort conditions ---
-    if strategy == "abort_and_escalate" or retry_count > 3:
+    if strategy == "abort_and_escalate" or retry_count >= 3:
         return {
             "action": "abort",
             "strategy": "abort_and_escalate",

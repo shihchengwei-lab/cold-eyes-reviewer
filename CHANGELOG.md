@@ -1,5 +1,66 @@
 # Changelog
 
+## v1.11.3 — 48 bug fixes, 101/101 complete
+
+Final bug-fix batch from 101-bug report. 1 major, 47 minor. All 101 bugs now addressed.
+
+### Major
+- **#59** `override.py` — TOCTOU race：`consume_override` 改 `os.rename` 原子搶佔（concurrent review 不再雙 pass）
+
+### Minor — Production (25)
+- **#14** `session_runner.py` — post-loop dead code（`gates_running` → `retrying`）
+- **#15** `session_runner.py` — `_all_gates_passing` 回傳 True 時走 passed 而非 failed_terminal
+- **#31** `retry/translator.py` — 移除 dead `fix_scope` 變數
+- **#34** `retry/signal_parser.py` — traceback signals 依 file path 去重
+- **#47** `context.py` — CJK 截斷改依 ASCII/non-ASCII 比例加權
+- **#48** `config.py` — YAML `12_000` 格式正確解析（strip underscore）
+- **#49** `risk_classifier.py` + `generator.py` — 逐檔 regex match（不再 join 跨路徑匹配）
+- **#50** `orchestrator.py` — parser 只讀 stdout（不混 stderr）
+- **#60** `cli.py` — `--v2` 配非 run 子命令時 stderr 警告
+- **#61** `cli.py` — `--regression-check` + `--save` 並用時警告
+- **#62** `schema.py` — `pass=True` + critical/major issues → 自動修正為 False
+- **#64** `triage.py` — conftest/fixtures/mocks 歸類 `test_support`（不再 fallback 到 source）
+- **#68** `engine.py` — diff 截斷用 `min(max_tokens, max_input_tokens)`
+- **#76** `doctor.py` — `git_repo` 移出 `critical_checks`（改 env_warnings）
+- **#77** `calibration.py` — 移除未使用的 `session_context` 參數
+- **#78** `strategy.py` — abort threshold 統一為 `retry_count >= 3`
+- **#86** `claude.py` — 文件記錄 Windows orphan grandchild 限制
+- **#90** `git.py` — pr-diff base 未 fetch 時顯示 hint 訊息
+- **#91** `type_defs.py` — `now_iso()` 改 `Z` 尾綴（與 v1 history 一致）
+- **#92** `engine.py` — `run()` 接受 `history_path` 參數傳遞至 `_extract_fp`
+- **#94** `calibration.py` — per-finding try/except fallback（不再整批 crash）
+- **#99** `engine.py` — input 組裝順序改為 diff→context→hints（符合 prompt 描述）
+- **#100** `session/schema.py` — `add_event` 複製 data dict（不再 by-reference）
+- **R9#97** `git.py` — truncation notice 預留空間（不超出 token budget）
+
+### Minor — Shell (5)
+- **#17** `cold-review.sh` — env var 展開統一用 `${VAR:-}` 語意
+- **#19** `cold-review.sh` — PID write 加 error check
+- **#46** `cold-review.sh` — stdin 加 1MB size cap
+- **#81** `cold-review.sh` — JSON parser 加 extraction fallback
+- **#93** `cold-review.sh` — `stop_hook_active` 改 strict boolean check
+
+### Minor — Tests (7)
+- **#20** `test_triage.py` — mock lambda 改 optional 第二參數
+- **#21** `test_triage.py` — mock review_status `"clean"` → `"completed"`
+- **#35** `test_translator.py` — 加 `validate_brief()` 驗證
+- **#37** `test_gate_orchestrator.py` — 移除 dead outer patch
+- **#84** `test_session_runner.py` — assert 改為 specific `"passed"`
+- **#85** `test_gate_catalog.py` — gate count assert 改 `== len(list_gates())`
+- **#101** test mocks 加 `{"result": "..."}` wrapper（符合 production 格式）
+
+### Minor — Evals & Docs (10)
+- **#32** `eval_runner.py` — severity check bare pass 加說明
+- **#36** `eval_runner.py` — benchmark response 改 `.txt` 副檔名
+- **#79** `eval_runner.py` — sweep 加 `"minor"` threshold（3×3 = 9 組合）
+- **#80** `baseline.json` — 重生為 33 cases（原 24）
+- **#83** `SECURITY.md` — override TTL 修正為 10 分鐘
+- **#95** `docs/samples/quality_report.json` — 欄位對齊實際輸出
+- **#96** `docs/evaluation.md` — case 數更新為 33
+- **R9#98** stress test cases — category 改 `"correctness"`
+
+22 production, 7 test, 3 eval, 2 doc, 1 shell, 1 security doc changed. 774 tests, 0 failures.
+
 ## v1.11.2 — 24 bug fixes (platform, atomicity, robustness)
 
 Second bug-fix batch from 101-bug report. 12 major, 12 minor.

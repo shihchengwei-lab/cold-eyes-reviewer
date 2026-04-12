@@ -24,18 +24,8 @@ class TestRunGates:
     def test_llm_review_gate_wraps_engine(self):
         s = create_session("test")
         outcome = _mock_engine_outcome()
-        with patch("cold_eyes.gates.orchestrator.engine_run", return_value=outcome, create=True):
-            # Use direct mock of the import
-            from cold_eyes.gates import orchestrator
-            original = None
-            try:
-                original = getattr(orchestrator, '_run_llm_review')
-            except AttributeError:
-                pass
-
-            # Simpler: mock engine.run at module level
-            with patch("cold_eyes.engine.run", return_value=outcome):
-                results = run_gates(s, [{"gate_id": "llm_review", "blocking": "hard"}])
+        with patch("cold_eyes.engine.run", return_value=outcome):
+            results = run_gates(s, [{"gate_id": "llm_review", "blocking": "hard"}])
 
         assert len(results) == 1
         assert results[0]["gate_name"] == "llm_review"
