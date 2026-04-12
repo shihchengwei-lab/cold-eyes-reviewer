@@ -14,6 +14,7 @@ CASES_DIR = os.path.join(PROJECT_ROOT, "evals", "cases")
 from evals.eval_runner import (
     load_cases, run_deterministic, threshold_sweep, _evaluate_case,
     validate_manifest, _make_report, format_markdown, save_report, compare_reports,
+    regression_check,
 )
 
 
@@ -344,3 +345,52 @@ class TestSaveReport:
         with open(paths["json"], "r", encoding="utf-8") as f:
             loaded = json.load(f)
         assert loaded["mode"] == "deterministic"
+
+
+# ---------------------------------------------------------------------------
+# Regression check
+# ---------------------------------------------------------------------------
+
+class TestRegressionCheck:
+    def test_baseline_vs_self_no_regression(self, tmp_path):
+        """Running current cases against their own baseline → no regression."""
+        baseline = run_deterministic(CASES_DIR)
+        bp = tmp_path / "baseline.json"
+        with open(bp, "w", encoding="utf-8") as f:
+            json.dump(baseline, f)
+        result = regression_check(str(bp), CASES_DIR)
+        assert result["regressed"] is False
+        assert result["regressions"] == []
+        assert result["cases_added"] == []
+        assert result["cases_removed"] == []
+
+    def test_action_change_without_match_change_not_regression(self, tmp_path):
+        """If actual_block changes but both sides still match → not a regression."""
+        current = run_deterministic(CASES_DIR)
+        baseline = json.loads(json.dumps(current))
+        # Flip actual_block for one case but keep match=True in baseline
+        for case in baseline["cases"]:
+            if case["id"] == "ok-style-rename":
+                case["actual_block"] = True
+                case["actual_action"] = "block"
+                break
+        bp = tmp_path / "baseline.json"
+        with open(bp, "w", encoding="utf-8") as f:
+            json.dump(baseline, f)
+        result = regression_check(str(bp), CASES_DIR)
+        assert result["regressed"] is False
+
+    def test_regression_detected_with_high_confidence(self, tmp_path):
+        """Baseline at medium confidence (all pass) vs current at high → some fail = regression."""
+        baseline = run_deterministic(CASES_DIR, confidence="medium")
+        assert baseline["passed"] == baseline["total"]  # all match
+        bp = tmp_path / "baseline.json"
+        with open(bp, "w", encoding="utf-8") as f:
+            json.dump(baseline, f)
+        # Run with confidence=high — some TPs lose match
+        result = regression_check(str(bp), CASES_DIR, confidence="high")
+        assert result["regressed"] is True
+        assert len(result["regressions"]) > 0
+        for reg in result["regressions"]:
+            assert reg["match_a"] is True
+            assert reg["match_b"] is False

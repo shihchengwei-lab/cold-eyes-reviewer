@@ -114,6 +114,45 @@ python cold_eyes/cli.py eval --save --compare evals/results/deterministic_prev.j
 
 `compare_reports()` diffs two reports: cases added/removed/changed, pass/fail deltas, and F1 movement for sweep reports.
 
+## Regression gate
+
+`regression_check()` compares the current deterministic eval results against a saved baseline. A **regression** is any case that matched in the baseline but fails now.
+
+### Baseline management
+
+The canonical baseline lives at `evals/baseline.json`. It is committed to the repo and used by CI.
+
+**Updating the baseline:**
+
+```bash
+# 1. Run deterministic eval and save
+python cold_eyes/cli.py eval --save --format json
+
+# 2. Copy the new report as the baseline
+cp evals/results/deterministic_*.json evals/baseline.json
+
+# 3. Commit the updated baseline
+git add evals/baseline.json && git commit -m "eval: update baseline"
+```
+
+Update the baseline when:
+- New eval cases are added (cases_added is expected)
+- Policy logic changes intentionally shift pass/fail boundaries
+- A model response mock is updated to reflect corrected behavior
+
+Do **not** update the baseline to hide regressions.
+
+### Running regression checks
+
+```bash
+# CLI — exit code 1 on regression, 0 on success
+python cold_eyes/cli.py eval --regression-check evals/baseline.json
+
+# CI runs this automatically (see .github/workflows/test.yml)
+```
+
+The output includes `regressed` (bool), `regressions` (list of changed cases), and `cases_added`/`cases_removed` for new or deleted cases.
+
 See also: `docs/trust-model.md` (capability boundaries), `docs/assurance-matrix.md` (per-category detection ability).
 
 ## Limitations

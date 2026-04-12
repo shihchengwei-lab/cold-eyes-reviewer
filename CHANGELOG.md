@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.4.1 — Trust Engineering Phase 2
+
+Regression gate, baseline management, CI eval integration. 306 tests (was 303).
+
+### Evaluation
+
+- **`regression_check()`** — compares current deterministic eval against a saved baseline. Detects regressions (previously matching cases that now fail). Returns structured result with `regressed`, `regressions`, `cases_added`, `cases_removed`.
+- **`--regression-check <baseline.json>`** — CLI flag runs regression check, exits 1 on regression, 0 on success.
+- **`evals/baseline.json`** — canonical baseline committed to repo (24/24 pass at critical/medium).
+
+### CI
+
+- **Eval steps in CI** — `test.yml` now runs deterministic eval and regression check after pytest. No model calls needed.
+
+### Documentation
+
+- **Baseline management** in `docs/evaluation.md` — update workflow, when to update, regression check usage.
+
+### Tests
+
+- 306 tests (+3): regression check — baseline vs self (1), action change without match change (1), regression detected with high confidence (1).
+
 ## v1.4.0 — Trust Engineering Phase 1
 
 Eval corpus expansion (14→24 cases, 3→5 categories), structured eval pipeline, trust documentation. 303 tests (was 297).

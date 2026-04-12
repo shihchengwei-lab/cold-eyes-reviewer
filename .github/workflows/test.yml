@@ -14,6 +14,10 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: pip install pytest pytest-cov
       - run: pytest tests/ -v --cov=cold_eyes --cov-report=term-missing
+      - name: Deterministic eval
+        run: python cold_eyes/cli.py eval --eval-mode deterministic
+      - name: Regression check
+        run: python cold_eyes/cli.py eval --regression-check evals/baseline.json
 
   lint:
     runs-on: ubuntu-latest

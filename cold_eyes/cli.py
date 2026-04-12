@@ -74,6 +74,8 @@ def main():
                         help="Report save format (default: json)")
     parser.add_argument("--compare", default=None,
                         help="Path to a previous report JSON for comparison")
+    parser.add_argument("--regression-check", default=None,
+                        help="Path to baseline JSON for regression check (exit 1 on regression)")
     args = parser.parse_args()
 
     if args.command == "init":
@@ -103,9 +105,18 @@ def main():
     elif args.command == "eval":
         from evals.eval_runner import (
             run_deterministic, run_benchmark, threshold_sweep,
-            save_report, compare_reports,
+            save_report, compare_reports, regression_check,
         )
         cases_dir = args.cases_dir or os.path.join(_root, "evals", "cases")
+        regression_path = getattr(args, "regression_check", None)
+        if regression_path:
+            result = regression_check(
+                regression_path, cases_dir,
+                threshold=args.threshold or "critical",
+                confidence=args.confidence or "medium",
+            )
+            print(json.dumps(result, ensure_ascii=False))
+            sys.exit(1 if result["regressed"] else 0)
         if args.eval_mode == "deterministic":
             result = run_deterministic(cases_dir, threshold=args.threshold or "critical",
                                        confidence=args.confidence or "medium")

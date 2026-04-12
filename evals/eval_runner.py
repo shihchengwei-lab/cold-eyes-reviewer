@@ -440,6 +440,38 @@ def save_report(report, output_dir=None, fmt="json"):
     return paths
 
 
+def regression_check(baseline_path, cases_dir, threshold="critical", confidence="medium"):
+    """Run deterministic eval and compare against a saved baseline.
+
+    Return dict with regressed (bool) and details (list of regressions).
+    A regression = a case that matched in baseline but fails now.
+    """
+    with open(baseline_path, "r", encoding="utf-8") as f:
+        baseline = json.load(f)
+
+    current = run_deterministic(cases_dir, threshold=threshold, confidence=confidence)
+    diff = compare_reports(baseline, current)
+
+    regressions = []
+    for change in diff.get("cases_changed", []):
+        # Regression: was matching (match_a=True) but now fails (match_b=False)
+        if change.get("match_a") is True and change.get("match_b") is False:
+            regressions.append(change)
+
+    return {
+        "regressed": len(regressions) > 0,
+        "regressions": regressions,
+        "baseline_version": baseline.get("cold_eyes_version"),
+        "current_version": current.get("cold_eyes_version"),
+        "baseline_passed": baseline.get("passed"),
+        "baseline_total": baseline.get("total"),
+        "current_passed": current.get("passed"),
+        "current_total": current.get("total"),
+        "cases_added": diff.get("cases_added", []),
+        "cases_removed": diff.get("cases_removed", []),
+    }
+
+
 def compare_reports(report_a, report_b):
     """Compare two reports.  Return dict with differences."""
     result = {

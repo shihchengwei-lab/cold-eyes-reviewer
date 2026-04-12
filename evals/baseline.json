@@ -1,0 +1,253 @@
+{
+  "cold_eyes_version": "1.4.1",
+  "timestamp": "2026-04-12T03:53:51.347383Z",
+  "eval_schema_version": 1,
+  "mode": "deterministic",
+  "threshold": "critical",
+  "confidence": "medium",
+  "total": 24,
+  "passed": 24,
+  "failed": 0,
+  "cases": [
+    {
+      "id": "edge-cjk-comment",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "edge-config-only-change",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "edge-empty-mock-response",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "edge-unicode-filename",
+      "category": "edge",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "fn-env-var-not-secret",
+      "category": "false_negative",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "fn-intentional-shell-true",
+      "category": "false_negative",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "fn-test-fixture-secret",
+      "category": "false_negative",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "ok-comment-update",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "ok-readme-typo",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "ok-style-rename",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "ok-test-addition",
+      "category": "acceptable",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "stress-all-minor",
+      "category": "stress",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "pass",
+      "actual_state": "passed"
+    },
+    {
+      "id": "stress-binary-only",
+      "category": "stress",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "skip",
+      "actual_state": "skipped"
+    },
+    {
+      "id": "stress-empty-diff",
+      "category": "stress",
+      "expected_block": false,
+      "actual_block": false,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "skip",
+      "actual_state": "skipped"
+    },
+    {
+      "id": "stress-large-diff",
+      "category": "stress",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "stress-mixed-severity",
+      "category": "stress",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-dangling-import",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-eval-injection",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-hardcoded-secret",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-missing-error-handling",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-path-traversal",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-resource-leak",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-sql-injection",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    },
+    {
+      "id": "tp-xss-unescaped",
+      "category": "true_positive",
+      "expected_block": true,
+      "actual_block": true,
+      "match": true,
+      "severity_ok": true,
+      "actual_action": "block",
+      "actual_state": "blocked"
+    }
+  ]
+}
