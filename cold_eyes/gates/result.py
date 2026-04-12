@@ -119,15 +119,14 @@ def _parse_llm_review(raw: str, exit_code: int) -> tuple[str, list[dict], list[s
     elif state in ("passed", "skipped", "reported"):
         status = "pass"
 
-    review = outcome.get("review", {})
-    for issue in review.get("issues", []):
+    for issue in outcome.get("issues", []):
         findings.append({
             "type": "review_finding",
-            "check": issue.get("check", ""),
-            "severity": issue.get("severity", ""),
-            "confidence": issue.get("confidence", ""),
-            "file": issue.get("file", ""),
-            "message": issue.get("verdict", ""),
+            "check": issue.get("check", "") or "",
+            "severity": issue.get("severity", "") or "",
+            "confidence": issue.get("confidence", "") or "",
+            "file": issue.get("file", "") or "",
+            "message": issue.get("verdict", "") or "",
         })
 
     return status, findings, warnings

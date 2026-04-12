@@ -11,7 +11,7 @@ def _mock_engine_outcome(action="pass", state="passed", issues=None):
     return {
         "action": action,
         "state": state,
-        "review": {"issues": issues or []},
+        "issues": issues or [],
     }
 
 

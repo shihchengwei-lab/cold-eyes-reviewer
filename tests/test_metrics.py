@@ -8,7 +8,7 @@ from cold_eyes.runner.session_runner import run_session
 
 def _mock_outcome(action="pass", state="passed"):
     return {"action": action, "state": state,
-            "review": {"issues": [], "pass": True, "review_status": "completed", "summary": "ok"}}
+            "issues": []}
 
 
 def _quick_session(state="passed"):
@@ -29,10 +29,9 @@ class TestCollectMetrics:
     def test_failed_session(self):
         fail_outcome = {
             "action": "block", "state": "blocked",
-            "review": {"issues": [{"check": "x", "severity": "critical",
-                                    "confidence": "high", "file": "a.py",
-                                    "verdict": "bad", "fix": "fix"}],
-                       "pass": False, "review_status": "completed", "summary": "bad"},
+            "issues": [{"check": "x", "severity": "critical",
+                        "confidence": "high", "file": "a.py",
+                        "verdict": "bad", "fix": "fix"}],
         }
         with patch("cold_eyes.engine.run", return_value=fail_outcome):
             session = run_session("test", ["src/main.py"],
@@ -67,10 +66,9 @@ class TestAggregateMetrics:
         pass_session = _quick_session()
         fail_outcome = {
             "action": "block", "state": "blocked",
-            "review": {"issues": [{"check": "x", "severity": "critical",
-                                    "confidence": "high", "file": "a.py",
-                                    "verdict": "bad", "fix": "fix"}],
-                       "pass": False, "review_status": "completed", "summary": "bad"},
+            "issues": [{"check": "x", "severity": "critical",
+                        "confidence": "high", "file": "a.py",
+                        "verdict": "bad", "fix": "fix"}],
         }
         with patch("cold_eyes.engine.run", return_value=fail_outcome):
             fail_session = run_session("test", ["src/main.py"],

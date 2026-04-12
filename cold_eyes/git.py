@@ -28,7 +28,7 @@ def estimate_tokens(text):
     """
     ascii_count = sum(1 for c in text if ord(c) < 128)
     non_ascii_count = len(text) - ascii_count
-    return ascii_count // 4 + non_ascii_count
+    return (ascii_count + 3) // 4 + non_ascii_count
 
 
 def git_cmd(*args):
@@ -87,6 +87,11 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
       diff_text, file_count, token_count, truncated,
       partial_files, skipped_budget, skipped_binary, skipped_unreadable
     """
+    try:
+        repo_root = git_cmd("rev-parse", "--show-toplevel")
+    except GitCommandError:
+        repo_root = ""
+
     remaining = max_tokens
     parts = []
     file_count = 0
@@ -101,11 +106,12 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
             continue
 
         if f in untracked:
-            if is_binary(f):
+            abs_f = os.path.join(repo_root, f) if repo_root else f
+            if is_binary(abs_f):
                 skipped_binary.append(f)
                 continue
             try:
-                with open(f, "r", encoding="utf-8", errors="replace") as fh:
+                with open(abs_f, "r", encoding="utf-8", errors="replace") as fh:
                     content = fh.read()
             except (OSError, IOError):
                 skipped_unreadable.append(f)
@@ -131,6 +137,9 @@ def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
             char_limit = remaining * 2
             chunk = chunk[:char_limit] + f"\n[truncated: {f}]"
             chunk_tokens = estimate_tokens(chunk)
+            if chunk_tokens > remaining:
+                chunk = chunk[:remaining]
+                chunk_tokens = estimate_tokens(chunk)
             partial_files.append(f)
 
         parts.append(chunk)

@@ -10,7 +10,7 @@ def filter_file_list(files, ignore_file=""):
     """Apply built-in + custom ignore patterns. Return filtered list."""
     patterns = list(BUILTIN_IGNORE)
     if ignore_file and os.path.isfile(ignore_file):
-        with open(ignore_file, "r", encoding="utf-8") as f:
+        with open(ignore_file, "r", encoding="utf-8", errors="replace") as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith("#"):

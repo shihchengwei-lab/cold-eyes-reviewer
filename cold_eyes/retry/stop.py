@@ -13,7 +13,7 @@ def should_stop(
     gate_results = session.get("gate_results", [])
 
     # --- Hard limit ---
-    if len(briefs) >= max_retries:
+    if len(briefs) > max_retries:
         return True, f"max retries reached ({max_retries})"
 
     if len(briefs) < 2:
@@ -28,9 +28,11 @@ def should_stop(
             return True, "same failure type and strategy repeated consecutively"
 
     # --- No progress: findings count not decreasing ---
-    if len(gate_results) >= 4:
-        recent = gate_results[-2:]
-        earlier = gate_results[-4:-2]
+    # gate_results is flat; use gate_plan length as stride to compare whole iterations
+    num_gates = len(session.get("gate_plan", []))
+    if num_gates > 0 and len(gate_results) >= 2 * num_gates:
+        recent = gate_results[-num_gates:]
+        earlier = gate_results[-2 * num_gates:-num_gates]
         recent_count = sum(len(gr.get("findings", [])) for gr in recent)
         earlier_count = sum(len(gr.get("findings", [])) for gr in earlier)
         if recent_count >= earlier_count and earlier_count > 0:

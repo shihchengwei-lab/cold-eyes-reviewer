@@ -16,7 +16,7 @@ except ImportError:
     _extract_fp = None
 from cold_eyes.claude import ClaudeCliAdapter
 from cold_eyes.review import parse_review_output
-from cold_eyes.policy import apply_policy
+from cold_eyes.policy import apply_policy, calibrate_evidence, filter_by_confidence
 from cold_eyes.history import log_to_history
 from cold_eyes.config import load_policy
 from cold_eyes.override import consume_override
@@ -37,7 +37,13 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
             return env
     pol = policy.get(policy_key)
     if pol is not None:
-        return cast(pol) if cast else pol
+        if cast:
+            try:
+                return cast(pol)
+            except (ValueError, TypeError):
+                pass  # fall through to default
+        else:
+            return pol
     return default
 
 
@@ -64,20 +70,28 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
 
     # Resolve settings: CLI arg > env var > policy file > default
     mode = _resolve(mode, "COLD_REVIEW_MODE", policy, "mode", "block")
+    if isinstance(mode, str):
+        mode = mode.lower()
     model = _resolve(model, "COLD_REVIEW_MODEL", policy, "model", "opus")
     max_tokens = _resolve(max_tokens, "COLD_REVIEW_MAX_TOKENS", policy,
                           "max_tokens", 12000, cast=int)
     threshold = _resolve(threshold, "COLD_REVIEW_BLOCK_THRESHOLD", policy,
                          "block_threshold", "critical")
+    if isinstance(threshold, str):
+        threshold = threshold.lower()
     min_confidence = _resolve(confidence, "COLD_REVIEW_CONFIDENCE", policy,
                               "confidence", "medium")
     if isinstance(min_confidence, str):
         min_confidence = min_confidence.lower()
     scope = _resolve(scope, "COLD_REVIEW_SCOPE", policy, "scope", "working")
+    if isinstance(scope, str):
+        scope = scope.lower()
     base = _resolve(base, "COLD_REVIEW_BASE", policy, "base", None)
     language = _resolve(language, "COLD_REVIEW_LANGUAGE", policy, "language", None)
     truncation_policy = _resolve(truncation_policy, "COLD_REVIEW_TRUNCATION_POLICY",
                                  policy, "truncation_policy", "warn")
+    if isinstance(truncation_policy, str):
+        truncation_policy = truncation_policy.lower()
     shallow_model = _resolve(shallow_model, "COLD_REVIEW_SHALLOW_MODEL",
                              policy, "shallow_model", "sonnet")
     context_tokens = _resolve(context_tokens, "COLD_REVIEW_CONTEXT_TOKENS",
@@ -85,7 +99,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     max_input_tokens = _resolve(max_input_tokens, "COLD_REVIEW_MAX_INPUT_TOKENS",
                                 policy, "max_input_tokens", None,
                                 cast=lambda v: int(v) if v is not None else None)
-    if max_input_tokens is None:
+    if not max_input_tokens or max_input_tokens <= 0:
         max_input_tokens = max_tokens + context_tokens + 1000
 
     # mode=off: skip immediately (normally caught by shell, but policy file may set it)
@@ -210,7 +224,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                     if total_candidates > 0 else 100.0)
 
     if not diff_text.strip() or file_count == 0:
-        log_to_history(cwd, mode, model, STATE_SKIPPED, "no diff content",
+        log_to_history(cwd, mode, effective_model, STATE_SKIPPED, "no diff content",
                        min_confidence=min_confidence, scope=scope)
         return _skip("no diff content")
 
@@ -258,6 +272,10 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                            override_reason=override_reason, language=language,
                            truncation_policy=truncation_policy,
                            fp_patterns=fp_patterns)
+
+    # Expose filtered issues for downstream consumers (e.g. gates/result.py)
+    _calibrated = calibrate_evidence(review.get("issues", []), fp_patterns=fp_patterns)
+    outcome["issues"] = filter_by_confidence(_calibrated, min_confidence)
 
     # Add coverage visibility
     outcome["reviewed_files"] = reviewed_count

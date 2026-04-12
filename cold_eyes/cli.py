@@ -26,6 +26,7 @@ def _run_v2(args):
     from cold_eyes.git import collect_files, git_cmd, GitCommandError, ConfigError
     from cold_eyes.config import load_policy
     from cold_eyes.engine import _resolve
+    from cold_eyes.filter import filter_file_list
     from cold_eyes.runner.session_runner import run_session
     from cold_eyes.session.store import SessionStore
 
@@ -44,6 +45,9 @@ def _run_v2(args):
         return {"action": "pass", "state": "infra_failed",
                 "reason": str(exc),
                 "display": f"cold-review: infrastructure failure — {exc}"}
+
+    ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
+    all_files = filter_file_list(all_files, ignore_file)
 
     if not all_files:
         return {"action": "pass", "state": "skipped", "reason": "no changes",

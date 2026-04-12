@@ -29,17 +29,25 @@ def calibrate(
     result: list[dict] = []
 
     # Try v1 calibration path
+    v1_applied = False
     if _HAS_POLICY and _HAS_MEMORY:
-        fp_patterns = extract_fp_patterns(history_path=history_path)
-        # Convert to v1 issues, calibrate, convert back
-        v1_issues = [_to_v1_issue(f) for f in findings]
-        calibrated = calibrate_evidence(v1_issues, fp_patterns)
-        result = [_merge_calibration(findings[i], calibrated[i]) for i in range(len(findings))]
+        try:
+            fp_patterns = extract_fp_patterns(history_path=history_path)
+            # Convert to v1 issues, calibrate, convert back
+            v1_issues = [_to_v1_issue(f) for f in findings]
+            calibrated = calibrate_evidence(v1_issues, fp_patterns)
+            result = [_merge_calibration(findings[i], calibrated[i]) for i in range(len(findings))]
+            v1_applied = True
+        except Exception:
+            result = [dict(f) for f in findings]
     else:
         result = [dict(f) for f in findings]
 
     # Additional v2-specific calibration
-    for f in result:
+    for i, f in enumerate(result):
+        # Skip v2 downgrade if v1 already changed this finding's confidence
+        if v1_applied and f.get("confidence") != findings[i].get("confidence"):
+            continue
         # No supporting signals + high confidence -> downgrade
         supporting = f.get("supporting", f.get("supporting_signals", []))
         message = f.get("message", "")
@@ -71,4 +79,6 @@ def _merge_calibration(original: dict, calibrated: dict) -> dict:
     """Merge v1 calibration result back into v2 finding."""
     result = dict(original)
     result["confidence"] = calibrated.get("confidence", original.get("confidence", "medium"))
+    if "fp_match_count" in calibrated:
+        result["fp_match_count"] = calibrated["fp_match_count"]
     return result

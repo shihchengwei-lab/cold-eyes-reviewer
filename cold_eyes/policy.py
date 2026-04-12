@@ -162,7 +162,7 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
     review = {**review, "issues": filtered_issues}
 
     # --- Review completed ---
-    threshold_level = SEVERITY_ORDER.get(threshold, 3)
+    threshold_level = SEVERITY_ORDER.get(threshold, 0)
     max_severity = 0
     for issue in filtered_issues:
         level = SEVERITY_ORDER.get(issue.get("severity", "major"), 2)
@@ -171,20 +171,21 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
     should_block = max_severity >= threshold_level
     effective_pass = len(filtered_issues) == 0
 
-    # --- Truncation policy (block mode only, before override check) ---
+    # --- Truncation policy (block mode only) ---
+    # fail-closed is NEVER bypassed by override — check it unconditionally
+    if truncated and mode == "block" and truncation_policy == "fail-closed":
+        block_reason = format_block_reason(review, truncated, skipped_count, language)
+        block_reason += f"\n\n{override_instruction}"
+        return {
+            "action": "block",
+            "state": STATE_BLOCKED,
+            "reason": block_reason,
+            "display": f"cold-review: blocking (truncation policy: fail-closed, {skipped_count} files unreviewed)",
+            "truncated": True,
+            "skipped_count": skipped_count,
+        }
     if truncated and mode == "block" and not allow_once:
-        if truncation_policy == "fail-closed":
-            block_reason = format_block_reason(review, truncated, skipped_count, language)
-            block_reason += f"\n\n{override_instruction}"
-            return {
-                "action": "block",
-                "state": STATE_BLOCKED,
-                "reason": block_reason,
-                "display": f"cold-review: blocking (truncation policy: fail-closed, {skipped_count} files unreviewed)",
-                "truncated": True,
-                "skipped_count": skipped_count,
-            }
-        elif truncation_policy == "soft-pass" and effective_pass:
+        if truncation_policy == "soft-pass" and effective_pass:
             return {
                 "action": "pass",
                 "state": STATE_PASSED,

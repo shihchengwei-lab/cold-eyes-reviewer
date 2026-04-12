@@ -18,14 +18,14 @@ class TestShouldStop:
         assert stop is False
 
     def test_max_retries(self):
-        briefs = [{"retry_strategy": "x"} for _ in range(3)]
+        briefs = [{"retry_strategy": "x"} for _ in range(4)]
         s = _session_with_briefs(briefs)
         stop, reason = should_stop(s)
         assert stop is True
         assert "max retries" in reason
 
     def test_custom_max_retries(self):
-        briefs = [{"retry_strategy": "x"} for _ in range(5)]
+        briefs = [{"retry_strategy": "x"} for _ in range(6)]
         s = _session_with_briefs(briefs)
         stop, _ = should_stop(s, max_retries=5)
         assert stop is True
@@ -57,6 +57,7 @@ class TestShouldStop:
             {"gate_name": "lint_checker", "findings": [{"x": 1}]},
         ]
         s = _session_with_briefs([{"retry_strategy": "a"}, {"retry_strategy": "b"}], gate_results)
+        s["gate_plan"] = ["test_runner", "lint_checker"]
         stop, reason = should_stop(s)
         assert stop is True
         assert "not decreasing" in reason

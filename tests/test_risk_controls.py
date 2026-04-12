@@ -153,13 +153,13 @@ class TestTruncationPolicyFailClosed:
                                truncated=False, truncation_policy="fail-closed")
         assert outcome["action"] == "pass"
 
-    def test_fail_closed_override_bypasses(self):
+    def test_fail_closed_override_does_not_bypass(self):
         review = _review_no_issues()
         outcome = apply_policy(review, "block", "critical", True,
                                truncated=True, skipped_files=["a.py"],
                                truncation_policy="fail-closed")
-        # Override (allow_once=True) should bypass fail-closed
-        assert outcome["action"] == "pass"
+        # fail-closed is never bypassed by override (Bug #53 fix)
+        assert outcome["action"] == "block"
 
     def test_fail_closed_report_mode_unaffected(self):
         review = _review_no_issues()

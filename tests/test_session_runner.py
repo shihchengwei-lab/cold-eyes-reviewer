@@ -173,5 +173,6 @@ class TestSessionStructure:
 
     def test_empty_files_still_works(self):
         session = run_session("noop", [], available_gate_ids=[])
-        # No gates selected, should pass trivially
-        assert session["state"] == "passed"
+        # No gates selected — zero verification must block, not pass
+        assert session["state"] == "failed_terminal"
+        assert session["final_outcome"]["stop_reason"] == "no gate results — zero verification"

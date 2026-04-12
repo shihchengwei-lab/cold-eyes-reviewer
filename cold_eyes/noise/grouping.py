@@ -29,12 +29,12 @@ def group_by_root_cause(findings: list[dict]) -> list[dict]:
         if len(group) < 2:
             continue
         # Sort by line number if available
-        sorted_group = sorted(group, key=lambda x: _get_line(x[1]))
+        sorted_group = sorted(group, key=lambda x: _get_line(x[1]) if _get_line(x[1]) is not None else float("inf"))
         cluster_findings: list[tuple[int, dict]] = [sorted_group[0]]
         for j in range(1, len(sorted_group)):
-            prev_line = _get_line(cluster_findings[-1][1])
+            anchor_line = _get_line(cluster_findings[0][1])
             curr_line = _get_line(sorted_group[j][1])
-            if curr_line - prev_line <= 20:
+            if anchor_line is not None and curr_line is not None and curr_line - anchor_line <= 20:
                 cluster_findings.append(sorted_group[j])
             else:
                 if len(cluster_findings) >= 2:
@@ -81,11 +81,14 @@ def group_by_root_cause(findings: list[dict]) -> list[dict]:
     return clusters
 
 
-def _get_line(finding: dict) -> int:
+def _get_line(finding: dict) -> int | None:
+    raw = finding.get("line")
+    if raw is None:
+        return None
     try:
-        return int(finding.get("line", 0))
+        return int(raw)
     except (ValueError, TypeError):
-        return 0
+        return None
 
 
 def _emit_cluster(clusters, items, file_, used):

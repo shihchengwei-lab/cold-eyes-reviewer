@@ -1,5 +1,54 @@
 # Changelog
 
+## v1.11.1 — 29 bug fixes (data boundary + cross-module contracts)
+
+Bug hunt rounds 1-13 累計 101 bugs；本版修復 29 個（2 critical, 15 major, 12 minor）。
+
+### Critical
+- **#22** `engine.py` + `gates/result.py` — `outcome["issues"]` 缺失 → parser 0 findings；加 key + 改讀 top-level issues
+- **#38** `prompt.py` — language 注入；`_sanitize_language()` 50 字上限 + 去控制字元 + allowlist
+
+### Major
+- **#1** `git.py` — 截斷後 `estimate_tokens` 重算，CJK fallback
+- **#3** `retry/stop.py` — no-progress 改用 gate 數量做 stride
+- **#4** `session_runner.py` — noise 清空 findings 不再假 pass
+- **#5** `retry/stop.py` — `>=` → `>` 修 off-by-one（max_retries 語義 = actual retries）
+- **#23** `engine.py` — mode/threshold/scope/truncation_policy `.lower()`
+- **#24** `cli.py` — v2 path 加 `filter_file_list()`
+- **#25** `session/store.py` — write-to-temp-then-rename 原子寫入
+- **#27** `policy.py` — 未知 threshold 預設 0（最嚴格）
+- **#30** `noise/grouping.py` — proximity 比對 anchor 非 last
+- **#41** `engine.py` — `max_input_tokens=0` 正確 fallback
+- **#42** `filter.py` — `errors="replace"` 防 UnicodeDecodeError
+- **#44** `session_runner.py` — retry 使用 `re_run_gates`
+- **#45** `session_runner.py` — `previous_findings` 跨 iteration 累積
+- **#53** `policy.py` — `fail-closed` 不被 override 繞過
+- **#54** `engine.py` — policy 值 cast 加 try/except
+- **#58** `git.py` — untracked files 用 repo root 絕對路徑
+- **#70** `session_runner.py` — 空 results → `failed_terminal`
+- **#97** `noise/grouping.py` — 無行號 findings 不 cluster
+- **#98** `gates/result.py` — JSON null → `or ""` 防 None 傳播
+
+### Minor
+- **#10** `git.py` — ceiling division `(n+3)//4`
+- **#16** `noise/dedup.py` — 第一個 message 也入 supporting
+- **#28** `session/store.py` — corrupt JSONL skip 不 crash
+- **#65** `engine.py` — 空 diff 用 `effective_model`
+- **#74** `noise/calibration.py` — 保留 `fp_match_count`
+- **#82** `noise/calibration.py` — 不再 double downgrade
+- **#94** `noise/calibration.py` — `calibrate_evidence` 加 try/except fallback
+
+### Behavior changes
+| 改動 | 舊 | 新 |
+|------|----|----|
+| `max_retries` 語義 | `>=`：3 → 3 total | `>`：3 → 4 total（initial + 3 retries） |
+| pass 判定 | noise 清空 + soft fail → pass | all gates pass 才 pass |
+| 空 gates | `all([])=True` → pass | → `failed_terminal` |
+| 未知 threshold | 預設 3 | 預設 0（全擋） |
+| `fail-closed` + override | override 繞過 | 永不繞過 |
+
+13 production files, 7 test files changed. 773 tests, 0 failures.
+
 ## v1.11.0 — v2 activation path
 
 - **`--v2` CLI flag** — `cli.py run --v2` 走 `run_session()` pipeline，opt-in。v1 預設路徑不變。

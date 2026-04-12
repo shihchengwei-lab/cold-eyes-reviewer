@@ -71,7 +71,7 @@ class TestParseRuff:
 
 class TestParseLlmReview:
     def test_passed_outcome(self):
-        outcome = {"state": "passed", "action": "pass", "review": {"issues": []}}
+        outcome = {"state": "passed", "action": "pass", "issues": []}
         r = normalize_result("llm_review", json.dumps(outcome), 0)
         assert r["status"] == "pass"
         assert r["findings"] == []
@@ -80,12 +80,10 @@ class TestParseLlmReview:
         outcome = {
             "state": "blocked",
             "action": "block",
-            "review": {
-                "issues": [
-                    {"check": "missing null check", "severity": "critical",
-                     "confidence": "high", "file": "auth.py", "verdict": "unsafe"},
-                ]
-            },
+            "issues": [
+                {"check": "missing null check", "severity": "critical",
+                 "confidence": "high", "file": "auth.py", "verdict": "unsafe"},
+            ],
         }
         r = normalize_result("llm_review", json.dumps(outcome), 1)
         assert r["status"] == "fail"

@@ -19,7 +19,8 @@ def merge_duplicates(findings: list[dict]) -> list[dict]:
         else:
             merged = dict(f)
             merged["count"] = 1
-            merged["supporting"] = []
+            msg = f.get("message", "")
+            merged["supporting"] = [msg] if msg else []
             buckets[key] = merged
 
     return list(buckets.values())

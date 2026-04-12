@@ -2,6 +2,7 @@
 
 import json
 import os
+import tempfile
 
 from cold_eyes.session.schema import validate_session
 
@@ -76,11 +77,23 @@ class SessionStore:
             for line in f:
                 line = line.strip()
                 if line:
-                    entries.append(json.loads(line))
+                    try:
+                        entries.append(json.loads(line))
+                    except json.JSONDecodeError:
+                        continue
         return entries
 
     def _write_all(self, entries: list[dict]) -> None:
         os.makedirs(self._dir, exist_ok=True)
-        with open(self._file, "w", encoding="utf-8") as f:
-            for entry in entries:
-                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        fd, tmp_path = tempfile.mkstemp(dir=self._dir, suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                for entry in entries:
+                    f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+            os.replace(tmp_path, self._file)
+        except BaseException:
+            try:
+                os.unlink(tmp_path)
+            except OSError:
+                pass
+            raise

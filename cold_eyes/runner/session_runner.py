@@ -78,15 +78,16 @@ def run_session(
     })
 
     # --- Phase B+C: Gate execution + retry loop ---
-    previous_findings: list[dict] = []
+    all_previous_findings: list[dict] = []
     previous_briefs: list[dict] = []
+    gates_to_run = gate_plan["selected_gates"]
 
     for iteration in range(max_retries + 1):
         transition(session, "gates_running")
 
         results = run_gates(
             session,
-            gate_plan["selected_gates"],
+            gates_to_run,
             engine_adapter=engine_adapter,
             engine_kwargs=engine_kwargs or {},
             timeout=gate_timeout,
@@ -104,17 +105,28 @@ def run_session(
 
         # --- Phase D: Noise suppression ---
         deduped = merge_duplicates(all_findings)
-        suppressed = suppress_seen(deduped, previous_findings)
+        suppressed = suppress_seen(deduped, all_previous_findings)
         calibrated = calibrate(suppressed)
 
         # Check if all gates passed
+        if not results:
+            transition(session, "gates_failed")
+            transition(session, "failed_terminal", reason="no gate results")
+            session["final_outcome"] = {
+                "action": "block",
+                "state": "failed_terminal",
+                "stop_reason": "no gate results — zero verification",
+                "iteration": iteration,
+            }
+            add_event(session, "session_failed", session["final_outcome"])
+            return session
         all_passed = all(r.get("status") == "pass" for r in results)
         has_hard_failures = any(
             r.get("status") == "fail" and r.get("blocking_mode") == "hard"
             for r in results
         )
 
-        if all_passed or (not has_hard_failures and not calibrated):
+        if all_passed:
             transition(session, "passed")
             session["final_outcome"] = {
                 "action": "pass",
@@ -170,7 +182,17 @@ def run_session(
             "brief_id": brief.get("retry_id"),
         })
 
-        previous_findings = all_findings
+        all_previous_findings.extend(all_findings)
+
+        # Use re_run_gates from strategy if specified, else fall back to full gate list
+        re_run = strat.get("re_run_gates")
+        if re_run:
+            gates_to_run = [
+                g for g in gate_plan["selected_gates"]
+                if g["gate_id"] in re_run
+            ]
+        else:
+            gates_to_run = gate_plan["selected_gates"]
 
     # Exhausted all iterations
     if session["state"] == "gates_running":
