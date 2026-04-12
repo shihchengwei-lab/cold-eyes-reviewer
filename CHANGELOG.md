@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.5.0 — Cost-Effective Triage (Phase 1)
+
+Skip / shallow / deep three-tier review depth triage. Diffs that don't need model review (docs, generated, config-only) are skipped at zero cost. 346 tests (was 306).
+
+### Triage
+
+- **`classify_file_role(path)`** — classifies files into 6 roles: test, docs, config, generated, migration, source. Pattern-based, no I/O.
+- **`classify_depth(files)`** — rule-based depth classification: skip (docs/generated/config without secrets keywords), shallow (test-only, placeholder for future lighter model), deep (risk category match, source, migration).
+- **8 risk categories** — auth_permission, state_invariant, migration_schema, persistence, public_api, async_concurrency, secrets_privacy, cache_retry. Structured replacement for triage decisions (existing `RISK_PATTERN` kept for file ranking).
+
+### Engine
+
+- **Triage step** inserted between rank and build_diff: `collect → filter → rank → triage → build_diff → prompt → model → parse → policy`.
+- **Skip path** — `review_depth=skip` returns immediately, no diff build, no model call.
+- **Shallow placeholder** — `review_depth=shallow` currently falls through to deep (hook for future lighter model/prompt).
+- **Outcome fields** — `review_depth` and `why_depth_selected` added to all engine outcomes.
+- **History records** — `review_depth` field added to history JSONL entries.
+
+### Tests
+
+- 346 tests (+40): file role classification (23), depth classification (15), engine triage integration (2).
+
 ## v1.4.1 — Trust Engineering Phase 2
 
 Regression gate, baseline management, CI eval integration. 306 tests (was 303).

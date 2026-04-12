@@ -5,6 +5,7 @@ import os
 from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED
 from cold_eyes.git import git_cmd, collect_files, build_diff, GitCommandError, ConfigError
 from cold_eyes.filter import filter_file_list, rank_file_list
+from cold_eyes.triage import classify_depth
 from cold_eyes.prompt import build_prompt_text
 from cold_eyes.claude import ClaudeCliAdapter
 from cold_eyes.review import parse_review_output
@@ -110,7 +111,23 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     # 3. Rank
     ranked = rank_file_list(filtered, untracked)
 
-    # 4. Build diff
+    # 4. Triage — skip / shallow / deep
+    triage = classify_depth(ranked)
+    review_depth = triage["review_depth"]
+
+    if review_depth == "skip":
+        reason = f"triage skip: {triage['why_depth_selected']}"
+        log_to_history(cwd, mode, model, STATE_SKIPPED, reason,
+                       min_confidence=min_confidence, scope=scope,
+                       review_depth=review_depth)
+        result = _skip(reason)
+        result["review_depth"] = review_depth
+        result["why_depth_selected"] = triage["why_depth_selected"]
+        return result
+
+    # shallow currently falls through to deep (placeholder for future lighter model)
+
+    # 5. Build diff
     try:
         diff_meta = build_diff(ranked, untracked, max_tokens, scope, base=base)
     except GitCommandError as exc:
@@ -185,6 +202,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     outcome["reviewed_files"] = reviewed_count
     outcome["total_files"] = total_candidates
     outcome["coverage_pct"] = coverage_pct
+    outcome["review_depth"] = review_depth
+    outcome["why_depth_selected"] = triage["why_depth_selected"]
 
     # 11. Log
     diff_line_count = diff_text.count("\n") + 1
@@ -194,6 +213,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         line_count=diff_line_count, truncated=truncated,
         token_count=token_count, min_confidence=min_confidence,
         scope=scope, override_reason=override_reason,
+        review_depth=review_depth,
     )
 
     return outcome

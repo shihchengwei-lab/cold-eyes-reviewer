@@ -33,6 +33,26 @@ RISK_PATTERN = re.compile(
     r"(auth|payment|db|migration|secret|credential|config|api)", re.IGNORECASE
 )
 
+# Risk categories — structured classification for triage depth decisions.
+RISK_CATEGORIES = {
+    "auth_permission": re.compile(
+        r"(auth|permission|guard|middleware|policy|ownership)", re.IGNORECASE),
+    "state_invariant": re.compile(
+        r"(state|status|transition|workflow|fsm)", re.IGNORECASE),
+    "migration_schema": re.compile(
+        r"(migration|schema|ddl|alter)", re.IGNORECASE),
+    "persistence": re.compile(
+        r"(db|database|repository|orm|query)", re.IGNORECASE),
+    "public_api": re.compile(
+        r"(api|endpoint|route|handler|controller)", re.IGNORECASE),
+    "async_concurrency": re.compile(
+        r"(async|await|thread|lock|mutex|queue|worker)", re.IGNORECASE),
+    "secrets_privacy": re.compile(
+        r"(secret|credential|token|password|key|env)", re.IGNORECASE),
+    "cache_retry": re.compile(
+        r"(cache|retry|timeout|circuit.?breaker)", re.IGNORECASE),
+}
+
 DEPLOY_FILES = [
     "cold-review.sh", "cold-review-prompt.txt",
     "cold_eyes/__init__.py", "cold_eyes/cli.py", "cold_eyes/engine.py",
@@ -40,5 +60,5 @@ DEPLOY_FILES = [
     "cold_eyes/prompt.py", "cold_eyes/claude.py", "cold_eyes/review.py",
     "cold_eyes/policy.py", "cold_eyes/history.py", "cold_eyes/config.py",
     "cold_eyes/override.py", "cold_eyes/doctor.py",
-    "cold_eyes/schema.py",
+    "cold_eyes/schema.py", "cold_eyes/triage.py",
 ]

@@ -6,7 +6,7 @@ This is a personal tool. The roadmap is directional, not committed.
 
 Based on external review, the project follows a phased trust engineering plan. The goal: make Cold Eyes externally auditable, not just internally tested.
 
-### Phase 1 — Verifiable trust baseline (in progress)
+### Phase 1 — Verifiable trust baseline (complete)
 
 - [x] Expand eval corpus to 24 cases across 5 categories
 - [x] Add manifest.json and schema.md for eval case format
@@ -14,8 +14,17 @@ Based on external review, the project follows a phased trust engineering plan. T
 - [x] Create trust-model.md (what it can/cannot detect, trust properties)
 - [x] Expand SECURITY.md trust boundaries (attack surface table, input/output handling)
 - [x] Create assurance-matrix.md (per-category detectability, FP/FN direction)
-- [ ] Structured eval pipeline output (markdown summary, save, compare)
-- [ ] CLI flags for eval (--save, --format, --compare)
+- [x] Structured eval pipeline output (markdown summary, save, compare)
+- [x] CLI flags for eval (--save, --format, --compare)
+- [x] Regression gate + baseline management
+- [x] CI eval integration (deterministic + regression check)
+
+### Cost-effective triage (v1.5.0)
+
+- [x] 8 risk categories (auth, state, migration, persistence, API, async, secrets, cache)
+- [x] 6 file roles (test, docs, config, generated, migration, source)
+- [x] Skip / shallow / deep three-tier triage in engine pipeline
+- [x] Skip path: zero model calls for docs/generated/config-only changes
 
 ### Phase 2 — External evidence (future)
 
