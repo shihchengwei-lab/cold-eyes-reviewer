@@ -39,7 +39,7 @@ def build_prompt_text(language=None, depth="deep"):
             return ("You are Cold Eyes (shallow mode). "
                     "Only report critical security and crash bugs. "
                     "Output JSON: {pass, issues, summary}.")
-        return ("You are Cold Eyes, a zero-context reviewer. "
+        return ("You are Cold Eyes, a diff-centered reviewer. "
                 "Review the diff. Output JSON: {pass, issues, summary}.")
 
     return template.replace("{language}", language)

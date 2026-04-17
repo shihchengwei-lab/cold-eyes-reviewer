@@ -28,7 +28,7 @@ class TestShallowPrompt:
     def test_deep_prompt_loads(self):
         text = build_prompt_text(language="English", depth="deep")
         assert "Cold Eyes" in text
-        assert "邏輯錯誤" in text or "zero-context" in text.lower()
+        assert "邏輯錯誤" in text or "diff-centered" in text.lower()
 
     def test_shallow_prompt_loads(self):
         text = build_prompt_text(language="English", depth="shallow")

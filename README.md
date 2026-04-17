@@ -2,11 +2,44 @@
 
 ![Tests](https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/workflows/test.yml/badge.svg)
 
-A cold-read code reviewer for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
+A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
 
 This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/index-en.html), a Claude Code buddy companion that provided independent commentary during coding sessions. Cinder was silently shut down on April 11, 2026. Cold Eyes carries forward the idea that a second pair of eyes — even artificial ones — catches things the first pair misses. Cinder was a companion. Cold Eyes is a gate.
 
-Cold Eyes is a second-pass gate, not a full code review. It has no conversation context and no requirements. Deep reviews see the git diff plus limited structured context (recent commits, co-changed files) and regex-based detector hints. Shallow reviews see only the diff. It asks the model to check for surface-level correctness, security, and consistency issues. Whether it catches them depends on the model and the diff. It does not understand your intent.
+## What it is
+
+Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages and co-changed files from git history, plus regex-based detector hints — to reduce obvious blind spots. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
+
+## What it is not
+
+- **Not a replacement for human review.** It is a pre-hint before the real reviewer looks.
+- **Not a full PR review platform.** No cross-file search, no repo-wide symbol analysis, no issue tracking.
+- **Not a full-context code understanding system.** What the deep path sees is bounded to a handful of git-adjacent signals, not the whole codebase.
+- **Not requirement-aware / intent-aware in the strong sense.** It has no specification and does not know what the change is supposed to do.
+- **Not a sufficient gate for semantic design correctness.** Multi-file logic, business rules, architectural decisions are out of scope.
+
+## When it works best
+
+- Claude Code workflows where an automatic second pass catches surface-level slips before they compound.
+- Catching high-cost surface issues: removed error handling, hardcoded secrets, dangling references within the diff, obvious injection shapes.
+- Teams willing to run in `report` mode first and calibrate thresholds before enabling blocking.
+
+## When not to use it as a blocking gate
+
+- Tasks where the bug is driven by requirements or specs that are not visible in the diff.
+- Large, non-local semantic refactors where most of the signal lives outside the changed lines.
+- Teams with very low false-positive tolerance that have not yet measured Cold Eyes' noise rate on their own code.
+- New adopters who have not walked through the adoption path — start in `report`, then narrow.
+
+## Review paths overview
+
+- **Shallow** — test-only or low-risk diffs. Lighter model, critical-only prompt, diff as sole input. Fast and cheap.
+- **Deep** (default for source changes) — full model, diff + bounded supporting context + detector hints. This is what the project name refers to: a diff-centered review with a small amount of structured support.
+- **v2** (opt-in, `--v2`) — deeper verification path: the same LLM review step is wrapped in a multi-gate loop that can also run test / lint / type / build gates, with retry and noise suppression between iterations. Cost can rise up to ~4x a v1 run in the worst case (see Token usage). v2 is not the product headline; it is an opt-in deeper mode.
+
+### Why deeper paths exist
+
+The diff alone is sometimes not enough to distinguish a real bug from a valid change (a renamed function, a removed resource that was handled elsewhere). The deep path's context block and detector hints exist to reduce that class of false calls without turning the tool into a full-context reviewer. v2 exists to layer mechanical checks (tests, lint) around the LLM review when the user wants stricter gating.
 
 ## How it works
 
