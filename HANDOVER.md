@@ -2,15 +2,19 @@
 
 ## 現況
 
-- **版本：** v1.11.4（master，docs-only pass；待 push）
-- **分支：** master
+- **版本：** v1.11.4（master，已 push，tag 已打）
+- **分支：** master（`c29c7ba`）
 - **測試：** 774 passed / 0 failed
-- **部署：** v1.11.3 已同步 `~/.claude/scripts/`；v1.11.4 僅 docs 改動，需要時可再 `cp` 但不影響 runtime
+- **部署：** v1.11.3 已同步 `~/.claude/scripts/`；v1.11.4 純 docs/metadata，runtime 未變動，不需重新 cp
 - **版本訊號：**
   - `__init__.py` = 1.11.4
   - CHANGELOG = v1.11.4
-  - GitHub description = 更新為「Diff-centered second-pass review gate for Claude Code」（見 `docs/repo_page_reveal_recommendations.md`）
-  - tag = 待打
+  - pyproject description = `"Diff-centered second-pass review gate for Claude Code"`
+  - GitHub About = §1.2 定位句（已套用）
+  - GitHub topics = 7 項（已套用）
+  - README badges = Tests + Stop-hook + diff-centered + not full review（已上架）
+  - tag = `v1.11.4` 已打、已推
+  - GitHub release = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4（§4 七段格式）
   - pytest = 774 passed
 
 ## 本次會話做了什麼（2026-04-17，Session 7 — Narrow-positioning docs pass）
@@ -21,20 +25,41 @@
 
 ### 完成內容
 
-四個 commit，全部 docs/metadata，無 runtime 改動：
+六個 commit + GitHub 頁面操作 + tag/release。全部 docs/metadata，無 runtime 改動：
 
-| Commit | 主題 | 檔案 |
-|---|---|---|
-| 1 | 審計與追蹤工具 | 新增 `docs/positioning_audit.md` + `docs/positioning_consistency_checklist.md` |
-| 2 | 核心字串對齊 + README 重寫 | `pyproject.toml` / `cold_eyes/__init__.py` / `cold_eyes/prompt.py` (fallback) / `tests/test_shallow_and_context.py` / `README.md` 新增 `What it is / What it is not / When it works best / When not to use / Review paths overview / Why deeper paths exist` 段落 |
-| 3 | 揭露分層文件 | 新增 `docs/disclosure_matrix.md` + `docs/repo_page_reveal_recommendations.md` + `docs/release_note_template.md` |
-| 4 | 殘留清理 + version bump | `docs/trust-model.md:7` 改寫；`docs/assurance-matrix.md:14,49` 改寫；`__init__.py` → 1.11.4；CHANGELOG 加 v1.11.4 條目；HANDOVER 同步 |
+| Commit | Hash | 主題 | 檔案 |
+|---|---|---|---|
+| 1 | `a6a2191` | 審計與追蹤工具 | 新增 `docs/positioning_audit.md` + `docs/positioning_consistency_checklist.md` |
+| 2 | `4f2ddef` | 核心字串對齊 + README 重寫 | `pyproject.toml` / `cold_eyes/__init__.py` / `cold_eyes/prompt.py` (fallback) / `tests/test_shallow_and_context.py` / `README.md` 新增 `What it is / What it is not / When it works best / When not to use / Review paths overview / Why deeper paths exist` 段落 |
+| 3 | `a6da9ab` | 揭露分層文件 | 新增 `docs/disclosure_matrix.md` + `docs/repo_page_reveal_recommendations.md` + `docs/release_note_template.md` |
+| 4 | `f9d56d0` | 殘留清理 + version bump | `docs/trust-model.md:7` 改寫；`docs/assurance-matrix.md:14,49` 改寫；`__init__.py` → 1.11.4；CHANGELOG 加 v1.11.4 條目；HANDOVER 同步 |
+| 5 | `0d8b16b` | checklist §6 標 applied | `docs/repo_page_reveal_recommendations.md` 前兩項 applied |
+| 6 | `c29c7ba` | README positioning badges | 3 個 shields.io badges（Stop-hook / diff-centered / not full review）；checklist §6 全數 applied |
+
+### GitHub 頁面操作（非 commit）
+
+- **About description** — 248 字元功能堆疊式 → §1.2 定位句（239 字元）
+- **Topics** — 從空 → `claude-code` / `review-gate` / `git-hooks` / `code-quality` / `llm-guardrails` / `developer-tools` / `second-pass-review`
+- **Tag** — `v1.11.4` 已打於 `c29c7ba`
+- **Release** — 已發佈，body 依 `docs/release_note_template.md` §4 七段 checklist（What / Behavior / Cost / Context / Blocking / Migration / Who should care；除 What + Details 外皆 `none`）
 
 ### 驗收
 
-- `rg -i "zero-context|diff-only|only reads the diff"` 全 repo 只剩 `CHANGELOG.md`（歷史 L183）與 `docs/positioning_audit.md`（審計記錄）有匹配
+- `rg -i "zero-context|diff-only|only reads the diff"` 全 repo 剩餘匹配均為預期：`CHANGELOG.md`（歷史 L183 + v1.11.4 details）、`docs/positioning_audit.md`（審計記錄）、`docs/positioning_consistency_checklist.md`（rewrite 清單）、`HANDOVER.md`（本會話紀錄）
 - pytest 774 passed
 - README 首 ~700 字可在 2 分鐘內回答「是什麼 / 不是什麼 / 何時用 / 何時別用」
+- `python -c "import cold_eyes; print(cold_eyes.__version__)"` → `1.11.4`
+- GitHub About / topics / badges / tag / release 全部對齊
+
+### 對外文案定位鎖定點
+
+> Cold Eyes is a diff-centered, second-pass review gate for Claude Code. It reads the working-tree diff as primary input. On the deep path it also pulls limited, structured supporting context (recent commits, co-changed files) + regex-based detector hints. It is **not** a full code review, **not** intent-aware. `--v2` is an opt-in deeper verification mode with multi-gate + retry, not the product headline.
+
+此句為 `docs/positioning_audit.md §6` 的 target。後續任何 PR 若動到 README 首屏、`pyproject.toml` description、`cold_eyes/__init__.py` docstring、`cold_eyes/prompt.py` fallback、`docs/trust-model.md` L5-L9、`docs/assurance-matrix.md` — 須對照 `docs/positioning_consistency_checklist.md` 檢查。
+
+### 不得再出現的表述
+
+`diff-only` / `only reads the diff` / `zero-context` / `no context` / `reviews code changes without context` / `complete review framework` / `full verification platform` / `comprehensive code understanding`。這些在 `docs/positioning_audit.md` §1 和 §6 有對應替換詞。
 
 ## 過往會話（2026-04-13，Session 6 — Bug Fix Final + Deploy）
 
