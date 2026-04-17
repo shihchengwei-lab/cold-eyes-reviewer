@@ -1,6 +1,9 @@
 # Cold Eyes Reviewer
 
 ![Tests](https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/workflows/test.yml/badge.svg)
+![Claude Code](https://img.shields.io/badge/Claude%20Code-Stop--hook-blue)
+![Review](https://img.shields.io/badge/Review-diff--centered-green)
+![Scope](https://img.shields.io/badge/Scope-not%20full%20review-lightgrey)
 
 A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
 

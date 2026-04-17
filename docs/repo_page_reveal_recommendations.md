@@ -115,5 +115,5 @@ When any of these is updated, cross-check the other two.
 
 - [x] Paste §1.2 into the About description field. *(applied 2026-04-17 via `gh repo edit`)*
 - [x] Clear current topics; apply §2 list. *(applied 2026-04-17: claude-code, review-gate, git-hooks, code-quality, llm-guardrails, developer-tools, second-pass-review)*
-- [ ] Review pinned README snippet area; leave the current test badge.
-- [ ] On the next `Releases` entry, paste the §4 checklist.
+- [x] Review pinned README snippet area; add §3.2 positioning badges. *(applied 2026-04-17: Stop-hook / diff-centered / not full review, alongside existing Tests badge)*
+- [x] On the next `Releases` entry, paste the §4 checklist. *(applied 2026-04-17: v1.11.4 release)*
