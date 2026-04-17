@@ -5,7 +5,7 @@
 - **版本：** v1.11.5（master，已 push；tag 待打）
 - **分支：** master
 - **測試：** 774 passed / 0 failed
-- **部署：** v1.11.5 含 runtime 改動（`cold_eyes/context.py` 截斷邏輯），需 `cp cold_eyes/ ~/.claude/scripts/` 同步
+- **部署：** v1.11.5 `cold_eyes/context.py` + `cold_eyes/__init__.py` 已同步至 `~/.claude/scripts/cold_eyes/`（`verify-install: ok=true`）
 - **版本訊號：**
   - `__init__.py` = 1.11.5
   - CHANGELOG = v1.11.5
@@ -14,8 +14,10 @@
   - GitHub topics = 7 項（已套用）
   - README badges = Tests + Stop-hook + diff-centered + not full review（已上架）
   - tag `v1.11.4` = 已打、已推
-  - tag `v1.11.5` = 待打
+  - tag `v1.11.5` = 已打、已推
   - GitHub release v1.11.4 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4
+  - GitHub release v1.11.5 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.5
+  - CI (`9965c2a`) = ubuntu/macOS/windows × py3.10/3.12 全綠
   - pytest = 774 passed
 
 ## 本次會話做了什麼（2026-04-17，Session 7 — Narrow-positioning docs pass）
@@ -70,7 +72,9 @@ v1.11.4 push 後發現 `ubuntu-latest, 3.10` 間歇性失敗：`test_build_conte
 - `cold_eyes/context.py` — 在計算 `char_limit` 前 `body_budget = max_tokens - notice_tokens`；belt-and-suspenders：若 ASCII rounding 還超 1 token，再 trim 一次。
 - `tests/test_shallow_and_context.py::test_build_context_token_budget_enforced` — 斷言從 `<= 15` slack 收緊到嚴格 `<= max_budget`（10）。
 - CHANGELOG v1.11.5 + `__init__.py` bump。
-- commit `<填> fix: reserve space for context truncation notice (v1.11.5)`
+- commit `9965c2a fix: reserve space for context truncation notice (v1.11.5)`
+- Deploy 已同步 `~/.claude/scripts/cold_eyes/{context.py, __init__.py}`，`verify-install: ok=true`
+- CI 對 v1.11.5 全矩陣綠（ubuntu/macos/windows × 3.10/3.12）
 
 ## 過往會話（2026-04-13，Session 6 — Bug Fix Final + Deploy）
 
