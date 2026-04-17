@@ -1,5 +1,43 @@
 # Changelog
 
+## v1.11.5 — fix: context truncation notice space (CI flake)
+
+### What changed
+
+Fix `build_context()` token-budget truncation to reserve space for the `\n[context truncated]\n` notice before computing the body char limit — same pattern already applied to `git.py` diff truncation in Session 6 (R9#97). Previously the notice was appended after cutting to `max_tokens`, so `token_count` could overshoot by ~6 tokens (the notice cost), which flaked `test_build_context_token_budget_enforced` on CI ubuntu/3.10 (`assert 16 <= 15`).
+
+### Behavior changes
+
+- `build_context()` now strictly keeps `token_count <= max_tokens` in the truncation path (file: `cold_eyes/context.py`). Callers reading `token_count` for budget accounting get a tighter value.
+
+### Cost changes
+
+- `none` — token math only, no new LLM calls.
+
+### Context usage changes
+
+- Deep-path context block is now slightly shorter when truncation kicks in (because body budget is reduced by the notice cost, ~6 tokens for ASCII). In practice imperceptible at the default 2000-token budget.
+
+### Blocking / policy changes
+
+- `none`
+
+### Migration / opt-in notes
+
+- `none`. Pure bug fix.
+
+### Who should care
+
+Anyone running CI on Linux/Python 3.10 that hit the intermittent `test_build_context_token_budget_enforced` failure. Normal users: no visible change.
+
+### Details
+
+- `cold_eyes/context.py` — `build_context()` truncation block: reserve `notice_tokens` from `max_tokens` before computing `char_limit`; add a belt-and-suspenders second-pass trim in case ASCII rounding still overshoots by 1 token.
+- `tests/test_shallow_and_context.py::test_build_context_token_budget_enforced` — tighten assertion from `<= 15` slack to strict `<= max_budget` (10), with explanatory comment pointing to the reservation logic.
+- `cold_eyes/__init__.py` — `__version__ = "1.11.5"`.
+
+pytest: 774 passed.
+
 ## v1.11.4 — docs: narrow-positioning pass
 
 ### What changed

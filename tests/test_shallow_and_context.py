@@ -242,9 +242,11 @@ class TestContextRetrieval:
             assert "[End context]" in result["context_text"]
 
     def test_build_context_token_budget_enforced(self):
-        result = build_context(["cold_eyes/engine.py"], max_tokens=10)
-        # Allow small overshoot from framing text; budget is best-effort
-        assert result["token_count"] <= 15
+        max_budget = 10
+        result = build_context(["cold_eyes/engine.py"], max_tokens=max_budget)
+        # Budget is strictly enforced — truncation notice space is reserved
+        # before computing the body char limit (see cold_eyes/context.py).
+        assert result["token_count"] <= max_budget
 
     def test_build_context_summary_populated(self):
         result = build_context(["cold_eyes/engine.py"])

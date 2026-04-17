@@ -2,19 +2,20 @@
 
 ## 現況
 
-- **版本：** v1.11.4（master，已 push，tag 已打）
-- **分支：** master（`c29c7ba`）
+- **版本：** v1.11.5（master，已 push；tag 待打）
+- **分支：** master
 - **測試：** 774 passed / 0 failed
-- **部署：** v1.11.3 已同步 `~/.claude/scripts/`；v1.11.4 純 docs/metadata，runtime 未變動，不需重新 cp
+- **部署：** v1.11.5 含 runtime 改動（`cold_eyes/context.py` 截斷邏輯），需 `cp cold_eyes/ ~/.claude/scripts/` 同步
 - **版本訊號：**
-  - `__init__.py` = 1.11.4
-  - CHANGELOG = v1.11.4
+  - `__init__.py` = 1.11.5
+  - CHANGELOG = v1.11.5
   - pyproject description = `"Diff-centered second-pass review gate for Claude Code"`
   - GitHub About = §1.2 定位句（已套用）
   - GitHub topics = 7 項（已套用）
   - README badges = Tests + Stop-hook + diff-centered + not full review（已上架）
-  - tag = `v1.11.4` 已打、已推
-  - GitHub release = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4（§4 七段格式）
+  - tag `v1.11.4` = 已打、已推
+  - tag `v1.11.5` = 待打
+  - GitHub release v1.11.4 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4
   - pytest = 774 passed
 
 ## 本次會話做了什麼（2026-04-17，Session 7 — Narrow-positioning docs pass）
@@ -60,6 +61,16 @@
 ### 不得再出現的表述
 
 `diff-only` / `only reads the diff` / `zero-context` / `no context` / `reviews code changes without context` / `complete review framework` / `full verification platform` / `comprehensive code understanding`。這些在 `docs/positioning_audit.md` §1 和 §6 有對應替換詞。
+
+### 追加 — v1.11.5 CI flake 修補
+
+v1.11.4 push 後發現 `ubuntu-latest, 3.10` 間歇性失敗：`test_build_context_token_budget_enforced - assert 16 <= 15`。追到 `cold_eyes/context.py:70-77` 截斷邏輯沒替 `\n[context truncated]\n` notice（~6 tokens ASCII）預留空間，token_count 會超過 `max_tokens` 最多 6。Session 6 R9#97 在 `git.py` 為 diff 截斷修過同模式，本次把同個 fix 擴到 `context.py`。
+
+改動：
+- `cold_eyes/context.py` — 在計算 `char_limit` 前 `body_budget = max_tokens - notice_tokens`；belt-and-suspenders：若 ASCII rounding 還超 1 token，再 trim 一次。
+- `tests/test_shallow_and_context.py::test_build_context_token_budget_enforced` — 斷言從 `<= 15` slack 收緊到嚴格 `<= max_budget`（10）。
+- CHANGELOG v1.11.5 + `__init__.py` bump。
+- commit `<填> fix: reserve space for context truncation notice (v1.11.5)`
 
 ## 過往會話（2026-04-13，Session 6 — Bug Fix Final + Deploy）
 

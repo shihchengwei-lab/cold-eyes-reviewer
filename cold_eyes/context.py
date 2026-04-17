@@ -66,15 +66,26 @@ def build_context(files, max_tokens=2000):
         + "\n[End context]\n"
     )
 
-    # Enforce token budget
+    # Enforce token budget (reserve space for the truncation notice so the
+    # final token_count stays within max_tokens — same pattern as git.py).
     token_count = estimate_tokens(context_text)
     if token_count > max_tokens:
+        truncation_notice = "\n[context truncated]\n"
+        notice_tokens = estimate_tokens(truncation_notice)
+        body_budget = max(max_tokens - notice_tokens, 0)
         ascii_count = sum(1 for c in context_text if ord(c) < 128)
         non_ascii_count = len(context_text) - ascii_count
         ratio = (ascii_count * 4 + non_ascii_count) / max(len(context_text), 1)
-        char_limit = int(max_tokens * ratio)
-        context_text = context_text[:char_limit] + "\n[context truncated]\n"
+        char_limit = int(body_budget * ratio)
+        context_text = context_text[:char_limit] + truncation_notice
         token_count = estimate_tokens(context_text)
+        # Belt-and-suspenders: if ratio rounding still overshoots, trim body.
+        if token_count > max_tokens and char_limit > 0:
+            overshoot_tokens = token_count - max_tokens
+            overshoot_chars = max(int(overshoot_tokens * ratio) + 1, 1)
+            char_limit = max(char_limit - overshoot_chars, 0)
+            context_text = context_text[:char_limit] + truncation_notice
+            token_count = estimate_tokens(context_text)
 
     file_count = len(sections)
     return {
