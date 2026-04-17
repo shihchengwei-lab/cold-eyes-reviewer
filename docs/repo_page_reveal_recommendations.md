@@ -113,8 +113,7 @@ When any of these is updated, cross-check the other two.
 
 ## 6. Application checklist (when you apply these to GitHub UI)
 
-- [ ] Paste §1.1 or §1.2 into the About description field.
-- [ ] Clear current topics; apply §2 list.
+- [x] Paste §1.2 into the About description field. *(applied 2026-04-17 via `gh repo edit`)*
+- [x] Clear current topics; apply §2 list. *(applied 2026-04-17: claude-code, review-gate, git-hooks, code-quality, llm-guardrails, developer-tools, second-pass-review)*
 - [ ] Review pinned README snippet area; leave the current test badge.
 - [ ] On the next `Releases` entry, paste the §4 checklist.
-- [ ] Record the date this was applied here: `(applied YYYY-MM-DD)`.
