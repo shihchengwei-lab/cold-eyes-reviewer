@@ -4,7 +4,7 @@ How Cold Eyes works, what it can and cannot catch, and how to verify.
 
 ## What Cold Eyes is
 
-A zero-context second-pass gate. It reads a git diff and produces a block/pass verdict. It sees only the diff — no conversation, no project history, no requirements, no full codebase.
+A diff-centered second-pass gate. It reads a git diff and produces a block/pass verdict. The diff is the primary input. On the deep path it also pulls limited, structured supporting context — recent commit messages and co-changed files from git history — plus regex-based detector hints, to reduce obvious blind spots. It has no conversation content, no requirements spec, and no access to the full codebase beyond what that bounded context surfaces.
 
 It is not an AI code reviewer in the general sense. It is a **risk gate** that catches surface-level issues visible in a single diff.
 

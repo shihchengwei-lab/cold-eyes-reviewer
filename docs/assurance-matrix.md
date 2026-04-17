@@ -11,7 +11,7 @@ The five categories from the review prompt (`cold-review-prompt.txt`), mapped to
 | **security** (injection, XSS, secrets, path traversal) | High | High (critical) | Test fixtures flagged as secrets | Subtle auth bypass not in diff | 4 TP, 2 FN | `confidence=high` reduces FP; FN cases in eval corpus |
 | **correctness** (error handling, resource leak) | Medium-high | High (critical/major) | Intentional removal flagged | Multi-file logic errors | 2 TP | Override for intentional changes |
 | **reference** (dangling import, dead ref) | Medium | Medium | Renamed-not-deleted | References to files not in diff | 1 TP | Broader diff scope (`pr-diff`) helps |
-| **consistency** (text contradictions) | Low-medium | Low (usually minor) | Subjective wording changes | Cross-document inconsistency | 0 TP | Inherently limited by zero-context design |
+| **consistency** (text contradictions) | Low-medium | Low (usually minor) | Subjective wording changes | Cross-document inconsistency | 0 TP | Inherently limited — cross-document inconsistency needs a full-context view Cold Eyes does not have |
 | **complexity** (copy-paste, unnecessary) | Low | Low (usually minor) | Legitimate duplication | Subtle over-engineering | 0 TP | Prompt excludes style preferences |
 
 **Reading this table:** High detectability + low FP = reliable. Low detectability + high FN = don't rely on Cold Eyes alone for this category.
@@ -46,7 +46,7 @@ How Cold Eyes handles non-review situations.
 
 ## Scope limitations
 
-What zero-context review cannot do, and workarounds where they exist.
+What a diff-centered review cannot do, and workarounds where they exist.
 
 | Limitation | Impact | Workaround |
 |---|---|---|

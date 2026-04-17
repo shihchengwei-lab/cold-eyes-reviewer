@@ -1,5 +1,49 @@
 # Changelog
 
+## v1.11.4 — docs: narrow-positioning pass
+
+### What changed
+
+Narrow the outward-facing positioning to "diff-centered second-pass gate for Claude Code" across `pyproject`, package docstring, prompt fallback, README, `docs/trust-model.md`, and `docs/assurance-matrix.md`. Add four new docs to make "what to disclose where" a design instead of a convention: `positioning_audit.md`, `positioning_consistency_checklist.md`, `disclosure_matrix.md`, `repo_page_reveal_recommendations.md`, `release_note_template.md`.
+
+### Behavior changes
+
+- `none`
+
+### Cost changes
+
+- `none`
+
+### Context usage changes
+
+- `none`. Deep path still loads the same recent commits + co-changed files. Detector hints unchanged. v2 pipeline unchanged.
+
+### Blocking / policy changes
+
+- `none`
+
+### Migration / opt-in notes
+
+- `none`. `import cold_eyes` module docstring text and `pyproject` description change are metadata-only.
+
+### Who should care
+
+Readers of the README or the GitHub About. No runtime behavior change.
+
+### Details
+
+- `pyproject.toml:8` — `description` now `"Diff-centered second-pass review gate for Claude Code"`.
+- `cold_eyes/__init__.py:1` — module docstring aligned.
+- `cold_eyes/prompt.py:42` — fallback prompt string (used only when template file missing): `zero-context reviewer` → `diff-centered reviewer`.
+- `tests/test_shallow_and_context.py:31` — assert OR-fallback updated to `diff-centered`.
+- `README.md` — replace absolute-wording positioning paragraph with structured `What it is / What it is not / When it works best / When not to use it as a blocking gate / Review paths overview / Why deeper paths exist` block.
+- `docs/trust-model.md:7` — rewrite "What Cold Eyes is" paragraph to name bounded context explicitly; keep L9 negation sentence.
+- `docs/assurance-matrix.md:14,49` — replace `zero-context design` / `zero-context review` with `diff-centered` phrasing.
+- New: `docs/positioning_audit.md`, `docs/positioning_consistency_checklist.md`, `docs/disclosure_matrix.md`, `docs/repo_page_reveal_recommendations.md`, `docs/release_note_template.md`.
+- `cold_eyes/__init__.py` — `__version__ = "1.11.4"`.
+
+pytest: 774 passed.
+
 ## v1.11.3 — 48 bug fixes, 101/101 complete
 
 Final bug-fix batch from 101-bug report. 1 major, 47 minor. All 101 bugs now addressed.

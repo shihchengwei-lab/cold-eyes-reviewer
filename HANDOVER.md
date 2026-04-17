@@ -2,18 +2,41 @@
 
 ## 現況
 
-- **版本：** v1.11.3（master，已 push）
+- **版本：** v1.11.4（master，docs-only pass；待 push）
 - **分支：** master
 - **測試：** 774 passed / 0 failed
-- **部署：** 已同步 `~/.claude/scripts/`（清除舊 `cold_eyes/cold_eyes/` 巢狀殘留 + `cold_review_engine.py`）
+- **部署：** v1.11.3 已同步 `~/.claude/scripts/`；v1.11.4 僅 docs 改動，需要時可再 `cp` 但不影響 runtime
 - **版本訊號：**
-  - `__init__.py` = 1.11.3
-  - CHANGELOG = v1.11.3
-  - GitHub description = 774 tests
+  - `__init__.py` = 1.11.4
+  - CHANGELOG = v1.11.4
+  - GitHub description = 更新為「Diff-centered second-pass review gate for Claude Code」（見 `docs/repo_page_reveal_recommendations.md`）
   - tag = 待打
   - pytest = 774 passed
 
-## 本次會話做了什麼（2026-04-13，Session 6 — Bug Fix Final + Deploy）
+## 本次會話做了什麼（2026-04-17，Session 7 — Narrow-positioning docs pass）
+
+### 起點
+
+接手 v1.11.3（`c4c0bac`）。外部輸入 `C:\Users\kk789\Downloads\agent_roadmap_narrow_positioning.md`，目標將對外定位收斂成「Claude Code 的 diff-centered second-pass gate」，不否認 v2 與 deep-path 的 bounded context。
+
+### 完成內容
+
+四個 commit，全部 docs/metadata，無 runtime 改動：
+
+| Commit | 主題 | 檔案 |
+|---|---|---|
+| 1 | 審計與追蹤工具 | 新增 `docs/positioning_audit.md` + `docs/positioning_consistency_checklist.md` |
+| 2 | 核心字串對齊 + README 重寫 | `pyproject.toml` / `cold_eyes/__init__.py` / `cold_eyes/prompt.py` (fallback) / `tests/test_shallow_and_context.py` / `README.md` 新增 `What it is / What it is not / When it works best / When not to use / Review paths overview / Why deeper paths exist` 段落 |
+| 3 | 揭露分層文件 | 新增 `docs/disclosure_matrix.md` + `docs/repo_page_reveal_recommendations.md` + `docs/release_note_template.md` |
+| 4 | 殘留清理 + version bump | `docs/trust-model.md:7` 改寫；`docs/assurance-matrix.md:14,49` 改寫；`__init__.py` → 1.11.4；CHANGELOG 加 v1.11.4 條目；HANDOVER 同步 |
+
+### 驗收
+
+- `rg -i "zero-context|diff-only|only reads the diff"` 全 repo 只剩 `CHANGELOG.md`（歷史 L183）與 `docs/positioning_audit.md`（審計記錄）有匹配
+- pytest 774 passed
+- README 首 ~700 字可在 2 分鐘內回答「是什麼 / 不是什麼 / 何時用 / 何時別用」
+
+## 過往會話（2026-04-13，Session 6 — Bug Fix Final + Deploy）
 
 ### 起點
 
