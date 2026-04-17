@@ -2,79 +2,86 @@
 
 ## 現況
 
-- **版本：** v1.11.5（master，已 push；tag 待打）
+- **版本：** v1.11.5（master `5866656`，已 push，tag 已打）
 - **分支：** master
 - **測試：** 774 passed / 0 failed
-- **部署：** v1.11.5 `cold_eyes/context.py` + `cold_eyes/__init__.py` 已同步至 `~/.claude/scripts/cold_eyes/`（`verify-install: ok=true`）
+- **CI：** `9965c2a` 全矩陣綠（ubuntu/macos/windows × py 3.10/3.12）
+- **部署：** `~/.claude/scripts/cold_eyes/{context.py, __init__.py}` 已同步，`verify-install: ok=true`
 - **版本訊號：**
-  - `__init__.py` = 1.11.5
-  - CHANGELOG = v1.11.5
+  - `__init__.py` = `1.11.5`
+  - CHANGELOG 最新條目 = `v1.11.5 — fix: context truncation notice space`
   - pyproject description = `"Diff-centered second-pass review gate for Claude Code"`
-  - GitHub About = §1.2 定位句（已套用）
-  - GitHub topics = 7 項（已套用）
-  - README badges = Tests + Stop-hook + diff-centered + not full review（已上架）
-  - tag `v1.11.4` = 已打、已推
-  - tag `v1.11.5` = 已打、已推
-  - GitHub release v1.11.4 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4
-  - GitHub release v1.11.5 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.5
-  - CI (`9965c2a`) = ubuntu/macOS/windows × py3.10/3.12 全綠
-  - pytest = 774 passed
+  - GitHub About = §1.2 定位句（239 字元，已套用）
+  - GitHub topics = 7 項（`claude-code` / `review-gate` / `git-hooks` / `code-quality` / `llm-guardrails` / `developer-tools` / `second-pass-review`）
+  - README badges = Tests + Stop-hook + diff-centered + not full review
+  - tag `v1.11.4` / `v1.11.5` = 都已打、已推
+  - release v1.11.4 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4
+  - release v1.11.5 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.5
 
-## 本次會話做了什麼（2026-04-17，Session 7 — Narrow-positioning docs pass）
+## 本次會話做了什麼（2026-04-17，Session 7 — Narrow-positioning pass + context truncation fix）
 
 ### 起點
 
 接手 v1.11.3（`c4c0bac`）。外部輸入 `C:\Users\kk789\Downloads\agent_roadmap_narrow_positioning.md`，目標將對外定位收斂成「Claude Code 的 diff-centered second-pass gate」，不否認 v2 與 deep-path 的 bounded context。
 
-### 完成內容
+### 兩階段交付
 
-六個 commit + GitHub 頁面操作 + tag/release。全部 docs/metadata，無 runtime 改動：
+**階段 A — 窄定位 docs pass（v1.11.4）**，6 commits 全 docs/metadata，無 runtime 改動。
+**階段 B — CI flake hotfix（v1.11.5）**，2 commits 含 runtime 改動（`cold_eyes/context.py`），解 v1.11.4 push 時暴露的 `test_build_context_token_budget_enforced` 間歇失敗。
 
-| Commit | Hash | 主題 | 檔案 |
+### Commits 表
+
+| # | Hash | 主題 | 階段 |
 |---|---|---|---|
-| 1 | `a6a2191` | 審計與追蹤工具 | 新增 `docs/positioning_audit.md` + `docs/positioning_consistency_checklist.md` |
-| 2 | `4f2ddef` | 核心字串對齊 + README 重寫 | `pyproject.toml` / `cold_eyes/__init__.py` / `cold_eyes/prompt.py` (fallback) / `tests/test_shallow_and_context.py` / `README.md` 新增 `What it is / What it is not / When it works best / When not to use / Review paths overview / Why deeper paths exist` 段落 |
-| 3 | `a6da9ab` | 揭露分層文件 | 新增 `docs/disclosure_matrix.md` + `docs/repo_page_reveal_recommendations.md` + `docs/release_note_template.md` |
-| 4 | `f9d56d0` | 殘留清理 + version bump | `docs/trust-model.md:7` 改寫；`docs/assurance-matrix.md:14,49` 改寫；`__init__.py` → 1.11.4；CHANGELOG 加 v1.11.4 條目；HANDOVER 同步 |
-| 5 | `0d8b16b` | checklist §6 標 applied | `docs/repo_page_reveal_recommendations.md` 前兩項 applied |
-| 6 | `c29c7ba` | README positioning badges | 3 個 shields.io badges（Stop-hook / diff-centered / not full review）；checklist §6 全數 applied |
+| 1 | `a6a2191` | 新增 `docs/positioning_audit.md` + `docs/positioning_consistency_checklist.md` | A |
+| 2 | `4f2ddef` | 核心字串對齊 + README 前段重寫（加入 `What it is / What it is not / When it works best / When not to use / Review paths overview / Why deeper paths exist`）。檔案：`pyproject.toml` / `cold_eyes/__init__.py` / `cold_eyes/prompt.py` fallback / `tests/test_shallow_and_context.py` 斷言 / `README.md` | A |
+| 3 | `a6da9ab` | 新增 `docs/disclosure_matrix.md` + `docs/repo_page_reveal_recommendations.md` + `docs/release_note_template.md` | A |
+| 4 | `f9d56d0` | 殘留清理 + v1.11.4 bump：`docs/trust-model.md:7` / `docs/assurance-matrix.md:14,49` / `__init__.py` 1.11.3→1.11.4 / CHANGELOG v1.11.4 / HANDOVER 同步 | A |
+| 5 | `0d8b16b` | `docs/repo_page_reveal_recommendations.md §6` 前兩項標 applied | A |
+| 6 | `c29c7ba` | 3 個 shields.io positioning badges（Stop-hook / diff-centered / not full review）；checklist §6 全數 applied | A |
+| 7 | `6e2eb4a` | Session 7 第一次 handover finalize | A |
+| 8 | `9965c2a` | **hotfix v1.11.5**：`cold_eyes/context.py` 截斷邏輯預留 notice space；`tests/test_shallow_and_context.py` 斷言收緊至 `<= max_budget`；CHANGELOG v1.11.5 條目；`__init__.py` 1.11.4→1.11.5 | B |
+| 9 | `5866656` | v1.11.5 handover update | B |
 
 ### GitHub 頁面操作（非 commit）
 
 - **About description** — 248 字元功能堆疊式 → §1.2 定位句（239 字元）
-- **Topics** — 從空 → `claude-code` / `review-gate` / `git-hooks` / `code-quality` / `llm-guardrails` / `developer-tools` / `second-pass-review`
-- **Tag** — `v1.11.4` 已打於 `c29c7ba`
-- **Release** — 已發佈，body 依 `docs/release_note_template.md` §4 七段 checklist（What / Behavior / Cost / Context / Blocking / Migration / Who should care；除 What + Details 外皆 `none`）
+- **Topics** — 從空 → 7 項（見現況訊號）
+- **Tags** — `v1.11.4` 於 `c29c7ba`、`v1.11.5` 於 `9965c2a`
+- **Releases** — 兩版皆依 `docs/release_note_template.md` §4 七段 checklist 發佈
+
+### v1.11.5 hotfix 詳情
+
+v1.11.4 push 後 `ubuntu-latest, 3.10` 間歇失敗：`test_build_context_token_budget_enforced - assert 16 <= 15`。
+
+**根因**：`cold_eyes/context.py` 截斷邏輯按 ratio 切字元到 `max_tokens`，之後 append `\n[context truncated]\n`（~6 tokens ASCII）而沒有重新 trim。Session 6 R9#97 在 `git.py` 已經修過同一模式，但 `context.py` 沒連動。
+
+**修法**：`body_budget = max_tokens - notice_tokens` 後才算 `char_limit`，再加 belt-and-suspenders 二次 trim 處理 ASCII rounding overshoot。實測從「overshoot 5–6 tokens」收斂到「strict `<= max_tokens`」。
 
 ### 驗收
 
-- `rg -i "zero-context|diff-only|only reads the diff"` 全 repo 剩餘匹配均為預期：`CHANGELOG.md`（歷史 L183 + v1.11.4 details）、`docs/positioning_audit.md`（審計記錄）、`docs/positioning_consistency_checklist.md`（rewrite 清單）、`HANDOVER.md`（本會話紀錄）
-- pytest 774 passed
+- pytest 774 passed（本地 + CI 全矩陣）
+- `python -c "import cold_eyes; print(cold_eyes.__version__)"` → `1.11.5`
+- `rg -i "zero-context|diff-only|only reads the diff"` 剩餘匹配全為預期位置：`CHANGELOG.md`（歷史 L183 + v1.11.4 details）、`docs/positioning_audit.md`（審計）、`docs/positioning_consistency_checklist.md`（rewrite 清單）、`HANDOVER.md`（本會話紀錄）
 - README 首 ~700 字可在 2 分鐘內回答「是什麼 / 不是什麼 / 何時用 / 何時別用」
-- `python -c "import cold_eyes; print(cold_eyes.__version__)"` → `1.11.4`
 - GitHub About / topics / badges / tag / release 全部對齊
 
 ### 對外文案定位鎖定點
 
 > Cold Eyes is a diff-centered, second-pass review gate for Claude Code. It reads the working-tree diff as primary input. On the deep path it also pulls limited, structured supporting context (recent commits, co-changed files) + regex-based detector hints. It is **not** a full code review, **not** intent-aware. `--v2` is an opt-in deeper verification mode with multi-gate + retry, not the product headline.
 
-此句為 `docs/positioning_audit.md §6` 的 target。後續任何 PR 若動到 README 首屏、`pyproject.toml` description、`cold_eyes/__init__.py` docstring、`cold_eyes/prompt.py` fallback、`docs/trust-model.md` L5-L9、`docs/assurance-matrix.md` — 須對照 `docs/positioning_consistency_checklist.md` 檢查。
+此句為 `docs/positioning_audit.md §6` 的 target。後續任何 PR 若動到下列任一位置，須對照 `docs/positioning_consistency_checklist.md` 檢查：
+
+- `README.md` 首屏
+- `pyproject.toml` description
+- `cold_eyes/__init__.py` docstring
+- `cold_eyes/prompt.py` fallback 字串
+- `docs/trust-model.md` L5-L9
+- `docs/assurance-matrix.md`
 
 ### 不得再出現的表述
 
-`diff-only` / `only reads the diff` / `zero-context` / `no context` / `reviews code changes without context` / `complete review framework` / `full verification platform` / `comprehensive code understanding`。這些在 `docs/positioning_audit.md` §1 和 §6 有對應替換詞。
-
-### 追加 — v1.11.5 CI flake 修補
-
-v1.11.4 push 後發現 `ubuntu-latest, 3.10` 間歇性失敗：`test_build_context_token_budget_enforced - assert 16 <= 15`。追到 `cold_eyes/context.py:70-77` 截斷邏輯沒替 `\n[context truncated]\n` notice（~6 tokens ASCII）預留空間，token_count 會超過 `max_tokens` 最多 6。Session 6 R9#97 在 `git.py` 為 diff 截斷修過同模式，本次把同個 fix 擴到 `context.py`。
-
-改動：
-- `cold_eyes/context.py` — 在計算 `char_limit` 前 `body_budget = max_tokens - notice_tokens`；belt-and-suspenders：若 ASCII rounding 還超 1 token，再 trim 一次。
-- `tests/test_shallow_and_context.py::test_build_context_token_budget_enforced` — 斷言從 `<= 15` slack 收緊到嚴格 `<= max_budget`（10）。
-- CHANGELOG v1.11.5 + `__init__.py` bump。
-- commit `9965c2a fix: reserve space for context truncation notice (v1.11.5)`
-- Deploy 已同步 `~/.claude/scripts/cold_eyes/{context.py, __init__.py}`，`verify-install: ok=true`
-- CI 對 v1.11.5 全矩陣綠（ubuntu/macos/windows × 3.10/3.12）
+`diff-only` / `only reads the diff` / `zero-context` / `no context` / `reviews code changes without context` / `complete review framework` / `full verification platform` / `comprehensive code understanding`。這些在 `docs/positioning_audit.md §1` 和 `§6` 有對應替換詞。
 
 ## 過往會話（2026-04-13，Session 6 — Bug Fix Final + Deploy）
 
