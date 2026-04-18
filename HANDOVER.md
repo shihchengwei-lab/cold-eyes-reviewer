@@ -2,7 +2,7 @@
 
 ## 現況
 
-- **版本：** v1.11.6（master `300327a`，已 push，tag 已打）
+- **版本：** v1.11.6（master `3fb29de`，已 push，tag `v1.11.6` @ `300327a`）
 - **分支：** master
 - **測試：** 776 passed / 0 failed
 - **CI：** `300327a` 全矩陣綠（ubuntu/macos/windows × py 3.10/3.12）
@@ -46,7 +46,7 @@
 | 1 | `66a4e4d` | fix: v1.11.6 初版 | 外部 agent |
 | 2 | `29ba4ea` | Revert v1.11.6 | 外部 agent |
 | 3 | `300327a` | Reapply v1.11.6 | 外部 agent |
-| 4 | （無 commit）| tag `v1.11.6` @ `300327a` + push + GH release | 本 session |
+| 4 | `3fb29de` | tag `v1.11.6` @ `300327a` + push + GH release + HANDOVER Session 8 | 本 session |
 
 ### 驗收
 
