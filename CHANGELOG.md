@@ -1,35 +1,5 @@
 # Changelog
 
-## v1.11.6 — fix: tolerate claude CLI multi-object JSON stdout
-
-### What changed
-
-`parse_review_output()` in `cold_eyes/review.py` used `json.loads()` on the full stdout from `claude --output-format json`. The CLI can emit two back-to-back top-level JSON objects — a `{"type":"system","subtype":"init",...}` preamble followed by the actual `{"type":"result",...}` payload — which made `json.loads()` raise `Extra data: line 3 column 1 (char 201)`. That was classified as a parse error → `infra_failed`, and in `block` policy mode it blocked the Stop hook. New helper `_extract_result_object()` walks top-level JSON objects via `json.JSONDecoder.raw_decode()` and selects the one carrying `type=="result"` (or a `result` field), falling back to the last object. Single-JSON path is unchanged.
-
-### Behavior changes
-
-- Stop hook no longer flakes with `infra_failed` when the claude CLI prefixes its output with an `init` system message.
-
-### Cost changes
-
-- `none`.
-
-### Context usage changes
-
-- `none`.
-
-### Blocking / policy changes
-
-- `none` — fewer spurious blocks in `block` mode, but the policy itself is unchanged.
-
-### Migration / opt-in notes
-
-- `none`. Pure bug fix.
-
-### Who should care
-
-- Anyone running cold-eyes in `block` mode whose Stop hooks occasionally blocked with `Parse error: Extra data: line N column 1 (char N)`.
-
 ## v1.11.5 — fix: context truncation notice space (CI flake)
 
 ### What changed

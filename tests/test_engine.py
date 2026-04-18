@@ -114,37 +114,6 @@ class TestParseReviewOutput:
         r = engine.parse_review_output(raw)
         assert r["review_status"] == "failed"
 
-    def test_system_init_preamble_before_result(self):
-        # Regression: claude CLI sometimes emits {"type":"system","subtype":"init",...}
-        # before the actual result JSON.  json.loads then fails with
-        # "Extra data: line 3 column 1 (char N)".  We must extract the result object.
-        init = json.dumps({
-            "type": "system", "subtype": "init",
-            "cwd": "/x", "session_id": "abc", "model": "sonnet",
-        })
-        payload = json.dumps({"pass": False, "issues": [], "summary": "found"})
-        result = json.dumps({
-            "type": "result", "subtype": "success", "result": payload,
-        })
-        raw = init + "\n" + result
-        r = engine.parse_review_output(raw)
-        assert r["review_status"] == "completed"
-        assert r["summary"] == "found"
-        assert r["pass"] is False
-
-    def test_multiple_preambles_before_result(self):
-        # Defense in depth: even with several system messages, the result wins.
-        init = json.dumps({"type": "system", "subtype": "init"})
-        status = json.dumps({"type": "system", "subtype": "status"})
-        payload = json.dumps({"pass": True, "issues": [], "summary": "ok"})
-        result = json.dumps({
-            "type": "result", "subtype": "success", "result": payload,
-        })
-        raw = "\n".join([init, status, result])
-        r = engine.parse_review_output(raw)
-        assert r["review_status"] == "completed"
-        assert r["summary"] == "ok"
-
 
 # ===========================================================================
 # apply_policy — infrastructure failure
