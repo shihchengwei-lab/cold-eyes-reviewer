@@ -2,23 +2,67 @@
 
 ## 現況
 
-- **版本：** v1.11.5（master `5866656`，已 push，tag 已打）
+- **版本：** v1.11.6（master `300327a`，已 push，tag 已打）
 - **分支：** master
-- **測試：** 774 passed / 0 failed
-- **CI：** `9965c2a` 全矩陣綠（ubuntu/macos/windows × py 3.10/3.12）
-- **部署：** `~/.claude/scripts/cold_eyes/{context.py, __init__.py}` 已同步，`verify-install: ok=true`
+- **測試：** 776 passed / 0 failed
+- **CI：** `300327a` 全矩陣綠（ubuntu/macos/windows × py 3.10/3.12）
+- **部署：** `~/.claude/scripts/cold_eyes/{context.py, review.py, __init__.py}` 已同步
 - **版本訊號：**
-  - `__init__.py` = `1.11.5`
-  - CHANGELOG 最新條目 = `v1.11.5 — fix: context truncation notice space`
+  - `__init__.py` = `1.11.6`
+  - CHANGELOG 最新條目 = `v1.11.6 — fix: tolerate claude CLI multi-object JSON stdout`
   - pyproject description = `"Diff-centered second-pass review gate for Claude Code"`
   - GitHub About = §1.2 定位句（239 字元，已套用）
   - GitHub topics = 7 項（`claude-code` / `review-gate` / `git-hooks` / `code-quality` / `llm-guardrails` / `developer-tools` / `second-pass-review`）
   - README badges = Tests + Stop-hook + diff-centered + not full review
-  - tag `v1.11.4` / `v1.11.5` = 都已打、已推
+  - tag `v1.11.4` / `v1.11.5` / `v1.11.6` = 都已打、已推
   - release v1.11.4 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4
   - release v1.11.5 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.5
+  - release v1.11.6 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.6
 
-## 本次會話做了什麼（2026-04-17，Session 7 — Narrow-positioning pass + context truncation fix）
+## 本次會話做了什麼（2026-04-18，Session 8 — 補完 v1.11.6 release）
+
+### 起點
+
+外部（另一個 project 的）agent 已在本 repo 提交 v1.11.6 runtime fix，但 **沒打 tag、沒發 release、沒更新 HANDOVER**。git log 呈現 revert→reapply 鋸齒：
+
+```
+300327a Reapply "fix: tolerate claude CLI multi-object JSON stdout (v1.11.6)"
+29ba4ea Revert "fix: tolerate claude CLI multi-object JSON stdout (v1.11.6)"
+66a4e4d fix: tolerate claude CLI multi-object JSON stdout (v1.11.6)
+```
+
+接手時狀態：`__init__.py` = `1.11.6`、CHANGELOG 已有 v1.11.6 條目、CI 全綠（三個 commit 都 success）、deploy 目錄 `~/.claude/scripts/cold_eyes/{context.py, review.py, __init__.py}` 與 repo `diff -q` 無差異。缺的只是 tag + release + HANDOVER 同步。
+
+### v1.11.6 修法摘要
+
+`cold_eyes/review.py` 的 `parse_review_output()` 原本對 `claude --output-format json` stdout 直接 `json.loads()`。CLI 有時會先吐 `{"type":"system","subtype":"init",...}` preamble 再吐 `{"type":"result",...}` payload，`json.loads()` raise `Extra data: line 3 column 1 (char N)` → 被分類為 parse error → `infra_failed`，block 模式下卡 Stop hook。新 helper `_extract_result_object()` 用 `json.JSONDecoder.raw_decode()` 走 top-level objects，挑 `type=="result"`（或帶 `result` 欄位）的那個，fallback 到最後一個。單 JSON 路徑不動。
+
+檔案：`cold_eyes/review.py` +30/-1、`tests/test_engine.py` +31（新增 2 test case：multi-object preamble + single JSON 兼容）、`cold_eyes/__init__.py` 1.11.5→1.11.6、CHANGELOG v1.11.6 條目。
+
+### Commits 表
+
+| # | Hash | 主題 | Session |
+|---|---|---|---|
+| 1 | `66a4e4d` | fix: v1.11.6 初版 | 外部 agent |
+| 2 | `29ba4ea` | Revert v1.11.6 | 外部 agent |
+| 3 | `300327a` | Reapply v1.11.6 | 外部 agent |
+| 4 | （無 commit）| tag `v1.11.6` @ `300327a` + push + GH release | 本 session |
+
+### 驗收
+
+- pytest 776 passed（v1.11.5 = 774 → +2 新 test）
+- `python -c "import cold_eyes; print(cold_eyes.__version__)"` → `1.11.6`
+- `gh release list` top = `v1.11.6 (Latest)`
+- `git ls-remote --tags origin | grep v1.11.6` → `300327a...refs/tags/v1.11.6`
+- CI 三個 v1.11.6 相關 run（fix / Revert / Reapply）全 success
+
+### 教訓（寫給下手者）
+
+外部 agent 在本 repo 動 runtime + push 時，只落 code 不落 release 訊號是常見遺留。接手 session 第一件事應該：`git log HEAD ^$(git describe --tags --abbrev=0)` 對照 `__init__.py` 版號與 `gh release list`，如果 code 版本超前 release，就補完 tag/release/HANDOVER。
+
+---
+
+## 過往會話（2026-04-17，Session 7 — Narrow-positioning pass + context truncation fix）
 
 ### 起點
 
