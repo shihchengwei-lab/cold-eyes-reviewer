@@ -157,27 +157,31 @@ class TestApplyPolicyInfraFailure:
             "issues": [], "summary": summary,
         }
 
-    def test_block_mode_blocks_on_infra_failure(self):
+    def test_block_mode_passes_on_infra_failure(self):
+        # Infra failures no longer block the user — reviewer bugs are our
+        # problem, not a canon violation.
         outcome = engine.apply_policy(self._infra_review(), "block", "critical", False, "medium")
-        assert outcome["action"] == "block"
+        assert outcome["action"] == "pass"
         assert outcome["state"] == STATE_INFRA_FAILED
-        assert "arm-override" in outcome["reason"]
 
     def test_report_mode_passes_on_infra_failure(self):
         outcome = engine.apply_policy(self._infra_review(), "report", "critical", False, "medium")
         assert outcome["action"] == "pass"
         assert outcome["state"] == STATE_INFRA_FAILED
 
-    def test_override_bypasses_infra_block(self):
+    def test_override_flag_no_longer_affects_infra(self):
+        # allow_once used to convert infra block → OVERRIDDEN; now infra
+        # never blocks, so allow_once has no effect on the outcome.
         outcome = engine.apply_policy(self._infra_review(), "block", "critical", True, "medium")
         assert outcome["action"] == "pass"
-        assert outcome["state"] == STATE_OVERRIDDEN
+        assert outcome["state"] == STATE_INFRA_FAILED
 
-    def test_infra_block_includes_error_detail(self):
+    def test_infra_failure_surfaces_error_detail(self):
         outcome = engine.apply_policy(
             self._infra_review("claude exit 1"), "block", "critical", False, "medium"
         )
         assert "claude exit 1" in outcome["reason"]
+        assert "claude exit 1" in outcome["display"]
 
 
 # ===========================================================================
@@ -1031,12 +1035,15 @@ class TestOverrideReason:
             self._review(), "block", "critical", True, "medium")
         assert "[" not in outcome["display"]
 
-    def test_infra_override_with_reason(self):
+    def test_infra_does_not_consume_override(self):
+        # Infra failures no longer block, so arming an override for them is
+        # a no-op. The override_reason does not appear in the outcome.
         outcome = engine.apply_policy(
             self._infra_review(), "block", "critical", True, "medium",
             override_reason="infrastructure")
-        assert outcome["reason"] == "infrastructure"
-        assert "[infrastructure]" in outcome["display"]
+        assert outcome["action"] == "pass"
+        assert outcome["state"] == STATE_INFRA_FAILED
+        assert "[infrastructure]" not in outcome["display"]
 
     # -- block paths --
 
@@ -1045,10 +1052,12 @@ class TestOverrideReason:
             self._review(), "block", "critical", False, "medium")
         assert "arm-override" in outcome["reason"]
 
-    def test_infra_block_includes_override_hint(self):
+    def test_infra_failure_does_not_emit_override_hint(self):
+        # Infra failures pass rather than block, so no override hint is needed.
         outcome = engine.apply_policy(
             self._infra_review(), "block", "critical", False, "medium")
-        assert "arm-override" in outcome["reason"]
+        assert "arm-override" not in outcome["reason"]
+        assert outcome["action"] == "pass"
 
     def test_pass_no_override_hint(self):
         review = {"pass": True, "review_status": "completed",
@@ -1537,7 +1546,7 @@ class TestGitCommandError:
         monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "h.jsonl"))
         result = _engine_mod.run(mode="block", adapter=MockAdapter())
         assert result["state"] == STATE_INFRA_FAILED
-        assert result["action"] == "block"
+        assert result["action"] == "pass"
 
     def test_engine_config_error_is_infra_failed(self, monkeypatch, tmp_path):
         """Engine maps ConfigError from collect_files to infra_failed."""
