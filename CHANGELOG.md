@@ -1,5 +1,45 @@
 # Changelog
 
+## v1.12.0 — feat: gate mode coverage governance
+
+### What changed
+
+New **gate mode** profile for Cold Eyes, selectable via `python cli.py init --profile gate` or the new `.cold-review-policy.gate.yml`. Adds a coverage gate (`cold_eyes/coverage_gate.py`) that evaluates change-level test coverage alongside the LLM review, governed through policy so that coverage shortfalls can block a Stop hook independently of reviewer findings. `apply_policy()` now separates the reviewer verdict (what the LLM said) from the final action (what the user sees), so override/coverage governance can compose cleanly. Infrastructure parse/CLI failures (`engine_ok == false`) no longer block regardless of mode — rationale in `cold_eyes/policy.py:142-154`. `quality-report` gains `gate_quality` metrics; history schema grows coverage + gate fields (`docs/history-schema.md`).
+
+### Behavior changes
+
+- **New:** Gate profile (`init --profile gate`) installs `.cold-review-policy.gate.yml` with coverage thresholds and strategy defaults. Existing installs are unaffected until the profile is selected.
+- **New:** Coverage gate runs alongside LLM review when enabled; coverage block still emits the standard Claude Code Stop hook payload `{"decision":"block","reason":"..."}`.
+- **Changed:** `infra_failed` is now always non-blocking. Previously `block` mode returned `action=block` on reviewer/CLI parse failure, which punished the user for the reviewer's own bug.
+- **Changed:** `policy.apply_policy()` return shape still contains `action` and `state`, but the internal reviewer-verdict / final-action split means downstream consumers that read both should recheck (`cold_eyes/gates/result.py`).
+
+### Cost changes
+
+- Gate profile adds one coverage computation per review when enabled. No new LLM calls.
+
+### Context usage changes
+
+- `none`.
+
+### Blocking / policy changes
+
+- `infra_failed` no longer blocks in any mode (behaviour change; was previously block in `block` mode).
+- Coverage gate introduces a new blocking path when the profile is enabled and coverage is below threshold.
+
+### Migration / opt-in notes
+
+- **Opt-in.** Existing users stay on the default profile until they explicitly run `init --profile gate`.
+- `allow_once` now has no effect on `infra_failed` (override consumed only on reviewer verdict blocks).
+
+### Who should care
+
+- Teams wanting a coverage-gated Stop hook on top of LLM review.
+- Anyone relying on `infra_failed` being a blocking state — it no longer is.
+
+### Test count
+
+- 798 passed (v1.11.6: 776 → +22).
+
 ## v1.11.6 — fix: tolerate claude CLI multi-object JSON stdout
 
 ### What changed
