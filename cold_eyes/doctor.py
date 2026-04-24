@@ -10,6 +10,34 @@ from cold_eyes.git import git_cmd, GitCommandError
 from cold_eyes.config import load_policy, POLICY_FILENAME
 
 
+DEFAULT_POLICY_TEMPLATE = """# Cold Eyes Reviewer - per-repo configuration
+# See README.md for all options.
+mode: block
+block_threshold: critical
+confidence: medium
+"""
+
+
+GATE_POLICY_TEMPLATE = """# Cold Eyes Reviewer - Claude Code Stop-hook gate profile
+# Gate mode is a diff-centered risk gate, not a full-context reviewer.
+mode: block
+scope: staged
+model: sonnet
+block_threshold: critical
+confidence: medium
+truncation_policy: warn
+minimum_coverage_pct: 80
+coverage_policy: warn
+fail_on_unreviewed_high_risk: true
+"""
+
+
+IGNORE_TEMPLATE = """# Cold Eyes Reviewer - additional files to skip
+# One pattern per line (glob syntax).
+# Built-in ignores (*.lock, dist/*, node_modules/*, etc.) are always active.
+"""
+
+
 def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
     """Check environment health. Return structured report dict."""
     if scripts_dir is None:
@@ -223,11 +251,11 @@ def run_doctor_fix(scripts_dir=None, repo_root=None):
             "doctor": report}
 
 
-def run_init(repo_root=None):
+def run_init(repo_root=None, profile="default", force=False):
     """Initialize Cold Eyes Reviewer in a git repository.
 
-    Creates default policy and ignore files if they don't exist.
-    Returns report dict.
+    Creates policy and ignore files if they don't exist. Existing policy is
+    preserved unless force=True.
     """
     if repo_root is None:
         try:
@@ -236,31 +264,37 @@ def run_init(repo_root=None):
             return {"action": "init", "ok": False,
                     "error": "not in a git repository"}
 
+    if profile not in ("default", "gate"):
+        return {"action": "init", "ok": False,
+                "error": f"unknown profile: {profile}"}
+
     created = []
+    skipped = []
 
     # Create default policy file
     policy_path = os.path.join(repo_root, POLICY_FILENAME)
-    if not os.path.isfile(policy_path):
+    policy_template = GATE_POLICY_TEMPLATE if profile == "gate" else DEFAULT_POLICY_TEMPLATE
+    if force or not os.path.isfile(policy_path):
         with open(policy_path, "w", encoding="utf-8") as f:
-            f.write(
-                "# Cold Eyes Reviewer — per-repo configuration\n"
-                "# See README.md for all options.\n"
-                "mode: block\n"
-                "block_threshold: critical\n"
-                "confidence: medium\n"
-            )
+            f.write(policy_template)
         created.append(POLICY_FILENAME)
-
+    else:
+        skipped.append(POLICY_FILENAME)
     # Create default ignore file
     ignore_path = os.path.join(repo_root, ".cold-review-ignore")
     if not os.path.isfile(ignore_path):
         with open(ignore_path, "w", encoding="utf-8") as f:
-            f.write(
-                "# Cold Eyes Reviewer — additional files to skip\n"
-                "# One pattern per line (glob syntax).\n"
-                "# Built-in ignores (*.lock, dist/*, node_modules/*, etc.) are always active.\n"
-            )
+            f.write(IGNORE_TEMPLATE)
         created.append(".cold-review-ignore")
+    else:
+        skipped.append(".cold-review-ignore")
+    next_steps = [
+        "Run: python cold_eyes/cli.py doctor",
+        "Use Claude Code Stop hook with cold-review.sh",
+    ]
+    if profile == "gate":
+        next_steps.append("Stage a focused diff before running the gate profile")
 
     return {"action": "init", "ok": True, "repo_root": repo_root,
-            "created": created}
+            "profile": profile, "created": created, "skipped": skipped,
+            "next_steps": next_steps}

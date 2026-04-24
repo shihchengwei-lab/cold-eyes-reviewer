@@ -64,6 +64,9 @@ def _run_v2(args):
         ("shallow_model", "shallow_model"),
         ("context_tokens", "context_tokens"),
         ("max_input_tokens", "max_input_tokens"),
+        ("minimum_coverage_pct", "minimum_coverage_pct"),
+        ("coverage_policy", "coverage_policy"),
+        ("fail_on_unreviewed_high_risk", "fail_on_unreviewed_high_risk"),
     ]:
         val = getattr(args, attr, None)
         if val is not None:
@@ -146,10 +149,17 @@ def main():
                         help="Include per-path breakdown in stats")
     parser.add_argument("--reason", default=None,
                         help="Override reason for arm-override")
+    parser.add_argument("--note", default=None,
+                        help="Optional human note for arm-override")
     parser.add_argument("--ttl", type=int, default=10,
                         help="Token TTL in minutes for arm-override (default: 10)")
     parser.add_argument("--fix", action="store_true",
                         help="Auto-fix safe issues (for doctor command)")
+    parser.add_argument("--profile", default="default",
+                        choices=["default", "gate"],
+                        help="Init profile (default or gate)")
+    parser.add_argument("--force", action="store_true",
+                        help="Overwrite existing policy when used with init")
     parser.add_argument("--keep-days", type=int, default=None,
                         help="Keep entries from last N days (for history-prune)")
     parser.add_argument("--keep-entries", type=int, default=None,
@@ -165,6 +175,14 @@ def main():
     parser.add_argument("--truncation-policy", default=None,
                         choices=["warn", "soft-pass", "fail-closed"],
                         help="How to handle truncated diffs (default: warn)")
+    parser.add_argument("--minimum-coverage-pct", type=int, default=None,
+                        help="Minimum reviewed file coverage percentage")
+    parser.add_argument("--coverage-policy", default=None,
+                        choices=["warn", "block", "fail-closed"],
+                        help="How incomplete coverage is handled")
+    parser.add_argument("--fail-on-unreviewed-high-risk",
+                        action="store_true", default=None,
+                        help="Block if a high-risk file was not fully reviewed")
     parser.add_argument("--v2", action="store_true",
                         help="Use v2 session pipeline (opt-in)")
     parser.add_argument("--eval-mode", default="deterministic",
@@ -188,7 +206,7 @@ def main():
               file=sys.stderr)
 
     if args.command == "init":
-        result = run_init()
+        result = run_init(profile=args.profile, force=args.force)
     elif args.command == "doctor":
         result = run_doctor_fix() if args.fix else run_doctor()
     elif args.command == "aggregate-overrides":
@@ -210,7 +228,8 @@ def main():
         except GitCommandError:
             repo_root = os.getcwd()
         reason = args.reason or args.override_reason or ""
-        result = arm_override(repo_root, reason, ttl_minutes=args.ttl)
+        result = arm_override(repo_root, reason, ttl_minutes=args.ttl,
+                              note=args.note or "")
     elif args.command == "eval":
         from evals.eval_runner import (
             run_deterministic, run_benchmark, threshold_sweep,
@@ -258,7 +277,10 @@ def main():
                          truncation_policy=args.truncation_policy,
                          shallow_model=args.shallow_model,
                          context_tokens=args.context_tokens,
-                         max_input_tokens=args.max_input_tokens)
+                         max_input_tokens=args.max_input_tokens,
+                         minimum_coverage_pct=args.minimum_coverage_pct,
+                         coverage_policy=args.coverage_policy,
+                         fail_on_unreviewed_high_risk=args.fail_on_unreviewed_high_risk)
     print(json.dumps(result, ensure_ascii=False))
 
 

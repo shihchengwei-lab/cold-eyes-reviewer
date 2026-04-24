@@ -6,7 +6,13 @@ import time
 
 import pytest
 
-from cold_eyes.override import arm_override, consume_override, TOKEN_DIR, _repo_hash
+from cold_eyes.override import (
+    arm_override,
+    consume_override,
+    consume_override_metadata,
+    TOKEN_DIR,
+    _repo_hash,
+)
 
 
 class TestArmOverride:
@@ -21,6 +27,13 @@ class TestArmOverride:
             token = json.load(f)
         assert token["repo_root"] == os.path.normpath("/some/repo")
         assert "nonce" in token
+
+    def test_note_is_stored(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("cold_eyes.override.TOKEN_DIR", str(tmp_path))
+        result = arm_override("/some/repo", "acceptable_risk", note="manual signoff")
+        with open(result["token_path"]) as f:
+            token = json.load(f)
+        assert token["note"] == "manual signoff"
 
     def test_default_ttl_10_minutes(self, tmp_path, monkeypatch):
         monkeypatch.setattr("cold_eyes.override.TOKEN_DIR", str(tmp_path))
@@ -86,3 +99,13 @@ class TestConsumeOverride:
     def test_empty_repo_root_returns_false(self):
         ok, reason = consume_override("")
         assert ok is False
+
+    def test_consume_metadata_returns_note(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("cold_eyes.override.TOKEN_DIR", str(tmp_path))
+        arm_override("/repo", "acceptable_risk", note="manual signoff")
+        result = consume_override_metadata("/repo")
+        assert result == {
+            "ok": True,
+            "reason": "acceptable_risk",
+            "note": "manual signoff",
+        }

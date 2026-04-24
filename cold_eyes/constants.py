@@ -66,6 +66,7 @@ DEPLOY_FILES = [
     "cold_eyes/schema.py", "cold_eyes/triage.py",
     "cold_eyes/context.py", "cold_eyes/detector.py",
     "cold_eyes/memory.py",
+    "cold_eyes/coverage_gate.py",
     "cold-review-prompt-shallow.txt",
     # v2 sub-packages
     "cold_eyes/type_defs.py",

@@ -13,6 +13,7 @@ if PROJECT_ROOT not in sys.path:
 from cold_eyes.policy import apply_policy
 from cold_eyes.config import load_policy
 from cold_eyes.doctor import run_doctor
+from cold_eyes.engine import _resolve
 from cold_eyes import __version__
 from cold_eyes.constants import (
     STATE_PASSED, STATE_BLOCKED, STATE_OVERRIDDEN,
@@ -200,6 +201,72 @@ class TestTruncationPolicyConfig:
             policy_file.write_text(f"truncation_policy: {val}\n")
             policy = load_policy(str(tmp_path))
             assert policy["truncation_policy"] == val
+
+
+class TestCoveragePolicyConfig:
+    def test_policy_keys_parse_correctly(self, tmp_path):
+        policy_file = tmp_path / ".cold-review-policy.yml"
+        policy_file.write_text(
+            "minimum_coverage_pct: 80\n"
+            "coverage_policy: fail-closed\n"
+            "fail_on_unreviewed_high_risk: true\n"
+        )
+        policy = load_policy(str(tmp_path))
+        assert policy["minimum_coverage_pct"] == 80
+        assert policy["coverage_policy"] == "fail-closed"
+        assert policy["fail_on_unreviewed_high_risk"] is True
+
+    def test_invalid_values_ignored(self, tmp_path):
+        policy_file = tmp_path / ".cold-review-policy.yml"
+        policy_file.write_text(
+            "minimum_coverage_pct: 101\n"
+            "coverage_policy: noisy\n"
+            "fail_on_unreviewed_high_risk: maybe\n"
+        )
+        policy = load_policy(str(tmp_path))
+        assert "minimum_coverage_pct" not in policy
+        assert "coverage_policy" not in policy
+        assert "fail_on_unreviewed_high_risk" not in policy
+
+    def test_env_vars_resolve_correctly(self, monkeypatch):
+        monkeypatch.setenv("COLD_REVIEW_MINIMUM_COVERAGE_PCT", "75")
+        monkeypatch.setenv("COLD_REVIEW_COVERAGE_POLICY", "block")
+        assert _resolve(
+            None, "COLD_REVIEW_MINIMUM_COVERAGE_PCT",
+            {}, "minimum_coverage_pct", None, cast=int,
+        ) == 75
+        assert _resolve(
+            None, "COLD_REVIEW_COVERAGE_POLICY",
+            {}, "coverage_policy", "warn",
+        ) == "block"
+
+    def test_init_gate_profile_writes_gate_policy(self, tmp_path):
+        from cold_eyes.doctor import run_init
+
+        result = run_init(repo_root=str(tmp_path), profile="gate")
+        policy_text = (tmp_path / ".cold-review-policy.yml").read_text()
+        assert result["profile"] == "gate"
+        assert ".cold-review-policy.yml" in result["created"]
+        assert "scope: staged" in policy_text
+        assert "minimum_coverage_pct: 80" in policy_text
+
+    def test_init_gate_profile_skips_existing_policy(self, tmp_path):
+        from cold_eyes.doctor import run_init
+
+        policy_file = tmp_path / ".cold-review-policy.yml"
+        policy_file.write_text("mode: report\n")
+        result = run_init(repo_root=str(tmp_path), profile="gate")
+        assert ".cold-review-policy.yml" in result["skipped"]
+        assert policy_file.read_text() == "mode: report\n"
+
+    def test_init_gate_profile_force_overwrites_policy(self, tmp_path):
+        from cold_eyes.doctor import run_init
+
+        policy_file = tmp_path / ".cold-review-policy.yml"
+        policy_file.write_text("mode: report\n")
+        result = run_init(repo_root=str(tmp_path), profile="gate", force=True)
+        assert ".cold-review-policy.yml" in result["created"]
+        assert "scope: staged" in policy_file.read_text()
 
 
 # ---------------------------------------------------------------------------

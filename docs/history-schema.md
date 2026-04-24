@@ -16,6 +16,21 @@ Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each l
   "scope": "working",
   "schema_version": 1,
   "override_reason": "",
+  "override_note": "",
+  "cold_eyes_verdict": "fail",
+  "final_action": "block",
+  "authority": "cold_eyes",
+  "coverage": {
+    "status": "complete",
+    "coverage_pct": 100.0,
+    "reviewed_files": 3,
+    "total_files": 3,
+    "unreviewed_files": [],
+    "unreviewed_high_risk_files": [],
+    "policy": "warn",
+    "action": "pass",
+    "reason": ""
+  },
   "failure_kind": null,
   "stderr_excerpt": "",
   "diff_stats": {
@@ -43,6 +58,11 @@ Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each l
 | `scope` | string | Yes | Diff scope (`working`, `staged`, `head`, `pr-diff`) |
 | `schema_version` | int | Yes | Review output schema version (currently 1) |
 | `override_reason` | string | When overridden | Reason text from override token |
+| `override_note` | string | When supplied | Optional human note attached to override |
+| `cold_eyes_verdict` | string | New entries | Original reviewer verdict: `pass`, `fail`, `incomplete`, `infra_failed` |
+| `final_action` | string | New entries | Final disposition: `pass`, `report`, `block`, `override_pass`, `coverage_block` |
+| `authority` | string | New entries | Decision authority: `cold_eyes`, `human_override`, `coverage_gate`, `infrastructure` |
+| `coverage` | object | When coverage evaluated | Coverage gate status and unreviewed file details |
 | `failure_kind` | string | When infra failed | `timeout`, `cli_not_found`, `cli_error`, `empty_output` |
 | `stderr_excerpt` | string | When infra failed | First 500 chars of CLI stderr |
 | `diff_stats` | object | When review ran | File count, line count, token count, truncated flag |
@@ -70,6 +90,23 @@ Present only when a model review was actually executed (not for skipped/infra_fa
 | `lines` | int | Total line count of diff text |
 | `tokens` | int | Estimated token count (len/4 heuristic) |
 | `truncated` | bool | True if diff exceeded token budget |
+
+## coverage object
+
+Present when the engine reached diff construction and could evaluate review coverage.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `complete`, `partial`, or `insufficient` |
+| `coverage_pct` | number | Percentage of candidate files fully reviewed |
+| `reviewed_files` | int | Files fully included in the model diff |
+| `total_files` | int | Candidate files after filtering and ranking |
+| `unreviewed_files` | array | Partial, budget-skipped, binary, or unreadable files |
+| `unreviewed_high_risk_files` | array | Unreviewed files matching high-risk path patterns |
+| `minimum_coverage_pct` | int/null | Configured minimum |
+| `policy` | string | `warn`, `block`, or `fail-closed` |
+| `action` | string | Coverage decision: `pass`, `warn`, or `block` |
+| `reason` | string | Machine-readable reason, such as `coverage_below_minimum` |
 
 ## review object
 

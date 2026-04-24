@@ -3,7 +3,7 @@
 import os
 import sys
 
-from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED
+from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED, STATE_BLOCKED, STATE_OVERRIDDEN
 from cold_eyes.git import git_cmd, collect_files, build_diff, estimate_tokens, GitCommandError, ConfigError
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.triage import classify_depth
@@ -20,7 +20,17 @@ from cold_eyes.review import parse_review_output
 from cold_eyes.policy import apply_policy, calibrate_evidence, filter_by_confidence
 from cold_eyes.history import log_to_history
 from cold_eyes.config import load_policy
-from cold_eyes.override import consume_override
+from cold_eyes import override as _override
+from cold_eyes.override import consume_override_metadata
+from cold_eyes.coverage_gate import (
+    build_coverage_report,
+    format_coverage_block_reason,
+    is_truthy,
+)
+
+# Backward-compatible test seam for older tests that patch
+# cold_eyes.engine.consume_override directly.
+consume_override = _override.consume_override
 
 
 def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
@@ -51,7 +61,9 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
 def run(mode=None, model=None, max_tokens=None, threshold=None,
         confidence=None, language=None, scope=None, override_reason=None,
         adapter=None, base=None, truncation_policy=None, shallow_model=None,
-        context_tokens=None, max_input_tokens=None, history_path=None):
+        context_tokens=None, max_input_tokens=None, history_path=None,
+        minimum_coverage_pct=None, coverage_policy=None,
+        fail_on_unreviewed_high_risk=None, override_note=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
@@ -102,6 +114,27 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                                 cast=lambda v: int(v) if v is not None else None)
     if not max_input_tokens or max_input_tokens <= 0:
         max_input_tokens = max_tokens + context_tokens + 1000
+    minimum_coverage_pct = _resolve(
+        minimum_coverage_pct, "COLD_REVIEW_MINIMUM_COVERAGE_PCT",
+        policy, "minimum_coverage_pct", None,
+        cast=lambda v: int(v) if v not in (None, "") else None,
+    )
+    if minimum_coverage_pct is not None and not (0 <= minimum_coverage_pct <= 100):
+        minimum_coverage_pct = None
+    coverage_policy = _resolve(
+        coverage_policy, "COLD_REVIEW_COVERAGE_POLICY",
+        policy, "coverage_policy", "warn",
+    )
+    if isinstance(coverage_policy, str):
+        coverage_policy = coverage_policy.lower()
+    fail_on_unreviewed_high_risk = _resolve(
+        fail_on_unreviewed_high_risk,
+        "COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK",
+        policy,
+        "fail_on_unreviewed_high_risk",
+        False,
+        cast=is_truthy,
+    )
 
     # mode=off: skip immediately (normally caught by shell, but policy file may set it)
     if mode == "off":
@@ -111,7 +144,10 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         adapter = ClaudeCliAdapter()
 
     # Override token (one-time, file-based)
-    token_ok, token_reason = consume_override(repo_root)
+    token = consume_override_metadata(repo_root)
+    token_ok = token["ok"]
+    token_reason = token["reason"]
+    token_note = token["note"]
 
     # Legacy env var override (deprecated — cannot truly be consumed)
     legacy_allow = os.environ.get("COLD_REVIEW_ALLOW_ONCE") == "1"
@@ -125,6 +161,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     if token_ok and token_reason:
         override_reason = override_reason or token_reason
     override_reason = override_reason or os.environ.get("COLD_REVIEW_OVERRIDE_REASON", "")
+    override_note = override_note or token_note or os.environ.get("COLD_REVIEW_OVERRIDE_NOTE", "")
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
 
     # 1. Collect files
@@ -133,10 +170,15 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     except (GitCommandError, ConfigError) as exc:
         review = _infra_review(str(exc))
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language)
+                               override_reason=override_reason, language=language,
+                               override_note=override_note)
         log_to_history(cwd, mode, model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
-                       scope=scope, override_reason=override_reason)
+                       scope=scope, override_reason=override_reason,
+                       cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+                       final_action=outcome.get("final_action"),
+                       authority=outcome.get("authority"),
+                       override_note=outcome.get("override_note", ""))
         return outcome
     if not all_files:
         log_to_history(cwd, mode, model, STATE_SKIPPED, "no changes",
@@ -178,10 +220,15 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     except GitCommandError as exc:
         review = _infra_review(str(exc))
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language)
+                               override_reason=override_reason, language=language,
+                               override_note=override_note)
         log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
-                       scope=scope, override_reason=override_reason)
+                       scope=scope, override_reason=override_reason,
+                       cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+                       final_action=outcome.get("final_action"),
+                       authority=outcome.get("authority"),
+                       override_note=outcome.get("override_note", ""))
         return outcome
 
     diff_text = diff_meta["diff_text"]
@@ -225,16 +272,31 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                 detector_meta["hint_text"] = ""
                 hints_dropped = True
 
-    # Coverage visibility
-    total_candidates = len(ranked)
-    reviewed_count = file_count
-    coverage_pct = (round(reviewed_count / total_candidates * 100, 1)
-                    if total_candidates > 0 else 100.0)
+    # Coverage visibility and gate decision
+    coverage = build_coverage_report(
+        ranked,
+        diff_meta,
+        minimum_coverage_pct=minimum_coverage_pct,
+        coverage_policy=coverage_policy,
+        fail_on_unreviewed_high_risk=fail_on_unreviewed_high_risk,
+    )
 
     if not diff_text.strip() or file_count == 0:
-        log_to_history(cwd, mode, effective_model, STATE_SKIPPED, "no diff content",
-                       min_confidence=min_confidence, scope=scope)
-        return _skip("no diff content")
+        result = _apply_coverage_gate(
+            _skip("no diff content"), coverage, mode, allow_once,
+            override_reason=override_reason, override_note=override_note,
+        )
+        log_to_history(
+            cwd, mode, effective_model, result["state"], "no diff content",
+            min_confidence=min_confidence, scope=scope,
+            coverage=result.get("coverage"),
+            cold_eyes_verdict=result.get("cold_eyes_verdict"),
+            final_action=result.get("final_action"),
+            authority=result.get("authority"),
+            override_reason=override_reason,
+            override_note=result.get("override_note", ""),
+        )
+        return result
 
     # 5. Build prompt
     prompt_text = build_prompt_text(language, depth=prompt_depth)
@@ -250,22 +312,32 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         failure_kind = failure_kind or "cli_error"
         review = _infra_review(f"claude exit {invocation.exit_code}")
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language)
+                               override_reason=override_reason, language=language,
+                               override_note=override_note)
         log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason,
-                       failure_kind=failure_kind, stderr_excerpt=stderr_excerpt)
+                       failure_kind=failure_kind, stderr_excerpt=stderr_excerpt,
+                       cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+                       final_action=outcome.get("final_action"),
+                       authority=outcome.get("authority"),
+                       override_note=outcome.get("override_note", ""))
         return outcome
 
     if not invocation.stdout:
         failure_kind = "empty_output"
         review = _infra_review("empty output")
         outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language)
+                               override_reason=override_reason, language=language,
+                               override_note=override_note)
         log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason,
-                       failure_kind=failure_kind, stderr_excerpt=stderr_excerpt)
+                       failure_kind=failure_kind, stderr_excerpt=stderr_excerpt,
+                       cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+                       final_action=outcome.get("final_action"),
+                       authority=outcome.get("authority"),
+                       override_note=outcome.get("override_note", ""))
         return outcome
 
     # 8. Parse review
@@ -279,16 +351,19 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                            truncated=truncated, skipped_files=skipped_files,
                            override_reason=override_reason, language=language,
                            truncation_policy=truncation_policy,
-                           fp_patterns=fp_patterns)
+                           fp_patterns=fp_patterns,
+                           override_note=override_note)
 
     # Expose filtered issues for downstream consumers (e.g. gates/result.py)
     _calibrated = calibrate_evidence(review.get("issues", []), fp_patterns=fp_patterns)
     outcome["issues"] = filter_by_confidence(_calibrated, min_confidence)
 
-    # Add coverage visibility
-    outcome["reviewed_files"] = reviewed_count
-    outcome["total_files"] = total_candidates
-    outcome["coverage_pct"] = coverage_pct
+    outcome = _apply_coverage_gate(
+        outcome, coverage, mode, allow_once,
+        override_reason=override_reason, override_note=override_note,
+    )
+
+    # Add review path visibility
     outcome["review_depth"] = review_depth
     outcome["why_depth_selected"] = triage["why_depth_selected"]
     if context_meta and context_meta["context_text"]:
@@ -316,6 +391,11 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         token_count=token_count, min_confidence=min_confidence,
         scope=scope, override_reason=override_reason,
         review_depth=review_depth,
+        coverage=outcome.get("coverage"),
+        cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+        final_action=outcome.get("final_action"),
+        authority=outcome.get("authority"),
+        override_note=outcome.get("override_note", ""),
     )
 
     return outcome
@@ -339,3 +419,59 @@ def _infra_review(summary):
         "issues": [],
         "summary": summary,
     }
+
+
+def _apply_coverage_gate(outcome, coverage, mode, allow_once,
+                         override_reason="", override_note=""):
+    """Attach coverage metadata and enforce coverage gate decisions."""
+    outcome = dict(outcome)
+    outcome["coverage"] = coverage
+    outcome["reviewed_files"] = coverage.get("reviewed_files", 0)
+    outcome["total_files"] = coverage.get("total_files", 0)
+    outcome["coverage_pct"] = coverage.get("coverage_pct", 100.0)
+
+    coverage_action = coverage.get("action", "pass")
+    if coverage_action == "warn" or (coverage_action == "block" and mode != "block"):
+        outcome["coverage_warning"] = coverage.get("reason", "")
+
+    if coverage_action != "block" or mode != "block":
+        if coverage_action == "block" and outcome.get("cold_eyes_verdict") == "pass":
+            outcome["cold_eyes_verdict"] = "incomplete"
+        return outcome
+
+    if outcome.get("action") == "block" or outcome.get("state") == STATE_OVERRIDDEN:
+        if outcome.get("cold_eyes_verdict") == "pass":
+            outcome["cold_eyes_verdict"] = "incomplete"
+        return outcome
+
+    if allow_once:
+        reason_suffix = f" [{override_reason}]" if override_reason else ""
+        outcome.update({
+            "action": "pass",
+            "state": STATE_OVERRIDDEN,
+            "reason": override_reason,
+            "display": f"cold-review: override - coverage block skipped{reason_suffix}",
+            "cold_eyes_verdict": "incomplete",
+            "final_action": "override_pass",
+            "authority": "human_override",
+        })
+        if override_note:
+            outcome["override_note"] = override_note
+        return outcome
+
+    outcome.update({
+        "action": "block",
+        "state": STATE_BLOCKED,
+        "reason": format_coverage_block_reason(coverage),
+        "display": (
+            "cold-review: blocking "
+            f"(coverage policy: {coverage.get('policy')}, "
+            f"{coverage.get('coverage_pct')}% reviewed)"
+        ),
+        "truncated": bool(coverage.get("unreviewed_files")),
+        "skipped_count": len(coverage.get("unreviewed_files", [])),
+        "cold_eyes_verdict": "incomplete",
+        "final_action": "coverage_block",
+        "authority": "coverage_gate",
+    })
+    return outcome

@@ -1,9 +1,32 @@
 """Review output parsing."""
 
 import json
+import os
+import time
 
 from cold_eyes.constants import SCHEMA_VERSION
 from cold_eyes.schema import validate_review
+
+
+def _dump_parse_failure(raw_json_str, error):
+    """Best-effort dump of unparseable engine stdout for later forensics.
+
+    Writes to ~/.claude/cold-review-debug/<ts>-<pid>.txt. Silent on any failure —
+    parse recovery must never itself raise.
+    """
+    try:
+        debug_dir = os.path.join(
+            os.path.expanduser("~"), ".claude", "cold-review-debug"
+        )
+        os.makedirs(debug_dir, exist_ok=True)
+        fname = f"{int(time.time())}-{os.getpid()}.txt"
+        with open(os.path.join(debug_dir, fname), "w", encoding="utf-8") as f:
+            f.write(f"# parse error: {error}\n")
+            f.write(f"# raw length: {len(raw_json_str)}\n")
+            f.write("# --- raw stdout below ---\n")
+            f.write(raw_json_str)
+    except Exception:
+        pass
 
 
 def _extract_result_object(raw_json_str):
@@ -85,6 +108,7 @@ def parse_review_output(raw_json_str):
             result["validation_errors"] = errors
         return result
     except Exception as e:
+        _dump_parse_failure(raw_json_str, e)
         return {
             "schema_version": SCHEMA_VERSION,
             "pass": True,
