@@ -1,5 +1,40 @@
 # Changelog
 
+## v1.12.1 — fix: tolerate LLM narration before embedded JSON
+
+### What changed
+
+`parse_review_output()` in `cold_eyes/review.py` previously called `json.loads()` directly on the inner `result` string. If the LLM prefixed its JSON with prose (e.g. `"正在審查這批副標題改寫。\n\n{\"pass\":true,...}"`), parsing failed at char 0 → `infra_failed` → silent no-review (non-blocking since v1.12.0, which made the failure invisible to users). New helper `_extract_embedded_json()` scans for `{`/`[` positions and uses `json.JSONDecoder.raw_decode()` to extract the embedded object, preferring dicts that carry review-result keys (`pass`, `issues`, `schema_version`, `review_status`, `summary`). Fast path for clean JSON is unchanged.
+
+### Behavior changes
+
+- Reviews where the LLM narrates before emitting JSON now parse successfully instead of becoming `infra_failed`. Verified against captured debug dumps from sonnet-4-6 output on the ebook project.
+- Trailing narration after the JSON is also ignored (raw_decode stops cleanly at end of object).
+
+### Cost changes
+
+- `none`.
+
+### Context usage changes
+
+- `none`.
+
+### Blocking / policy changes
+
+- `none` — parse recovery only. `infra_failed` remains non-blocking per v1.12.0.
+
+### Migration / opt-in notes
+
+- `none`. Pure bug fix.
+
+### Who should care
+
+- Anyone running `block` or `report` mode who was seeing silent `infra_failed` entries in `~/.claude/cold-review-history.jsonl` with summary `"Parse error: Expecting value: line 1 column 1 (char 0)"`. Reviews on these sessions were effectively not happening.
+
+### Test count
+
+- 804 passed (v1.12.0: 798 → +4 regression tests for preamble / trailing / multi-candidate / no-JSON paths).
+
 ## v1.12.0 — feat: gate mode coverage governance
 
 ### What changed
