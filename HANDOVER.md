@@ -6,7 +6,8 @@
 - **分支：** master
 - **測試：** 776 passed / 0 failed
 - **CI：** `300327a` 全矩陣綠（ubuntu/macos/windows × py 3.10/3.12）
-- **部署：** `~/.claude/scripts/cold_eyes/{context.py, review.py, __init__.py}` 已同步
+- **部署：** `~/.claude/scripts/cold_eyes/{context.py, review.py, __init__.py}` 已同步（註：Session 9 另外覆寫了 `policy.py` + `review.py`，見下方 Session 9 段落）
+- **⚠ 工作樹未推：** Session 9（2026-04-20）改了 `cold_eyes/policy.py`、`cold_eyes/review.py`、`tests/test_engine.py` 共 3 檔，未 commit，使用者要求「先不推」。`~/.claude/scripts/` 側的 `policy.py` + `review.py` **已被覆寫** → 本機 stop hook 已跑新行為（infra_failed 不再 block），但 git tag `v1.11.6` 對應的 release 仍是舊行為。接手時若要推，見 Session 9「長期觀察事項」
 - **版本訊號：**
   - `__init__.py` = `1.11.6`
   - CHANGELOG 最新條目 = `v1.11.6 — fix: tolerate claude CLI multi-object JSON stdout`
@@ -19,7 +20,72 @@
   - release v1.11.5 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.5
   - release v1.11.6 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.6
 
-## 本次會話做了什麼（2026-04-18，Session 8 — 補完 v1.11.6 release）
+## 本次會話做了什麼（2026-04-20，Session 9 — infra-failed 非阻擋化 + 原始 stdout dump，未推）
+
+### 起點
+
+使用者從另一個 project 收到 stop hook feedback：`Cold Eyes Review — infrastructure failure: Parse error: Expecting ',' delimiter: line 1 column 956 (char 955)`。追 `~/.claude/cold-review-history.jsonl:990`（2026-04-19T16:13:40Z，cwd `E:\Yuanxing`）確認 entry：`state=infra_failed`、`review_status=failed`、`pass=true`、`issues=[]`、summary 就是上述 parse error。
+
+另一個 project 的 agent 診斷「reviewer 自己 stringify/parse 爆了，不是 canon violation」。對照 log 事實吻合：`_extract_result_object`（v1.11.6 修的**外層** raw_decode）沒掛；炸的是 `cold_eyes/review.py:62` 內層 `json.loads(cleaned)` ——LLM 吐的 JSON 本體在 ~955 char 處不合法。v1.11.6 只修外層 preamble 問題，內層殘缺 JSON 仍會直穿。
+
+現場原始 stdout **沒被保留**（history 只存 summary；`/tmp/coldeyes_out.txt` 是更早 11:12 的另一次 gate 輸出）。
+
+### 做了什麼（兩件）
+
+**(1) 加 parse failure debug dump — `cold_eyes/review.py`**
+
+在 `parse_review_output` 的 `except` 分支前插 `_dump_parse_failure(raw_json_str, e)` 呼叫，best-effort 寫 `~/.claude/cold-review-debug/<ts>-<pid>.txt`，內容：`# parse error: ...` + `# raw length: ...` + 原始 stdout 全文。所有寫檔失敗包在 `try/except pass`，不打斷 review flow。目的：下一次 infra parse 失敗時自動留樣本，才有東西設計 JSON 修復策略。偽造測試（wrapped `{"result": "<broken inner>"}`）驗證檔案寫入成功、內容可讀。
+
+**(2) infra_failed 改非阻擋 — `cold_eyes/policy.py`**
+
+`apply_policy` 的 infra failure 分支（`engine_ok=False`）重寫：無論 mode 或 allow_once，一律回 `action=pass, state=infra_failed`，reason/display 帶 error detail。移除：
+- block mode 下的 `action=block` 返回路徑（含 `arm-override` 提示）
+- `allow_once → STATE_OVERRIDDEN` mapping（infra 不再 block，override 無對象）
+
+理由寫在 code 註解裡：reviewer 自己壞掉不該懲罰使用者，gating own failure 會遮蔽真正的 bug。
+
+### 受影響 test（改寫，未新增）
+
+`tests/test_engine.py` 五個斷言調整：
+- `TestApplyPolicyInfraFailure`：`test_block_mode_blocks_on_infra_failure` → `test_block_mode_passes_on_infra_failure`；`test_override_bypasses_infra_block` → `test_override_flag_no_longer_affects_infra`；`test_infra_block_includes_error_detail` → `test_infra_failure_surfaces_error_detail`（改檢查 reason + display 都有 error detail）
+- `TestOverrideReason`：`test_infra_override_with_reason` → `test_infra_does_not_consume_override`；`test_infra_block_includes_override_hint` → `test_infra_failure_does_not_emit_override_hint`
+- `TestEngineCollectFiles`：`test_engine_git_failure_is_infra_failed` 的 `action=="block"` → `action=="pass"`
+
+Test 總數維持 **776**（未新增，只改斷言；這是行為變更不是新功能）。
+
+### 驗收
+
+- `python -m pytest tests/ -q` → `776 passed in 8.30s`
+- 手動觸發：偽造 wrapped JSON 內層殘缺 → dump 檔正確產出到 `~/.claude/cold-review-debug/`，測試後刪除
+- `diff cold_eyes/policy.py ~/.claude/scripts/cold_eyes/policy.py` → 空
+- `diff cold_eyes/review.py ~/.claude/scripts/cold_eyes/review.py` → 空
+
+### 檔案與部署狀態
+
+| 檔案 | 變動 | Repo | `~/.claude/scripts/` |
+|---|---|---|---|
+| `cold_eyes/policy.py` | +8/-18 | 改 | 已同步 |
+| `cold_eyes/review.py` | +24/-0 | 改 | 已同步 |
+| `tests/test_engine.py` | +20/-13 | 改 | N/A |
+
+### 未做（使用者明確「先不推」）
+
+- **未 bump 版本**：仍標 `1.11.6`。這是行為變更（stop hook 原會擋 infra，現在不擋），正常應 bump 到 `1.12.0` minor（user-visible 行為變更），或視為 bugfix bump `1.11.7`（看你怎麼定義「修復錯誤的阻擋行為」）。
+- **未改 CHANGELOG**
+- **未 commit、未 push、未打 tag、未 release**
+- `~/.claude/scripts/cold_eyes/{policy.py,review.py}` 已被直接覆寫 → 使用者的本機 stop hook **已經在用新行為**了，但 repo 與 deploy 暫時領先 git tag `v1.11.6`。下一個 session 跑 verify 會看到 deploy 與 tag 版本訊號不一致。
+
+### 長期觀察事項（接手者請檢查）
+
+1. **抓 dump 樣本**：下次 `~/.claude/cold-review-history.jsonl` 再出現 `state: infra_failed` + `Parse error:` summary 時，去 `~/.claude/cold-review-debug/` 找對應時戳檔案。有樣本才能判斷是 LLM 內層 JSON 的哪種壞法（截斷？未跳脫引號？control char？）→ 再決定要對 `review.py:62` 的 `cleaned` 做什麼修復（例如 best-effort 抓最大合法 prefix、or 補閉合）。
+2. **追蹤 infra_failed 頻率**：`python cli.py stats --by-reason` 若 `infra_failed` 佔比明顯，代表 (1) 的 dump 機制常常觸發 → 真有修 reviewer 的必要。若長期 <1%，(2) 的非阻擋化已經足夠擋住噪音。
+3. **決定是否保留 allow_once 對 infra 的語意**：目前 allow_once 對 infra 完全無效（見 `test_infra_does_not_consume_override`）。若日後反悔要讓「使用者明確 override 過」的 infra failure 另外計入 `STATE_OVERRIDDEN`，需同步改 policy.py + 加回測試。
+4. **v2 session pipeline 的 `failed_terminal` 是否也要類似處理**：`cold_eyes/runner/session_runner.py` 的 `action=block` 四處（L116/159/175/210）都是 gate-level 失敗（retry 用盡、strategy abort 等），**不是** infrastructure 失敗。本次未動。但若未來 v2 session 內部也有 reviewer-self-bug 路徑，同樣邏輯要套。
+5. **release 前的版本訊號檢查**：真要推時，照 memory `feedback_version_signals.md` 走 —— 同步 `__init__.py` / About / CHANGELOG / test 數。此次 test 數沒變（776 → 776）。
+
+---
+
+## 過往會話（2026-04-18，Session 8 — 補完 v1.11.6 release）
 
 ### 起點
 
@@ -413,6 +479,94 @@ cold_eyes/
 ## 長期事項（不可自行移除，需 user 確認）
 
 - **v2 E2E 驗證未完成** — user 需在真實 repo 跑 `python cli.py run --v2`，然後檢查 `~/.claude/cold-review-sessions/sessions.jsonl` 確認 session 流程正確。每次 session 開頭應提醒 user 此事，直到 user 明確說測完、決定是否切為預設後才可移除本項。
+
+## 2026-04-24 Gate MVP push handoff for Claude
+
+User asked Codex to implement the Cold Eyes Reviewer Gate Iteration Plan and then push to GitHub. Implementation is complete in the main project folder, but Codex could not push because this environment had Git/GitHub permission issues:
+
+- local `.git` has Windows ACL deny rules, so Codex could not create branch/index lock in the main checkout.
+- `gh` failed with `GitHub CLI/config.yml: Access is denied`.
+- GitHub app branch creation returned `403 Resource not accessible by integration`.
+- `git push` from the temporary clean worktree exited unsuccessfully without creating the remote branch.
+
+Preferred push path for Claude:
+
+1. Keep `C:\Users\kk789\Desktop\cold-eyes-reviewer\.codex-publish-worktree2` until push is done.
+2. In that folder, there is a clean branch and commit:
+   - branch: `codex/gate-iteration`
+   - commit: `0d7901e Implement gate mode coverage governance`
+3. Push that branch:
+
+```powershell
+cd C:\Users\kk789\Desktop\cold-eyes-reviewer\.codex-publish-worktree2
+git -c http.sslBackend=openssl status -sb
+git -c http.sslBackend=openssl push -u origin codex/gate-iteration
+```
+
+4. Open a draft PR into `master` with summary:
+   - Adds Gate mode profile and `init --profile gate`.
+   - Adds coverage gate settings, decision logic, and engine wiring.
+   - Separates reviewer verdict from final action for override / coverage governance.
+   - Adds `gate_quality` metrics to `quality-report`.
+   - Keeps Claude Code command Stop hook; coverage block still emits `{"decision":"block","reason":"..."}`.
+   - Updates docs and tests.
+
+Validation already run by Codex:
+
+```powershell
+python -m py_compile cold_eyes\coverage_gate.py cold_eyes\config.py cold_eyes\engine.py cold_eyes\policy.py cold_eyes\history.py cold_eyes\cli.py cold_eyes\doctor.py cold_eyes\override.py cold_eyes\gates\result.py tests\test_coverage_gate.py tests\test_gate_history.py tests\test_gate_result.py tests\test_override.py tests\test_risk_controls.py tests\test_shell_smoke.py
+python cold_eyes\cli.py eval --eval-mode deterministic
+python cold_eyes\cli.py eval --eval-mode sweep
+```
+
+Results:
+
+- `py_compile`: passed.
+- deterministic eval: 33/33 passed.
+- sweep eval: passed; recommended remains `critical + medium`.
+- full `pytest` was not run because the available bundled Python did not have `pytest` installed.
+
+Important scope notes:
+
+- The clean commit in `.codex-publish-worktree2` intentionally does **not** include pre-existing dirty changes from the main checkout:
+  - `HANDOVER.md`
+  - `cold_eyes/review.py`
+  - `tests/test_engine.py`
+- If Claude decides to push from the main checkout instead of `.codex-publish-worktree2`, stage only the Gate MVP files unless the user explicitly asks to include the pre-existing changes.
+- After the branch is pushed and PR is opened, these temporary folders can be deleted:
+  - `.codex-publish-worktree`
+  - `.codex-publish-worktree2`
+  - `.codex-publish-git`
+
+Gate MVP files in the clean commit:
+
+```text
+.cold-review-policy.gate.yml
+README.md
+cold-review.sh
+cold_eyes/cli.py
+cold_eyes/config.py
+cold_eyes/constants.py
+cold_eyes/coverage_gate.py
+cold_eyes/doctor.py
+cold_eyes/engine.py
+cold_eyes/gates/result.py
+cold_eyes/history.py
+cold_eyes/override.py
+cold_eyes/policy.py
+docs/failure-modes.md
+docs/gate-mode.md
+docs/history-schema.md
+docs/release-assurance-template.md
+tests/test_coverage_gate.py
+tests/test_gate_history.py
+tests/test_gate_result.py
+tests/test_override.py
+tests/test_risk_controls.py
+tests/test_shell_smoke.py
+```
+
+---
 
 ## 注意事項
 
