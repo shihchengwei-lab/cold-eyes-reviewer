@@ -309,6 +309,21 @@ class TestShellParserFailClosed:
         assert out["decision"] == "block"
         assert out["reason"] == "test reason"
 
+    def test_coverage_block_action_emits_json_decision_only(self):
+        data = json.dumps({
+            "action": "block",
+            "state": "blocked",
+            "final_action": "coverage_block",
+            "display": "coverage block",
+            "reason": "coverage below minimum",
+            "coverage": {"action": "block"},
+        })
+        r = self._run_parser("block", data)
+        assert "coverage block" in r.stderr
+        out = json.loads(r.stdout)
+        assert out["decision"] == "block"
+        assert out["reason"] == "coverage below minimum"
+
 
 class TestShellShimIntegrity:
     """Verify cold-review.sh has no legacy patterns."""

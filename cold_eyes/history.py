@@ -7,13 +7,21 @@ import tempfile
 from datetime import datetime, timezone, timedelta
 
 from cold_eyes import constants
-from cold_eyes.constants import STATE_OVERRIDDEN, STATE_BLOCKED, STATE_INFRA_FAILED
+from cold_eyes.constants import (
+    STATE_OVERRIDDEN,
+    STATE_BLOCKED,
+    STATE_INFRA_FAILED,
+    STATE_PASSED,
+    STATE_REPORTED,
+)
 
 
 def log_to_history(cwd, mode, model, state, reason="", review=None,
                    file_count=0, line_count=0, truncated=False, token_count=0,
                    min_confidence="medium", scope="working", override_reason="",
-                   failure_kind=None, stderr_excerpt="", review_depth=None):
+                   failure_kind=None, stderr_excerpt="", review_depth=None,
+                   coverage=None, cold_eyes_verdict=None, final_action=None,
+                   authority=None, override_note=""):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -34,6 +42,16 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
         entry["stderr_excerpt"] = stderr_excerpt[:500]
     if review_depth:
         entry["review_depth"] = review_depth
+    if coverage is not None:
+        entry["coverage"] = coverage
+    if cold_eyes_verdict:
+        entry["cold_eyes_verdict"] = cold_eyes_verdict
+    if final_action:
+        entry["final_action"] = final_action
+    if authority:
+        entry["authority"] = authority
+    if override_note:
+        entry["override_note"] = override_note
 
     if review is not None:
         entry["diff_stats"] = {
@@ -237,6 +255,7 @@ def quality_report(history_path=None, last=None):
     blocked = state_counts.get(STATE_BLOCKED, 0)
     overridden = state_counts.get(STATE_OVERRIDDEN, 0)
     infra = state_counts.get(STATE_INFRA_FAILED, 0)
+    gate_quality = _compute_gate_quality(entries)
 
     # Rates
     rates = {
@@ -296,9 +315,70 @@ def quality_report(history_path=None, last=None):
         "total": total,
         "by_state": state_counts,
         "rates": rates,
+        "gate_quality": gate_quality,
         "by_review_depth": depth_counts,
         "top_noisy_paths": noisy_paths[:10],
         "top_issue_categories": top_categories[:10],
+    }
+
+
+def _entry_final_action(entry):
+    """Best-effort final action for old and new history entries."""
+    final_action = entry.get("final_action")
+    if final_action:
+        return final_action
+    state = entry.get("state")
+    if state == STATE_OVERRIDDEN:
+        return "override_pass"
+    if state == STATE_BLOCKED:
+        return "block"
+    if state == STATE_REPORTED:
+        return "report"
+    if state == STATE_PASSED:
+        return "pass"
+    return ""
+
+
+def _compute_gate_quality(entries):
+    total = len(entries)
+    final_actions = [_entry_final_action(e) for e in entries]
+    pass_count = sum(1 for a in final_actions if a == "pass")
+    block_count = sum(1 for a in final_actions if a == "block")
+    override_count = sum(
+        1 for e, a in zip(entries, final_actions)
+        if a == "override_pass" or e.get("state") == STATE_OVERRIDDEN
+    )
+    false_positive_override_count = sum(
+        1 for e, a in zip(entries, final_actions)
+        if (a == "override_pass" or e.get("state") == STATE_OVERRIDDEN)
+        and e.get("override_reason") == "false_positive"
+    )
+    accepted_risk_count = sum(
+        1 for e, a in zip(entries, final_actions)
+        if (a == "override_pass" or e.get("state") == STATE_OVERRIDDEN)
+        and e.get("override_reason") == "acceptable_risk"
+    )
+    coverage_block_count = sum(1 for a in final_actions if a == "coverage_block")
+    infra_failure_count = sum(
+        1 for e in entries
+        if e.get("state") == STATE_INFRA_FAILED
+        or e.get("cold_eyes_verdict") == "infra_failed"
+    )
+
+    def rate(count):
+        return round(count / total, 3) if total else 0.0
+
+    return {
+        "pass_count": pass_count,
+        "block_count": block_count,
+        "override_count": override_count,
+        "override_rate": rate(override_count),
+        "false_positive_override_count": false_positive_override_count,
+        "accepted_risk_count": accepted_risk_count,
+        "coverage_block_count": coverage_block_count,
+        "coverage_block_rate": rate(coverage_block_count),
+        "infra_failure_count": infra_failure_count,
+        "infra_failure_rate": rate(infra_failure_count),
     }
 
 

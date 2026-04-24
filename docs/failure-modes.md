@@ -7,7 +7,7 @@ Every review exits through one of six states, logged to `~/.claude/cold-review-h
 | State | Entry condition | Block mode | Report mode |
 |-------|----------------|------------|-------------|
 | `skipped` | No changes, all files ignored, not a git repo, lock held | exit 0 | exit 0 |
-| `infra_failed` | Git error, Claude CLI error/timeout, empty output, parse failure | **blocks** | logs, passes |
+| `infra_failed` | Git error, Claude CLI error/timeout, empty output, parse failure | logs, passes | logs, passes |
 | `passed` | Review completed, no issues at/above threshold | passes | passes |
 | `reported` | Issues found but mode is report | n/a | logs, passes |
 | `blocked` | Issues at/above threshold in block mode | **blocks** | n/a |
@@ -29,6 +29,8 @@ If `infra_failed` occurs repeatedly, run `doctor` and check the last few history
 python ~/.claude/scripts/cold_eyes/cli.py doctor
 tail -5 ~/.claude/cold-review-history.jsonl | python -m json.tool
 ```
+
+Current engine policy treats `infra_failed` as pass-and-log, even in block mode. Shell-level failures that prevent valid engine JSON from being produced still fail closed in `cold-review.sh`.
 
 ## Truncation
 
@@ -63,7 +65,20 @@ If the LLM returns malformed JSON:
 1. `parse_review_output()` strips markdown code fences and retries
 2. If parsing still fails, a synthetic review with `review_status: "failed"` is created
 3. `validate_review()` checks field types and values; errors are logged in `validation_errors` but do not block
-4. In block mode, parse failure triggers `infra_failed` → block
+4. Current engine behavior records `infra_failed` and passes. Shell-level parser failures still fail closed when no valid engine JSON can be read.
+
+## Coverage incomplete
+
+Coverage is evaluated after the diff is filtered and risk-ranked. `partial_files`, `skipped_budget`, `skipped_binary`, and `skipped_unreadable` count as unreviewed.
+
+| Condition | Result |
+|-----------|--------|
+| Coverage below `minimum_coverage_pct` and `coverage_policy: warn` | Passes, logs `coverage_warning` |
+| Coverage below `minimum_coverage_pct` and `coverage_policy: block` | Blocks only in `mode: block` |
+| Any unreviewed file with `coverage_policy: fail-closed` | Blocks only in `mode: block` |
+| High-risk unreviewed file and `fail_on_unreviewed_high_risk: true` | Blocks only in `mode: block` |
+
+Coverage block is distinct from review block: it does not add to `issues`, sets `cold_eyes_verdict: incomplete`, `final_action: coverage_block`, and `authority: coverage_gate`.
 
 ## False positives
 

@@ -137,6 +137,21 @@ def _parse_llm_review(raw: str, exit_code: int) -> tuple[str, list[dict], list[s
             "message": issue.get("verdict", "") or "",
         })
 
+    coverage = outcome.get("coverage") or {}
+    coverage_action = coverage.get("action")
+    if coverage_action == "block":
+        findings.append({
+            "type": "coverage_block",
+            "message": coverage.get("reason", "coverage blocked") or "coverage blocked",
+            "coverage_pct": coverage.get("coverage_pct"),
+            "unreviewed_files": coverage.get("unreviewed_files", []),
+        })
+        status = "fail"
+    elif coverage_action == "warn":
+        warnings.append(
+            f"coverage warning: {coverage.get('reason', 'incomplete review')}"
+        )
+
     return status, findings, warnings
 
 

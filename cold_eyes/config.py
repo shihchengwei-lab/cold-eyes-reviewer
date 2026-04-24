@@ -10,12 +10,17 @@ import sys
 POLICY_FILENAME = ".cold-review-policy.yml"
 
 # Keys we recognise and their expected types.
-_INT_KEYS = {"max_tokens", "context_tokens", "max_input_tokens"}
+_INT_KEYS = {"max_tokens", "context_tokens", "max_input_tokens", "minimum_coverage_pct"}
+_BOOL_KEYS = {"fail_on_unreviewed_high_risk"}
+_VALUE_SETS = {
+    "coverage_policy": {"warn", "block", "fail-closed"},
+}
 _VALID_KEYS = {
     "mode", "model", "shallow_model", "max_tokens", "context_tokens",
     "max_input_tokens",
     "block_threshold", "threshold", "confidence", "language", "scope",
-    "base", "truncation_policy",
+    "base", "truncation_policy", "minimum_coverage_pct", "coverage_policy",
+    "fail_on_unreviewed_high_risk",
 }
 
 
@@ -79,10 +84,31 @@ def load_policy(repo_root):
         # Type conversion
         if canon in _INT_KEYS:
             try:
-                policy[canon] = int(str(val).replace("_", ""))
+                parsed = int(str(val).replace("_", ""))
             except (ValueError, TypeError):
                 continue
+            if canon == "minimum_coverage_pct" and not (0 <= parsed <= 100):
+                continue
+            policy[canon] = parsed
+        elif canon in _BOOL_KEYS:
+            parsed = _parse_bool(val)
+            if parsed is None:
+                continue
+            policy[canon] = parsed
+        elif canon in _VALUE_SETS:
+            val = str(val).strip().lower()
+            if val in _VALUE_SETS[canon]:
+                policy[canon] = val
         else:
             if val:  # skip empty values
                 policy[canon] = val
     return policy
+
+
+def _parse_bool(val):
+    low = str(val).strip().lower()
+    if low in {"1", "true", "yes", "on"}:
+        return True
+    if low in {"0", "false", "no", "off"}:
+        return False
+    return None

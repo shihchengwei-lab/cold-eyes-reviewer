@@ -95,3 +95,35 @@ class TestParseLlmReview:
         r = normalize_result("llm_review", "not json", 1)
         assert r["status"] == "fail"
         assert r["findings"][0]["type"] == "raw_error"
+
+    def test_coverage_block_is_finding_not_model_issue(self):
+        outcome = {
+            "state": "blocked",
+            "action": "block",
+            "issues": [],
+            "coverage": {
+                "action": "block",
+                "reason": "coverage_below_minimum",
+                "coverage_pct": 50.0,
+                "unreviewed_files": ["src/auth.py"],
+            },
+        }
+        r = normalize_result("llm_review", json.dumps(outcome), 0)
+        assert r["status"] == "fail"
+        assert r["findings"][0]["type"] == "coverage_block"
+        assert r["findings"][0]["unreviewed_files"] == ["src/auth.py"]
+
+    def test_coverage_warn_is_warning(self):
+        outcome = {
+            "state": "passed",
+            "action": "pass",
+            "issues": [],
+            "coverage": {
+                "action": "warn",
+                "reason": "coverage_below_minimum",
+            },
+        }
+        r = normalize_result("llm_review", json.dumps(outcome), 0)
+        assert r["status"] == "pass"
+        assert r["findings"] == []
+        assert r["warnings"] == ["coverage warning: coverage_below_minimum"]

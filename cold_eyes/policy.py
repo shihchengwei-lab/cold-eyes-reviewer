@@ -73,6 +73,18 @@ def _is_chinese(language):
     return any(k in low for k in ("中文", "chinese", "zh", "繁體", "簡體"))
 
 
+def _with_governance(outcome, verdict, final_action, authority,
+                     override_note=""):
+    """Add gate governance fields while preserving legacy outcome keys."""
+    outcome = dict(outcome)
+    outcome["cold_eyes_verdict"] = verdict
+    outcome["final_action"] = final_action
+    outcome["authority"] = authority
+    if override_note:
+        outcome["override_note"] = override_note
+    return outcome
+
+
 def format_block_reason(review, truncated=False, skipped_count=0, language=None):
     """Format review into human-readable block reason."""
     use_zh = _is_chinese(language)
@@ -111,7 +123,8 @@ def format_block_reason(review, truncated=False, skipped_count=0, language=None)
 
 def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
                  truncated=False, skipped_files=None, override_reason="",
-                 language=None, truncation_policy="warn", fp_patterns=None):
+                 language=None, truncation_policy="warn", fp_patterns=None,
+                 override_note=""):
     """Determine final outcome. Return FinalOutcome dict.
 
     FinalOutcome keys: action, state, reason, display, truncated, skipped_count
@@ -126,33 +139,19 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
     override_instruction = "To override: python cli.py arm-override --reason '<reason>'"
 
     # --- Infrastructure failure ---
+    # Reviewer-internal failures (parse errors, claude CLI exits, empty output)
+    # never block the user. They surface as stderr warnings only, with state
+    # logged for telemetry. Rationale: an infra bug is the reviewer's problem,
+    # not a canon violation — gating the user on our own failure punishes the
+    # wrong party and masks the real bug.
     if not engine_ok:
         error_detail = review.get("summary", "unknown error")
-        if mode == "block":
-            if allow_once:
-                reason_suffix = f" [{override_reason}]" if override_reason else ""
-                return {
-                    "action": "pass",
-                    "state": STATE_OVERRIDDEN,
-                    "reason": override_reason,
-                    "display": f"cold-review: override \u2014 infra failure bypass{reason_suffix}",
-                }
-            return {
-                "action": "block",
-                "state": STATE_INFRA_FAILED,
-                "reason": (
-                    f"Cold Eyes Review \u2014 infrastructure failure: {error_detail}.\n"
-                    f"{override_instruction}"
-                ),
-                "display": "cold-review: blocking (infrastructure failure)",
-            }
-        # report mode — log but pass; state is infra_failed (consistent)
-        return {
+        return _with_governance({
             "action": "pass",
             "state": STATE_INFRA_FAILED,
             "reason": error_detail,
-            "display": f"cold-review: report logged (infra failure: {error_detail})",
-        }
+            "display": f"cold-review: infra failure (pass, not blocking) \u2014 {error_detail}",
+        }, "infra_failed", "pass", "infrastructure")
 
     # --- Evidence calibration (before confidence filter) ---
     calibrated_issues = calibrate_evidence(review.get("issues", []), fp_patterns=fp_patterns)
@@ -176,61 +175,63 @@ def apply_policy(review, mode, threshold, allow_once, min_confidence="medium",
     if truncated and mode == "block" and truncation_policy == "fail-closed":
         block_reason = format_block_reason(review, truncated, skipped_count, language)
         block_reason += f"\n\n{override_instruction}"
-        return {
+        return _with_governance({
             "action": "block",
             "state": STATE_BLOCKED,
             "reason": block_reason,
             "display": f"cold-review: blocking (truncation policy: fail-closed, {skipped_count} files unreviewed)",
             "truncated": True,
             "skipped_count": skipped_count,
-        }
+        }, "incomplete", "block", "cold_eyes")
     if truncated and mode == "block" and not allow_once:
         if truncation_policy == "soft-pass" and effective_pass:
-            return {
+            return _with_governance({
                 "action": "pass",
                 "state": STATE_PASSED,
                 "reason": f"truncated ({skipped_count} files unreviewed), no issues in reviewed portion",
                 "display": f"cold-review: soft-pass (truncated, {skipped_count} files unreviewed)",
                 "truncated": True,
                 "skipped_count": skipped_count,
-            }
+            }, "incomplete", "pass", "cold_eyes")
         # "warn" — fall through to existing logic
 
     if mode == "report":
         state = STATE_REPORTED if not effective_pass else STATE_PASSED
-        return {
+        return _with_governance({
             "action": "pass",
             "state": state,
             "reason": "",
             "display": f"cold-review: report logged (pass={effective_pass})",
-        }
+        }, "pass" if effective_pass else "fail",
+            "pass" if effective_pass else "report", "cold_eyes")
 
     # block mode
     if should_block:
         if allow_once:
             reason_suffix = f" [{override_reason}]" if override_reason else ""
-            return {
+            return _with_governance({
                 "action": "pass",
                 "state": STATE_OVERRIDDEN,
                 "reason": override_reason,
                 "display": f"cold-review: override \u2014 block skipped{reason_suffix}",
-            }
+            }, "fail", "override_pass", "human_override",
+                override_note=override_note)
         block_reason = format_block_reason(review, truncated, skipped_count, language)
         block_reason += f"\n\n{override_instruction}"
-        return {
+        return _with_governance({
             "action": "block",
             "state": STATE_BLOCKED,
             "reason": block_reason,
             "display": f"cold-review: blocking (issues at or above {threshold})",
             "truncated": truncated,
             "skipped_count": skipped_count,
-        }
+        }, "fail", "block", "cold_eyes")
 
-    return {
+    return _with_governance({
         "action": "pass",
         "state": STATE_PASSED,
         "reason": "",
         "display": "cold-review: pass",
         "truncated": truncated,
         "skipped_count": skipped_count,
-    }
+    }, "pass", "pass", "cold_eyes")

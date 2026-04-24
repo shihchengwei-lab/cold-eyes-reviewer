@@ -117,6 +117,13 @@ ENGINE_ARGS=(run)
 [[ -n "${COLD_REVIEW_LANGUAGE:-}" ]]         && ENGINE_ARGS+=(--language "${COLD_REVIEW_LANGUAGE}")
 [[ -n "${COLD_REVIEW_BASE:-}" ]]             && ENGINE_ARGS+=(--base "${COLD_REVIEW_BASE}")
 [[ -n "${COLD_REVIEW_OVERRIDE_REASON:-}" ]]  && ENGINE_ARGS+=(--override-reason "${COLD_REVIEW_OVERRIDE_REASON}")
+[[ -n "${COLD_REVIEW_MINIMUM_COVERAGE_PCT:-}" ]] && ENGINE_ARGS+=(--minimum-coverage-pct "${COLD_REVIEW_MINIMUM_COVERAGE_PCT}")
+[[ -n "${COLD_REVIEW_COVERAGE_POLICY:-}" ]]      && ENGINE_ARGS+=(--coverage-policy "${COLD_REVIEW_COVERAGE_POLICY}")
+case "${COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK:-}" in
+  1|true|TRUE|yes|YES|on|ON)
+    ENGINE_ARGS+=(--fail-on-unreviewed-high-risk)
+    ;;
+esac
 
 # --- Run engine ---
 RESULT=$("$PYTHON_CMD" "$ENGINE" "${ENGINE_ARGS[@]}" 2>/dev/null) || true

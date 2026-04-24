@@ -156,9 +156,13 @@ cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt cold-review-prompt-shallo
 
 ```bash
 python ~/.claude/scripts/cold_eyes/cli.py init
+
+# Gate profile for Claude Code Stop-hook blocking
+python ~/.claude/scripts/cold_eyes/cli.py init --profile gate
 ```
 
 Creates default `.cold-review-policy.yml` and `.cold-review-ignore` in the current repo if they don't exist.
+Use `--force` only when you intentionally want to replace an existing policy file.
 
 ### 4. Verify installation
 
@@ -175,6 +179,13 @@ Use `doctor --fix` to auto-remove legacy helper if detected. Other failures requ
 Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will review them.
 
 ### Recommended adoption path
+
+Gate mode adoption path:
+
+1. **Observe** - `mode: report`, broad confidence, no blocking. Read history and tune ignores.
+2. **Conservative gate** - `mode: block`, `block_threshold: critical`, `confidence: high`, `coverage_policy: warn`.
+3. **Standard gate** - `mode: block`, `block_threshold: critical`, `confidence: medium`, `minimum_coverage_pct: 80`.
+4. **Strict gate** - add `coverage_policy: block` or lower `block_threshold` to `major` only after the noise rate is understood.
 
 1. Start with `COLD_REVIEW_MODE=report` — review results are logged but nothing is blocked. Read the history to see what it catches.
 2. After a week, switch to `COLD_REVIEW_MODE=block` with `COLD_REVIEW_BLOCK_THRESHOLD=critical` (the default). Only critical issues block.
@@ -222,6 +233,9 @@ confidence: high
 language: English
 scope: staged
 truncation_policy: warn
+minimum_coverage_pct: 80
+coverage_policy: warn
+fail_on_unreviewed_high_risk: true
 ```
 
 All keys are optional. Only include what you want to override.
@@ -230,7 +244,7 @@ All keys are optional. Only include what you want to override.
 
 If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. If neither env var nor policy file sets a value, the hardcoded default applies.
 
-Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`.
+Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`.
 
 `doctor` check 8 reports whether this file exists and what keys it sets.
 
@@ -249,6 +263,9 @@ Supported keys: `mode`, `model`, `max_tokens`, `block_threshold` (or `threshold`
 | `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head`, `pr-diff` | Diff scope: all uncommitted / staged only / vs HEAD / vs base branch |
 | `COLD_REVIEW_BASE` | (unset) | any branch name | Base branch for `pr-diff` scope (e.g. `main`) |
 | `COLD_REVIEW_TRUNCATION_POLICY` | `warn` | `warn`, `soft-pass`, `fail-closed` | How to handle truncated diffs (see Truncation policy) |
+| `COLD_REVIEW_MINIMUM_COVERAGE_PCT` | (unset) | `0`-`100` | Minimum percentage of changed files that must be fully reviewed |
+| `COLD_REVIEW_COVERAGE_POLICY` | `warn` | `warn`, `block`, `fail-closed` | How to handle coverage below the minimum or incomplete coverage |
+| `COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK` | `false` | `true`, `false` | Block if a high-risk path was not fully reviewed |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | **Deprecated.** Use `arm-override` instead. Still works but emits a warning. |
 | `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override (used with ALLOW_ONCE or arm-override) |
 
@@ -293,11 +310,25 @@ python ~/.claude/scripts/cold_eyes/cli.py arm-override --reason acceptable_risk 
 
 The token is scoped to the current repo. After arming, the next block will be bypassed and the reason logged to history.
 
+Override is human risk acceptance, not a normal pass. History keeps the original `cold_eyes_verdict`, writes `final_action: override_pass`, and marks `authority: human_override`. Use `--note` for extra context:
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py arm-override --reason acceptable_risk --note "manual review completed"
+```
+
 **Legacy:** `COLD_REVIEW_ALLOW_ONCE=1` still works but is deprecated — it cannot truly be consumed (env vars persist in the parent shell), so it bypasses *every* block while set. A deprecation warning is emitted.
 
 ### Override reasons
 
 Common reason values:
+
+- `false_positive`
+- `acceptable_risk`
+- `urgent_hotfix`
+- `test_environment_only`
+- `infrastructure`
+- `unclear`
+- `other`
 
 - `false_positive` — the reviewer flagged something that is not actually a problem
 - `acceptable_risk` — the issue is real but acceptable in this context
@@ -358,6 +389,14 @@ truncation_policy: fail-closed
 
 Review outcomes include coverage visibility: `reviewed_files`, `total_files`, and `coverage_pct` fields show what proportion of the diff was actually reviewed.
 
+### Coverage gate
+
+Coverage is measured after filtering and risk ranking. Fully reviewed files count as covered. Partial files, files skipped by token budget, binary files, and unreadable files count as unreviewed.
+
+`minimum_coverage_pct` sets the minimum reviewed-file percentage. `coverage_policy: warn` records the shortfall but does not block. `coverage_policy: block` blocks in `mode: block` when coverage is below the minimum. `coverage_policy: fail-closed` also blocks when any file is unreviewed. If `fail_on_unreviewed_high_risk: true`, high-risk unreviewed paths such as auth, payment, db, migration, secret, credential, config, or api files block independently of the percentage.
+
+Coverage blocks are not model findings. They are logged separately under `coverage` and use `final_action: coverage_block`.
+
 ### Ignore rules
 
 **Built-in patterns** (always active, no configuration needed):
@@ -391,7 +430,7 @@ Cold Eyes logs its state to `~/.claude/cold-review-history.jsonl` at every exit 
 | State | Meaning |
 |---|---|
 | `skipped` | No changes, not a git repo, all files ignored, or another review in progress |
-| `infra_failed` | Infrastructure failure: Claude CLI error, timeout, empty output, parse failure, git error, or config error. History includes `failure_kind` and `stderr_excerpt` for diagnosis. In block mode, this blocks. In report mode, it passes but logs the failure. |
+| `infra_failed` | Infrastructure failure: Claude CLI error, timeout, empty output, parse failure, git error, or config error. History includes `failure_kind` and `stderr_excerpt` for diagnosis. Current engine behavior is pass-and-log, including block mode. |
 | `passed` | Review completed, no issues at or above threshold (after confidence filter) |
 | `reported` | Review completed with issues remaining after confidence filter, mode is `report` (no block) |
 | `blocked` | Review completed, issues found at or above threshold, block emitted |
@@ -521,7 +560,7 @@ python ~/.claude/scripts/cold_eyes/cli.py quality-report
 python ~/.claude/scripts/cold_eyes/cli.py quality-report --last 7d
 ```
 
-Extended analysis: block rate, override rate, infra failure rate, top noisy paths, and top issue categories.
+Extended analysis: block rate, override rate, infra failure rate, top noisy paths, top issue categories, and `gate_quality` metrics including normal pass count, override rate, false-positive overrides, accepted-risk overrides, coverage block count/rate, and infra failure rate. `override_pass` is not counted as a normal pass.
 
 ### History management
 
