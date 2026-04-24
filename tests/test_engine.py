@@ -145,6 +145,49 @@ class TestParseReviewOutput:
         assert r["review_status"] == "completed"
         assert r["summary"] == "ok"
 
+    def test_natural_language_preamble_inside_result_string(self):
+        # Regression: sonnet sometimes narrates before emitting the JSON
+        # inside the "result" string, e.g.
+        #   "正在審查這批副標題改寫。\n\n{...JSON...}"
+        # Previously json.loads(cleaned) failed at char 0 because the string
+        # starts with prose, and the whole review was lost as infra_failed.
+        payload_json = json.dumps(
+            {"pass": False, "issues": [], "summary": "caught"},
+            ensure_ascii=False,
+        )
+        result_str = "正在審查這批副標題改寫。\n\n" + payload_json
+        raw = json.dumps({"type": "result", "result": result_str})
+        r = engine.parse_review_output(raw)
+        assert r["review_status"] == "completed"
+        assert r["summary"] == "caught"
+        assert r["pass"] is False
+
+    def test_trailing_narration_after_embedded_json(self):
+        # raw_decode stops cleanly at end of JSON; trailing prose is ignored.
+        payload_json = json.dumps({"pass": True, "issues": [], "summary": "x"})
+        result_str = payload_json + "\n\n結論：看起來沒問題。"
+        raw = json.dumps({"type": "result", "result": result_str})
+        r = engine.parse_review_output(raw)
+        assert r["summary"] == "x"
+        assert r["pass"] is True
+
+    def test_narration_both_sides_picks_review_shaped_object(self):
+        # If the LLM emits multiple {}-looking runs, pick the one with
+        # review-result keys.
+        noise = json.dumps({"unrelated": "object"})
+        payload = json.dumps({"pass": True, "issues": [], "summary": "right one"})
+        result_str = f"開場白 {noise} 中段 {payload} 結尾備註"
+        raw = json.dumps({"type": "result", "result": result_str})
+        r = engine.parse_review_output(raw)
+        assert r["summary"] == "right one"
+
+    def test_no_extractable_json_falls_to_parse_error(self):
+        # Pure prose with no {} — infra_failed with a helpful summary.
+        raw = json.dumps({"type": "result", "result": "抱歉無法完成審查。"})
+        r = engine.parse_review_output(raw)
+        assert r["review_status"] == "failed"
+        assert "no JSON object found" in r["summary"]
+
 
 # ===========================================================================
 # apply_policy — infrastructure failure

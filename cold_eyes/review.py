@@ -57,6 +57,66 @@ def _extract_result_object(raw_json_str):
     return objects[-1]
 
 
+_REVIEW_KEYS = frozenset({
+    "pass", "issues", "schema_version", "review_status", "summary",
+})
+
+
+def _extract_embedded_json(text):
+    """Parse a JSON object from text that may be wrapped in narration.
+
+    The LLM sometimes narrates before emitting the JSON result — e.g.
+    ``"正在審查這批副標題改寫。\\n\\n{\\"pass\\": true, ...}"``.  Plain
+    ``json.loads`` fails because char 0 is not ``{``.  We scan for ``{``/``[``
+    positions and use ``raw_decode`` to find the embedded object, preferring
+    one that carries review-result keys.
+
+    Raises ``ValueError`` if no JSON object is extractable.
+    """
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        lines = cleaned.split("\n")
+        if lines and lines[0].strip().startswith("```"):
+            lines = lines[1:]
+        if lines and lines[-1].strip().startswith("```"):
+            lines = lines[:-1]
+        cleaned = "\n".join(lines).strip()
+
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError:
+        pass
+
+    decoder = json.JSONDecoder()
+    candidates = []
+    i = 0
+    n = len(cleaned)
+    while i < n:
+        c = cleaned[i]
+        if c == "{" or c == "[":
+            try:
+                obj, end = decoder.raw_decode(cleaned[i:])
+                candidates.append(obj)
+                i += end
+                continue
+            except json.JSONDecodeError:
+                pass
+        i += 1
+
+    if not candidates:
+        raise ValueError(
+            f"no JSON object found in LLM output of length {len(cleaned)}"
+        )
+
+    for obj in candidates:
+        if isinstance(obj, dict) and _REVIEW_KEYS & set(obj.keys()):
+            return obj
+    dict_candidates = [o for o in candidates if isinstance(o, dict)]
+    if dict_candidates:
+        return max(dict_candidates, key=lambda o: len(o))
+    return candidates[-1]
+
+
 def parse_review_output(raw_json_str):
     """Parse claude --output-format json output. Return dict."""
     try:
@@ -74,15 +134,7 @@ def parse_review_output(raw_json_str):
                     "summary": "LLM returned null result",
                 }
             if isinstance(result_str, str):
-                cleaned = result_str.strip()
-                if cleaned.startswith("```"):
-                    lines = cleaned.split("\n")
-                    if lines and lines[0].strip().startswith("```"):
-                        lines = lines[1:]
-                    if lines and lines[-1].strip().startswith("```"):
-                        lines = lines[:-1]
-                    cleaned = "\n".join(lines).strip()
-                result = json.loads(cleaned)
+                result = _extract_embedded_json(result_str)
             else:
                 result = result_str
         else:
