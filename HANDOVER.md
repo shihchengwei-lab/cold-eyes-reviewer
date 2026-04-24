@@ -2,25 +2,97 @@
 
 ## 現況
 
-- **版本：** v1.11.6（master `3fb29de`，已 push，tag `v1.11.6` @ `300327a`）
+- **版本：** v1.12.1（master `1b9f404`，tag `v1.12.1` + release 已發）
 - **分支：** master
-- **測試：** 776 passed / 0 failed
-- **CI：** `300327a` 全矩陣綠（ubuntu/macos/windows × py 3.10/3.12）
-- **部署：** `~/.claude/scripts/cold_eyes/{context.py, review.py, __init__.py}` 已同步（註：Session 9 另外覆寫了 `policy.py` + `review.py`，見下方 Session 9 段落）
-- **⚠ 工作樹未推：** Session 9（2026-04-20）改了 `cold_eyes/policy.py`、`cold_eyes/review.py`、`tests/test_engine.py` 共 3 檔，未 commit，使用者要求「先不推」。`~/.claude/scripts/` 側的 `policy.py` + `review.py` **已被覆寫** → 本機 stop hook 已跑新行為（infra_failed 不再 block），但 git tag `v1.11.6` 對應的 release 仍是舊行為。接手時若要推，見 Session 9「長期觀察事項」
+- **測試：** 804 passed / 0 failed
+- **CI：** PR #2 全矩陣綠（ubuntu/macos/windows × py 3.10/3.12，16/16 checks pass）
+- **部署：** `~/.claude/scripts/cold_eyes/` 已同步 v1.12.1（`deployed version: 1.12.1` 驗證過）
 - **版本訊號：**
-  - `__init__.py` = `1.11.6`
-  - CHANGELOG 最新條目 = `v1.11.6 — fix: tolerate claude CLI multi-object JSON stdout`
+  - `__init__.py` = `1.12.1`
+  - CHANGELOG 最新條目 = `v1.12.1 — fix: tolerate LLM narration before embedded JSON`
   - pyproject description = `"Diff-centered second-pass review gate for Claude Code"`
-  - GitHub About = §1.2 定位句（239 字元，已套用）
-  - GitHub topics = 7 項（`claude-code` / `review-gate` / `git-hooks` / `code-quality` / `llm-guardrails` / `developer-tools` / `second-pass-review`）
+  - GitHub About = 已更新，新增一句 `Optional gate profile adds change-level coverage governance.`（v1.12.0 時修）
+  - GitHub topics = 7 項不變（`claude-code` / `review-gate` / `git-hooks` / `code-quality` / `llm-guardrails` / `developer-tools` / `second-pass-review`）
   - README badges = Tests + Stop-hook + diff-centered + not full review
-  - tag `v1.11.4` / `v1.11.5` / `v1.11.6` = 都已打、已推
-  - release v1.11.4 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.4
-  - release v1.11.5 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.5
-  - release v1.11.6 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.11.6
+  - tag/release 新增：`v1.12.0`（Gate MVP）+ `v1.12.1`（parse fix）
+  - release v1.12.0 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.12.0
+  - release v1.12.1 = https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.12.1
 
-## 本次會話做了什麼（2026-04-20，Session 9 — infra-failed 非阻擋化 + 原始 stdout dump，未推）
+## 本次會話做了什麼（2026-04-24，Session 10 — Gate MVP push + v1.12.1 parse fix）
+
+### A. Gate MVP push（v1.12.0，PR #1）
+
+**起點**：Codex 在另一個終端完成 Gate iteration 實作，把乾淨 commit 放進 `.codex-publish-worktree2/`（branch `codex/gate-iteration`，commit `0d7901e`），但因 Windows ACL 與 `gh` 在 Codex sandbox 的權限問題無法推，HANDOVER 留訊息請本 session 接手。
+
+**本 session 做的事**：
+
+1. **驗證 Gate MVP commit**：在 worktree 跑 `python -m pytest tests/ -q` → 793 passed / 7 failed。7 個失敗分兩類：
+   - 5 個 infra-related 測試（`TestApplyPolicyInfraFailure` / `TestOverrideReason` / `TestGitCommandError`）：Codex 把 Session 9 未推的 `cold_eyes/policy.py`（infra 非阻擋化）帶進 commit，但 HANDOVER 明寫 `tests/test_engine.py` 被刻意排除 → policy 新行為與 test 舊斷言打架。
+   - 2 個環境失敗（`test_default_scope_is_working` / `test_recent_commits_returns_list`）：worktree 被 Codex 用 `SC_ACER/CodexSandboxOnline` 身分建立，subprocess `git` 因 `safe.directory` 保護把 cwd 當非 repo → `git diff --cached` 錯誤解析為 `--no-index`。正常終端與 CI 不重現。
+2. **同步 test_engine.py 斷言**：從主 checkout `cp ../tests/test_engine.py tests/test_engine.py`，5 個 infra test 全過。新增 commit `6e47b16`。
+3. **版本 bump**：`__init__.py` 1.11.6 → 1.12.0、CHANGELOG 加 v1.12.0 entry（含 Gate profile / coverage gate / reviewer verdict vs final action 分離 / infra 非阻擋化 / 測試數 776→798）。Commit `cbddb17`。
+4. **併入 Session 9 剩餘**：把主 checkout 仍 dirty 的 `cold_eyes/review.py`（`_dump_parse_failure` debug dump helper）與 `HANDOVER.md` 複製進 worktree，Commit `4f368c4`。理由：policy.py 的非阻擋化已在 PR 裡，配對的 debug dump 跟它是成套工具，分開推沒意義。
+5. **Push + PR**：用 `git -c safe.directory=... -c http.sslBackend=openssl push` 繞 Codex worktree 權限問題推上 `codex/gate-iteration`；`gh pr create --repo ...` 開 draft PR #1（直接帶 `--repo` 避免 `gh` 本地 git 查 remote 又碰 safe.directory）。使用者按 ready-for-review + merge，merge commit `5541233`。
+6. **主 checkout 對齊**：本機 `master` 原本在 `9f7f374`（舊，落後 5 commits），working tree 有 20 個 M + 9 個 untracked（大多是 Codex 在主 checkout 也動過但沒 commit 的同樣檔案）。`git stash -u` → `git pull --ff-only` → `git stash drop`（stash 內容等同 origin，安全丟棄）。
+7. **Tag + release**：`gh release create v1.12.0 --target 5541233` 一步建 tag + release，內容照 `docs/release_note_template.md` 七段格式。
+8. **About 更新**：`gh repo edit --description` 把原 239 字元定位句加一句 `Optional gate profile adds change-level coverage governance.`，仍在 350 字元上限內。
+9. **Deploy 同步**：`cp -r cold_eyes/* ~/.claude/scripts/cold_eyes/`，驗證 `deployed version: 1.12.0` + 新 `coverage_gate.py` 就位。
+10. **清臨時 folder**：`rm -rf .codex-publish-git .codex-publish-worktree .codex-publish-worktree2`（經 `git worktree list` 確認它們是獨立 clone 不是 linked worktree，直接 rm 安全）。
+
+### B. v1.12.1 parse fix（PR #2）
+
+**起點**：v1.12.0 部署後主動查 `~/.claude/cold-review-history.jsonl`（寫進 memory 的新習慣），發現 2026-04-24 11:44:35Z + 11:47:25Z 兩筆 `state=infra_failed` 在 cwd `C:\Users\kk789\Desktop\e-book\Agent_hand_book101\ebook`。抓對應的 `~/.claude/cold-review-debug/1777031075-40768.txt` + `1777031245-42864.txt` 看原始 stdout。
+
+**根因**：外層 `type=result` 物件是合法 JSON，裡面的 `result` 欄位是字串，字串內容結構是：
+
+```
+正在審查這批副標題改寫。\n\n{"schema_version":1,"pass":true,...}
+```
+
+sonnet-4-6 在 JSON 前面先用自然語言 narrate 一句。v1.11.6 的 `_extract_result_object` 抓對了外層，但 `parse_review_output` line 85 `result = json.loads(cleaned)` 直接 parse 整個字串 → char 0 是「正」→ `Expecting value: line 1 column 1 (char 0)` → `infra_failed`。v1.12.0 的「infra 非阻擋」反而讓這個問題 **使用者完全看不到** —— hook 輸出不會上使用者螢幕，history 只在本機紀錄檔裡。
+
+**修法**：新 helper `_extract_embedded_json(text)` 在 `cold_eyes/review.py`：
+
+1. 快速路徑：`json.loads(cleaned)` 試一次（保留 ``` fence 剝除）
+2. 失敗 → 掃描 text 中所有 `{` / `[` 位置，用 `json.JSONDecoder.raw_decode()` 從每個起點嘗試 parse，收集所有合法物件
+3. 優先挑有 review keys 的 dict（`_REVIEW_KEYS = {"pass","issues","schema_version","review_status","summary"}`）
+4. 沒有就挑最大的 dict，再沒有挑最後一個候選
+5. 完全沒候選 → `raise ValueError`（會落到 `parse_review_output` 的 except，照舊寫 debug dump 並回傳 `review_status=failed`）
+
+`parse_review_output` line 85 改為 `result = _extract_embedded_json(result_str)`，移除原本重複的 fence 處理邏輯（helper 裡已有）。
+
+**新增測試**（`tests/test_engine.py`，4 個）：
+
+- `test_natural_language_preamble_inside_result_string` — 用 `"正在審查這批副標題改寫。\n\n" + payload_json` 驗證主要場景
+- `test_trailing_narration_after_embedded_json` — payload 後接「結論：看起來沒問題。」驗證 raw_decode 在 JSON 結尾乾淨停下
+- `test_narration_both_sides_picks_review_shaped_object` — 多個 `{}` 出現時挑有 review keys 的那個（`{"unrelated": "object"}` vs 真 payload）
+- `test_no_extractable_json_falls_to_parse_error` — 純 prose 無 `{` → `review_status=failed`，`summary` 含 `"no JSON object found"`
+
+**驗證**：
+
+- `pytest tests/ -q` → 804 passed / 0 failed
+- 28 個 dump 檔 replay 實測：21 個原先失敗的現在 parse completed（含兩個觸發本次修復的 `1777031075` + `1777031245`），7 個仍失敗但都是 raw length ≤ 32 bytes 的合成測試資料（`not json`、`{"result": ""}` 等），不是真 LLM 輸出。
+
+**Ship**：commit `81a9e42` on `fix/strip-llm-preamble` → PR #2 → CI 16/16 綠 → `gh pr merge --merge --delete-branch` → merge commit `1b9f404` → `gh release create v1.12.1 --target 1b9f404` → `cp cold_eyes/review.py cold_eyes/__init__.py ~/.claude/scripts/cold_eyes/` → `deployed version: 1.12.1` 驗證。
+
+### C. 記憶系統補強（三則 feedback memory）
+
+1. **`user_role.md` 重寫**：新增「**不寫程式、不使用 GitHub**」主敘述 + 「所有 GitHub 操作全託 agent（含寫 issue、開 PR、改 About、發 release）」。原先只寫「指揮 agent 做事」不夠明確。
+2. **`feedback_offer_first.md`（新建）**：「需要按 UI 按鈕時，第一句就說『我幫你按』」。觸發點：本 session 早期報告 PR merge 狀態時，把步驟說明放在訊息前半、「或者你想讓我幫你按」擺在最尾，使用者照前半步驟自己進 GitHub 按完之後才回話糾正我順序寫錯。
+3. **`feedback_hook_observability.md`（新建）**：「Hook 輸出使用者看不到；靜默失敗要自己去翻 `~/.claude/cold-review-history.jsonl` + `~/.claude/cold-review-debug/`」。觸發點：v1.12.1 釋出後我講「如果 hook 怪怪的請截圖給我」，使用者糾正：hook 只 agent 看得到，他截不到。這條直接改變下個 session 的開場流程（主動翻 history）。
+
+### 長期觀察事項（接手者請檢查）
+
+1. **主動查 history**：每次 session 開頭或有行為改動後，`tail -20 ~/.claude/cold-review-history.jsonl` 看有沒有 `state=infra_failed` 或 `state=blocked` 的新紀錄。使用者看不到 hook 輸出，這是唯一的健康訊號來源。
+2. **追蹤 infra_failed 頻率**：`python cli.py stats --by-reason`。若 infra_failed 還常出現，可能是 v1.12.1 的 extractor 仍有漏網的 LLM 奇怪輸出模式 → 去 `~/.claude/cold-review-debug/` 撈新樣本，再擴 extractor 規則。
+3. **Gate mode E2E 未驗證**：v1.12.0 的 Gate profile（`init --profile gate` + coverage gate）還沒在真實 repo 跑過。使用者真要啟用前應手動測一次：`python cli.py init --profile gate` 後在測試 repo 跑一次有 test 不足的 diff，確認會 block。
+4. **v2 session pipeline 的 `failed_terminal`**：`cold_eyes/runner/session_runner.py` 的 `action=block` 四處仍走舊邏輯（gate-level 失敗，不是 infra）。若未來 v2 內部也出現 reviewer-self-bug 路徑，可能需要類似 v1.12.0 policy.py 的非阻擋化處理。
+
+---
+
+## 過往會話（2026-04-20，Session 9 — infra-failed 非阻擋化 + 原始 stdout dump）
+
+> **2026-04-24 補註：** 本段當時標「未推」，但所有改動已在 Session 10 併入 PR #1（v1.12.0）發行。`cold_eyes/policy.py` 的非阻擋化邏輯在 v1.12.0 shipped，`cold_eyes/review.py` 的 `_dump_parse_failure` 也在。內文「未 bump 版本」「未 commit」「未推」等句均已過期，保留敘述作為歷史。Session 10 後續發現 dump 機制捕到真實樣本（ebook narration bug），催生 v1.12.1。
 
 ### 起點
 
