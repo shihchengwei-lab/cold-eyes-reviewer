@@ -1,0 +1,132 @@
+import subprocess
+
+import cold_eyes.constants as constants
+from cold_eyes.engine import run
+from cold_eyes.target import evaluate_target_policy
+
+
+def _target(**overrides):
+    base = {
+        "scope": "staged",
+        "review_files": [],
+        "review_file_count": 0,
+        "unreviewed_unstaged_files": [],
+        "unreviewed_untracked_files": [],
+        "unreviewed_partial_stage_files": [],
+        "unreviewed_files": [],
+        "high_risk_unreviewed_files": [],
+        "high_risk_partial_stage_files": [],
+    }
+    base.update(overrides)
+    return base
+
+
+def _git(cwd, *args):
+    return subprocess.run(
+        ["git", *args],
+        cwd=cwd,
+        check=True,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+
+
+def _init_repo(tmp_path, filename="app.py"):
+    _git(tmp_path, "init")
+    _git(tmp_path, "config", "user.email", "cold@example.test")
+    _git(tmp_path, "config", "user.name", "Cold Eyes")
+    (tmp_path / filename).write_text("value = 1\n", encoding="utf-8")
+    _git(tmp_path, "add", filename)
+    _git(tmp_path, "commit", "-m", "initial")
+
+
+def test_dirty_worktree_warns_by_default():
+    decision = evaluate_target_policy(
+        _target(
+            unreviewed_unstaged_files=["src/app.py"],
+            unreviewed_files=["src/app.py"],
+        )
+    )
+
+    assert decision["action"] == "warn"
+    assert decision["warnings"][0]["kind"] == "dirty_worktree"
+
+
+def test_untracked_warns_by_default():
+    decision = evaluate_target_policy(
+        _target(
+            unreviewed_untracked_files=["src/new.py"],
+            unreviewed_files=["src/new.py"],
+        )
+    )
+
+    assert decision["action"] == "warn"
+    assert decision["warnings"][0]["kind"] == "untracked"
+
+
+def test_partial_stage_blocks_high_risk_by_default():
+    decision = evaluate_target_policy(
+        _target(
+            unreviewed_unstaged_files=["src/auth.py"],
+            unreviewed_partial_stage_files=["src/auth.py"],
+            unreviewed_files=["src/auth.py"],
+            high_risk_unreviewed_files=["src/auth.py"],
+            high_risk_partial_stage_files=["src/auth.py"],
+        )
+    )
+
+    assert decision["action"] == "block"
+    assert decision["reason"] == "partial_stage"
+
+
+def test_high_risk_untracked_blocks_when_policy_is_block_high_risk():
+    decision = evaluate_target_policy(
+        _target(
+            unreviewed_untracked_files=["src/auth.py"],
+            unreviewed_files=["src/auth.py"],
+            high_risk_unreviewed_files=["src/auth.py"],
+        ),
+        untracked_policy="block-high-risk",
+    )
+
+    assert decision["action"] == "block"
+    assert decision["blocks"][0]["kind"] == "untracked"
+
+
+class _NoModelAdapter:
+    def review(self, *_args, **_kwargs):
+        raise AssertionError("model should not be called")
+
+
+def test_engine_blocks_partial_high_risk_before_model(tmp_path, monkeypatch):
+    _init_repo(tmp_path, filename="auth.py")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    (tmp_path / "auth.py").write_text("value = 2\n", encoding="utf-8")
+    _git(tmp_path, "add", "auth.py")
+    (tmp_path / "auth.py").write_text("value = 3\n", encoding="utf-8")
+
+    result = run(adapter=_NoModelAdapter(), checks="off")
+
+    assert result["action"] == "block"
+    assert result["final_action"] == "target_block"
+    assert result["authority"] == "target_sentinel"
+    assert result["target"]["policy_action"] == "block"
+
+
+def test_engine_skips_dirty_unstaged_without_model(tmp_path, monkeypatch):
+    _init_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "history.jsonl"))
+    (tmp_path / "app.py").write_text("value = 2\n", encoding="utf-8")
+
+    result = run(adapter=_NoModelAdapter(), checks="off")
+
+    assert result["state"] == "skipped"
+    assert result["target"]["policy_action"] == "warn"
+    assert result["target_warning"] == "dirty_worktree_unreviewed"
+
+
+def test_target_module_is_deployed():
+    assert "cold_eyes/target.py" in constants.DEPLOY_FILES

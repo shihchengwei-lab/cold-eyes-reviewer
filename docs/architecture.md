@@ -24,19 +24,20 @@ Layer 3 - Modules
 
 ```
 1. collect_files()          git diff --name-only for the selected scope
-2. filter_file_list()       remove binary, lock, generated, ignored files
-3. rank_file_list()         sort by risk (security > core > config > test > docs)
-4. classify_depth()         skip / shallow / deep
-5. build_diff()             git diff with token budget, high-risk files first
-6. load_intent_capsule()    optional low-weight recent user goal from hook metadata
-7. build_prompt_text()      select shallow or deep prompt
-8. ClaudeCliAdapter.review() invoke Claude CLI via subprocess
-9. parse_review_output()    extract JSON from model response
-10. apply_policy()          confidence, evidence, truncation, threshold decision
-11. build_coverage_report() attach coverage and block if policy requires
-12. run_local_checks()      run selected local checks once when useful
-13. attach_protection()     create agent task, user message, fresh-review rerun protocol
-14. log_to_history()        append outcome to ~/.claude/cold-review-history.jsonl
+2. inspect_review_target()  record staged/unstaged/untracked/partial-stage visibility
+3. filter_file_list()       remove binary, lock, generated, ignored files
+4. rank_file_list()         sort by risk (security > core > config > test > docs)
+5. classify_depth()         skip / shallow / deep
+6. build_diff()             git diff with token budget, high-risk files first
+7. load_intent_capsule()    optional low-weight recent user goal from hook metadata
+8. build_prompt_text()      select shallow or deep prompt
+9. ClaudeCliAdapter.review() invoke Claude CLI via subprocess
+10. parse_review_output()   extract JSON from model response
+11. apply_policy()          confidence, evidence, truncation, threshold decision
+12. build_coverage_report() attach coverage and block if policy requires
+13. run_local_checks()      run selected local checks once when useful
+14. attach_protection()     create agent task, user message, fresh-review rerun protocol
+15. log_to_history()        append outcome to ~/.claude/cold-review-history.jsonl
 ```
 
 ## Module Responsibilities
@@ -45,6 +46,7 @@ Layer 3 - Modules
 |--------|---------|
 | `engine.py` | Unified `run()` orchestrator and gate enforcement |
 | `cli.py` | argparse dispatcher for subcommands, `--version`, and hidden retired `--v2` compatibility |
+| `target.py` | Review-target sentinel for staged/unstaged/untracked/partial-stage visibility and target policy decisions |
 | `local_checks.py` | Risk-based local check selection, changed-file targeting for soft checks, execution, result summaries, and hard-check block reason |
 | `gates/result.py` | Normalizes local check output into structured findings |
 | `protection.py` | Agent repair task, user-facing message, fresh-review rerun protocol, compact history summary |
@@ -58,6 +60,7 @@ Layer 3 - Modules
 - **No repair memory.** Block output can tell the main agent to fix and rerun, but Cold Eyes does not store pending block state or compare the next review against prior block records.
 - **No retired session code in the runtime package.** The separate session, contract, retry, noise, and runner experiment is preserved only in release history, not as active source modules.
 - **Local checks are bounded.** Selected checks run once. `pytest` and `pip check` are hard checks; `ruff` and `mypy` are soft checks scoped to changed Python files when possible. Missing tools and timeouts are warnings.
+- **Target integrity is explicit.** A pass means the configured review target passed; target metadata records files outside that target so staged scope does not imply whole-working-tree coverage.
 - **No PyYAML dependency.** Policy files use a flat `key: value` format parsed by a small custom parser. Unknown keys are silently dropped for forward compatibility.
 - **No network connections.** All external communication goes through `git` and `claude` CLI subprocesses. Cold Eyes never opens sockets.
 - **Fail-closed shell parser.** The hook parser emits a block decision in block mode if engine output is missing or malformed.

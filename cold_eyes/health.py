@@ -183,6 +183,8 @@ def _notice_level(failures: list[dict], schedule_missing: bool, status: dict) ->
         return LEVEL_GATE_UNRELIABLE
     if schedule_missing:
         return LEVEL_SCHEDULE_MISSING
+    if status.get("health") == "attention":
+        return LEVEL_ATTENTION
     if failures:
         return LEVEL_ATTENTION
     return LEVEL_OK
@@ -209,6 +211,8 @@ def _problem_message(level: str, failures: list[dict], status: dict) -> str:
         parts.append(f"Setup check needs attention: {names}.")
     elif status.get("health") == "problem":
         parts.append("The last health record shows the reviewer tool had an infrastructure problem.")
+    elif status.get("health") == "attention":
+        parts.append("The current review target needs attention before relying on a pass.")
     if level == LEVEL_SCHEDULE_MISSING:
         parts.append("Run install-health-schedule or re-run install.sh to restore background checks.")
     else:

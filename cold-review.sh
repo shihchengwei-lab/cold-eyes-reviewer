@@ -24,6 +24,9 @@
 #   COLD_REVIEW_AGENT_BRIEF     - agent repair brief: on (default) / off
 #   COLD_REVIEW_INTENT_CONTEXT  - low-weight user intent capsule: on (default) / off
 #   COLD_REVIEW_INTENT_MAX_CHARS - intent capsule char cap (default: 1200)
+#   COLD_REVIEW_DIRTY_WORKTREE_POLICY - ignore, warn (default), block-high-risk, block
+#   COLD_REVIEW_UNTRACKED_POLICY - ignore, warn (default), block-high-risk, block
+#   COLD_REVIEW_PARTIAL_STAGE_POLICY - ignore, warn, block-high-risk (default), block
 
 set -uo pipefail
 

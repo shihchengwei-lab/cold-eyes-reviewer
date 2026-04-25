@@ -83,6 +83,8 @@ truncation_policy: fail-closed
 
 If you have unstaged changes AND use `staged` scope, Cold Eyes only sees the staged portion. This is intentional — it matches the "review what I'm about to commit" mental model.
 
+The target sentinel records files outside the configured review target. By default it warns for unstaged or untracked files and blocks high-risk partial-stage files, so a staged pass is not silently treated as a whole-working-tree pass.
+
 ### `working` scope + noise
 
 `working` scope may include files you don't intend to commit (temp files, scratch code, generated output). Use `.cold-review-ignore` to exclude noise patterns:
@@ -96,4 +98,4 @@ node_modules/
 
 ### `pr-diff` scope + missing base
 
-If `base` is not set when using `pr-diff`, Cold Eyes raises a ConfigError and the review is treated as an infrastructure failure. In block mode, this triggers a fail-closed block.
+If `base` is not set when using `pr-diff`, Cold Eyes raises a ConfigError and the engine records `infra_failed`. Engine-level `infra_failed` is pass-and-log; shell-level failures that prevent valid engine JSON still fail closed in `cold-review.sh`.

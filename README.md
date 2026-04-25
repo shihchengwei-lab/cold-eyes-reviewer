@@ -127,6 +127,7 @@ Every issue includes severity, confidence, category, file, line_hint, a three-pa
 - `schema_version` — output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
 - `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain. Displayed with `~` prefix (e.g., `(~L42)`) to indicate it is an estimate, not a precise location. In block mode, verify the line number before acting on it.
 - `protection` — optional block wrapper with `user_message`, `agent_task`, `risk_summary`, `rerun_protocol`, and low-weight intent metadata. It is added after the review decision and does not change schema version.
+- `target` — optional review-target summary with staged/unstaged/untracked counts, partial-stage files, and target policy action. It is added outside the model review and does not change schema version.
 - `checks` — optional local-check summary with mode, results, warnings, and whether a hard check failed. Added after the model review and does not change schema version.
 
 **Severity levels:**
@@ -238,6 +239,8 @@ By default (`COLD_REVIEW_SCOPE=staged`), Cold Eyes reviews **only staged changes
 
 Stage the changes you want the gate to review before ending the turn. To restore the older "review everything in my working tree" behavior, set `COLD_REVIEW_SCOPE=working`.
 
+A pass means the configured review target passed, not necessarily the entire working tree. In staged scope, unstaged, untracked, or partially staged files are called out by the target sentinel so they do not become silent blind spots.
+
 Other scopes:
 - `COLD_REVIEW_SCOPE=working` — review all uncommitted changes: staged, unstaged, and untracked
 - `COLD_REVIEW_SCOPE=head` — review `git diff HEAD` (staged + unstaged, no untracked)
@@ -262,6 +265,9 @@ truncation_policy: warn
 minimum_coverage_pct: 80
 coverage_policy: warn
 fail_on_unreviewed_high_risk: true
+dirty_worktree_policy: warn
+untracked_policy: warn
+partial_stage_policy: block-high-risk
 checks: auto
 check_timeout_sec: 120
 ```
@@ -272,7 +278,7 @@ All keys are optional. Only include what you want to override.
 
 If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. Manual `.cold-review-policy.yml` values override auto-tuned values. If neither env var nor policy file sets a value, the hardcoded default applies.
 
-Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`, `checks`, `check_timeout_sec`.
+Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`, `dirty_worktree_policy`, `untracked_policy`, `partial_stage_policy`, `checks`, `check_timeout_sec`.
 
 `doctor` check 8 reports whether this file exists and what keys it sets.
 
@@ -294,6 +300,9 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | `COLD_REVIEW_MINIMUM_COVERAGE_PCT` | `80` | `0`-`100` | Minimum percentage of changed files that must be fully reviewed |
 | `COLD_REVIEW_COVERAGE_POLICY` | `warn` | `warn`, `block`, `fail-closed` | How to handle coverage below the minimum or incomplete coverage |
 | `COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK` | `true` | `true`, `false` | Block if a high-risk path was not fully reviewed |
+| `COLD_REVIEW_DIRTY_WORKTREE_POLICY` | `warn` | `ignore`, `warn`, `block-high-risk`, `block` | How unstaged files outside the review target are handled |
+| `COLD_REVIEW_UNTRACKED_POLICY` | `warn` | `ignore`, `warn`, `block-high-risk`, `block` | How untracked files outside the review target are handled |
+| `COLD_REVIEW_PARTIAL_STAGE_POLICY` | `block-high-risk` | `ignore`, `warn`, `block-high-risk`, `block` | How partially staged files are handled |
 | `COLD_REVIEW_CHECKS` | `auto` | `auto`, `off` | Run selected local checks once when useful |
 | `COLD_REVIEW_CHECK_TIMEOUT_SEC` | `120` | any integer | Timeout per selected local check |
 | `COLD_REVIEW_AUTO_TUNE` | `on` | `on`, `off` | Low-frequency automatic tuning after `run` |
@@ -470,7 +479,7 @@ Cold Eyes logs its state to `~/.claude/cold-review-history.jsonl` at every exit 
 | `infra_failed` | Infrastructure failure: Claude CLI error, timeout, empty output, parse failure, git error, or config error. History includes `failure_kind` and `stderr_excerpt` for diagnosis. Current engine behavior is pass-and-log, including block mode. |
 | `passed` | Review completed, no issues at or above threshold (after confidence filter) |
 | `reported` | Review completed with issues remaining after confidence filter, mode is `report` (no block) |
-| `blocked` | Review completed, issues found at or above threshold, block emitted |
+| `blocked` | A block was emitted: model finding, incomplete coverage, local hard check, or review-target mismatch |
 | `overridden` | Would have blocked, but an override token was armed (or legacy `ALLOW_ONCE` was set). Override reason recorded in history. |
 
 If reviews aren't running, check:
@@ -493,7 +502,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package for the unified v1 pipeline: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune, intent capsule, protection brief, and local checks. |
+| `cold_eyes/` | Python package for the unified v1 pipeline: engine, triage, target sentinel, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune, intent capsule, protection brief, and local checks. |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | Deep review system prompt: input type descriptions, check items, evidence principles, severity/confidence/category definitions, output schema |
 | `cold-review-prompt-shallow.txt` | Shallow review system prompt: critical-only checks, minimal schema |
@@ -508,7 +517,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`, optional `checks`, and optional `protection` summary). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
+- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`, optional `target`, optional `checks`, and optional `protection` summary). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 - **`.cold-review-policy.yml`** — Flat key-value config. Set per-repo defaults for mode, model, threshold, etc.
@@ -578,9 +587,10 @@ Returns a JSON summary of all override entries in history: total count, reasons 
 
 ```bash
 python ~/.claude/scripts/cold_eyes/cli.py status
+python ~/.claude/scripts/cold_eyes/cli.py status --human
 ```
 
-Returns a low-detail health signal for the current repo. It answers whether Cold Eyes has run normally without exposing the review findings. A normal block is still reported as healthy runtime behavior; infrastructure failures or missing history show as attention-needed states. Add `--stale-after-hours N` only if you also want to treat old history as unknown.
+Returns a low-detail health signal for the current repo. It answers whether Cold Eyes has run normally without exposing the review findings. A normal block is still reported as healthy runtime behavior; infrastructure failures or missing history show as attention-needed states. Add `--human` for a short `READY` / `ATTENTION` / `NOT_PROTECTING` / `UNKNOWN` summary with review target and not-reviewed counts. Add `--stale-after-hours N` only if you also want to treat old history as unknown.
 
 ### Agent health notices
 

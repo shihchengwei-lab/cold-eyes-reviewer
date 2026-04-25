@@ -23,6 +23,9 @@ _BOOL_KEYS = {"fail_on_unreviewed_high_risk"}
 _VALUE_SETS = {
     "coverage_policy": {"warn", "block", "fail-closed"},
     "checks": {"auto", "off"},
+    "dirty_worktree_policy": {"ignore", "warn", "block-high-risk", "block"},
+    "untracked_policy": {"ignore", "warn", "block-high-risk", "block"},
+    "partial_stage_policy": {"ignore", "warn", "block-high-risk", "block"},
 }
 _VALID_KEYS = {
     "mode", "model", "shallow_model", "max_tokens", "context_tokens",
@@ -30,6 +33,7 @@ _VALID_KEYS = {
     "block_threshold", "threshold", "confidence", "language", "scope",
     "base", "truncation_policy", "minimum_coverage_pct", "coverage_policy",
     "fail_on_unreviewed_high_risk", "checks", "check_timeout_sec",
+    "dirty_worktree_policy", "untracked_policy", "partial_stage_policy",
 }
 
 

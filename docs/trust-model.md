@@ -66,7 +66,7 @@ See `docs/assurance-matrix.md` for per-category FP/FN analysis.
 Anyone can verify Cold Eyes' decision boundary locally:
 
 ```bash
-# Deterministic eval — tests parse + policy against 24 cases
+# Deterministic eval — tests parse + policy against 33 cases
 python cold_eyes/cli.py eval --eval-mode deterministic
 
 # Threshold sweep — precision/recall/F1 across all threshold × confidence combos
@@ -83,5 +83,5 @@ The eval corpus is at `evals/cases/` with schema at `evals/schema.md` and manife
 - **`line_hint` accuracy unmeasured.** Line references are LLM estimates from diff hunk headers. Block messages display `~` prefix. Hallucination rate is not formally measured.
 - **Token estimation is approximate.** `len(encode("utf-8")) ÷ 4` is closer than `len ÷ 4` for CJK but still a heuristic.
 - **No cross-file analysis.** If a function is deleted in file A and referenced in file B, Cold Eyes only catches this if both files are in the diff.
-- **Eval corpus is minimal.** 24 cases test the decision boundary. Real-world accuracy depends on model behavior, which varies by model and prompt.
+- **Eval corpus is minimal.** 33 cases test the decision boundary. Real-world accuracy depends on model behavior, which varies by model and prompt.
 - **No intent understanding.** Cold Eyes cannot distinguish "intentionally removed error handling" from "accidentally removed error handling."

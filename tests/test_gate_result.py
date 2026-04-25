@@ -127,3 +127,21 @@ class TestParseLlmReview:
         assert r["status"] == "pass"
         assert r["findings"] == []
         assert r["warnings"] == ["coverage warning: coverage_below_minimum"]
+
+    def test_target_block_is_finding_not_model_issue(self):
+        outcome = {
+            "state": "blocked",
+            "action": "block",
+            "issues": [],
+            "target": {
+                "policy_action": "block",
+                "policy_reason": "partial_stage",
+                "unreviewed_files": ["src/auth.py"],
+                "unreviewed_partial_stage_files": ["src/auth.py"],
+                "high_risk_unreviewed_files": ["src/auth.py"],
+            },
+        }
+        r = normalize_result("llm_review", json.dumps(outcome), 0)
+        assert r["status"] == "fail"
+        assert r["findings"][0]["type"] == "target_block"
+        assert r["findings"][0]["partial_stage_files"] == ["src/auth.py"]

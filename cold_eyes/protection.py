@@ -118,6 +118,8 @@ def _issues(outcome: dict, review: dict | None) -> list[dict]:
 
 def _block_type(outcome: dict, issues: list[dict]) -> str:
     final_action = outcome.get("final_action")
+    if final_action == "target_block":
+        return "target_block"
     if final_action == "coverage_block":
         return "coverage_block"
     if final_action == "check_block":
@@ -130,6 +132,13 @@ def _block_type(outcome: dict, issues: list[dict]) -> str:
 
 
 def _risk_summary(outcome: dict, issues: list[dict], block_type: str) -> list[str]:
+    if block_type == "target_block":
+        target = outcome.get("target") or {}
+        if target.get("high_risk_unreviewed_files"):
+            return ["有高風險檔案沒有被 Cold Eyes 審到"]
+        if target.get("unreviewed_partial_stage_files"):
+            return ["有檔案只 staged 了一部分，Cold Eyes 只會審到 staged 的部分"]
+        return ["這次 review 目標外還有未審的變更"]
     if block_type == "coverage_block":
         coverage = outcome.get("coverage") or {}
         high_risk = coverage.get("unreviewed_high_risk_files") or []
@@ -174,6 +183,11 @@ def _user_message(risk_summary: list[str], block_type: str, language: str | None
             f"Cold Eyes 先擋下來了，因為{risks}。我會先讓 Agent 補齊或縮小改動，"
             "再讓下一次 Stop hook 自動做全新的冷審；你不用手動跑指令。"
         )
+    if block_type == "target_block":
+        return (
+            f"Cold Eyes 先擋下來了，因為{risks}。它這次只審設定中的 review 目標，"
+            "我會先補齊要審的變更或確認哪些檔案要刻意排除，然後再讓下一次 Stop hook 重新冷審。"
+        )
     if block_type == "check_block":
         return (
             f"Cold Eyes 先擋下來了，因為{risks}。我會讓 Agent 依照本機檢查結果修正，"
@@ -216,6 +230,24 @@ def _agent_task(
             "high-risk files are reviewable in the next fresh review."
         )
         lines.extend(local_check_repair_lines(outcome.get("checks")))
+        return "\n".join(lines)
+
+    if block_type == "target_block":
+        target = outcome.get("target") or {}
+        unreviewed = target.get("unreviewed_files") or []
+        partial = target.get("unreviewed_partial_stage_files") or []
+        high_risk = target.get("high_risk_unreviewed_files") or []
+        if partial:
+            lines.append(f"Partially staged files: {', '.join(partial[:10])}")
+        if high_risk:
+            lines.append(f"High-risk files not reviewed: {', '.join(high_risk[:10])}")
+        elif unreviewed:
+            lines.append(f"Files not reviewed: {', '.join(unreviewed[:10])}")
+        lines.append(
+            "Repair approach: stage the complete intended change, intentionally "
+            "ignore files that should stay outside review, or switch scope when "
+            "the broader target should be reviewed."
+        )
         return "\n".join(lines)
 
     if issues:
@@ -274,6 +306,11 @@ def _rerun_protocol(block_type: str) -> dict:
 
 
 def _repair_step(block_type: str) -> str:
+    if block_type == "target_block":
+        return (
+            "Make the review target match the intended change: stage the complete "
+            "diff, ignore intentionally excluded files, or switch scope."
+        )
     if block_type == "coverage_block":
         return (
             "Reduce or split the current diff, or make high-risk files reviewable, "

@@ -16,7 +16,7 @@ from cold_eyes.engine import run
 from cold_eyes.doctor import run_doctor, run_doctor_fix, run_init
 from cold_eyes.history import (
     aggregate_overrides, compute_stats, prune_history, archive_history, quality_report,
-    runtime_status,
+    format_human_status, runtime_status,
 )
 from cold_eyes.health import (
     agent_notice,
@@ -122,6 +122,8 @@ def main():
                         help="Archive entries before date YYYY-MM-DD (for history-archive)")
     parser.add_argument("--stale-after-hours", type=float, default=0,
                         help="Optional age threshold for status health checks")
+    parser.add_argument("--human", action="store_true",
+                        help="Print a short human-readable status")
     parser.add_argument("--repo-root", default=None,
                         help="Repository root for health notice commands")
     parser.add_argument("--scripts-dir", default=None,
@@ -152,6 +154,15 @@ def main():
     parser.add_argument("--coverage-policy", default=None,
                         choices=["warn", "block", "fail-closed"],
                         help="How incomplete coverage is handled")
+    parser.add_argument("--dirty-worktree-policy", default=None,
+                        choices=["ignore", "warn", "block-high-risk", "block"],
+                        help="How unstaged files outside the review target are handled")
+    parser.add_argument("--untracked-policy", default=None,
+                        choices=["ignore", "warn", "block-high-risk", "block"],
+                        help="How untracked files outside the review target are handled")
+    parser.add_argument("--partial-stage-policy", default=None,
+                        choices=["ignore", "warn", "block-high-risk", "block"],
+                        help="How partially staged files are handled")
     parser.add_argument("--fail-on-unreviewed-high-risk",
                         action="store_true", default=None,
                         help="Block if a high-risk file was not fully reviewed")
@@ -195,6 +206,9 @@ def main():
         result = quality_report(last=args.last)
     elif args.command == "status":
         result = runtime_status(stale_after_hours=args.stale_after_hours)
+        if args.human:
+            print(format_human_status(result, run_doctor()))
+            return
     elif args.command == "agent-notice":
         result = agent_notice(
             repo_root=args.repo_root,
@@ -295,7 +309,10 @@ def main():
                      fail_on_unreviewed_high_risk=args.fail_on_unreviewed_high_risk,
                      hook_input_path=args.hook_input_path,
                      checks=args.checks,
-                     check_timeout_sec=args.check_timeout_sec)
+                     check_timeout_sec=args.check_timeout_sec,
+                     dirty_worktree_policy=args.dirty_worktree_policy,
+                     untracked_policy=args.untracked_policy,
+                     partial_stage_policy=args.partial_stage_policy)
         result = _attach_auto_tune(result)
     print(json.dumps(result, ensure_ascii=False))
 

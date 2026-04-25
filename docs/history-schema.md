@@ -78,9 +78,10 @@ Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each l
 | `override_reason` | string | When overridden | Reason text from override token |
 | `override_note` | string | When supplied | Optional human note attached to override |
 | `cold_eyes_verdict` | string | New entries | Original reviewer verdict: `pass`, `fail`, `incomplete`, `infra_failed` |
-| `final_action` | string | New entries | Final disposition: `pass`, `report`, `block`, `override_pass`, `coverage_block`, `check_block` |
-| `authority` | string | New entries | Decision authority: `cold_eyes`, `human_override`, `coverage_gate`, `local_checks`, `infrastructure` |
+| `final_action` | string | New entries | Final disposition: `pass`, `report`, `block`, `override_pass`, `coverage_block`, `check_block`, `target_block` |
+| `authority` | string | New entries | Decision authority: `cold_eyes`, `human_override`, `coverage_gate`, `target_sentinel`, `local_checks`, `infrastructure` |
 | `protection` | object | When available | Compact protection summary: whether an agent task/user message was generated, block type, risk summary, and intent capsule status |
+| `target` | object | When available | Review-target summary: staged/unstaged/untracked counts, partial-stage files, high-risk unreviewed files, and target policy action |
 | `coverage` | object | When coverage evaluated | Coverage gate status and unreviewed file details |
 | `checks` | object | When local checks evaluated | Compact local-check summary |
 | `failure_kind` | string | When infra failed | `timeout`, `cli_not_found`, `cli_error`, `empty_output` |
@@ -127,6 +128,24 @@ Present when the engine reached diff construction and could evaluate review cove
 | `policy` | string | `warn`, `block`, or `fail-closed` |
 | `action` | string | Coverage decision: `pass`, `warn`, or `block` |
 | `reason` | string | Machine-readable reason, such as `coverage_below_minimum` |
+
+## target object
+
+Present when the engine can inspect the current git target.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scope` | string | Configured review scope |
+| `review_file_count` | int | Files included in the configured review target |
+| `staged_count` | int | Staged changed files after ignore filtering |
+| `unstaged_count` | int | Unstaged changed files after ignore filtering |
+| `untracked_count` | int | Untracked files after ignore filtering |
+| `partial_stage_count` | int | Files with both staged and unstaged changes |
+| `unreviewed_count` | int | Files outside the configured review target |
+| `high_risk_unreviewed_count` | int | Unreviewed files matching high-risk path patterns |
+| `target_integrity` | string | `clean`, `dirty`, `partial`, or `empty` |
+| `policy_action` | string | Target policy decision: `pass`, `warn`, or `block` |
+| `policy_reason` | string | Machine-readable reason, such as `partial_stage` |
 
 ## checks object
 

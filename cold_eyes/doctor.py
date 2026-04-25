@@ -21,6 +21,9 @@ truncation_policy: warn
 minimum_coverage_pct: 80
 coverage_policy: warn
 fail_on_unreviewed_high_risk: true
+dirty_worktree_policy: warn
+untracked_policy: warn
+partial_stage_policy: block-high-risk
 checks: auto
 check_timeout_sec: 120
 """
@@ -37,6 +40,9 @@ truncation_policy: warn
 minimum_coverage_pct: 80
 coverage_policy: warn
 fail_on_unreviewed_high_risk: true
+dirty_worktree_policy: warn
+untracked_policy: warn
+partial_stage_policy: block-high-risk
 checks: auto
 check_timeout_sec: 120
 """

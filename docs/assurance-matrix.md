@@ -38,9 +38,9 @@ How Cold Eyes handles non-review situations.
 | Empty diff (no changes) | Skip review, log | `skipped` | No |
 | Diff exceeds token budget | Truncate by file priority, review partial | `blocked` or `passed` with truncation warning | `truncation_policy`: warn / soft-pass / fail-closed |
 | Binary-only diff | Skip review, log | `skipped` | No |
-| Claude CLI not found | Block (fail-closed) | `infra_failed` | No |
-| CLI timeout / error | Block (fail-closed) | `infra_failed` | No |
-| Malformed model output | Block (fail-closed) | `infra_failed` | No |
+| Claude CLI not found | Engine logs and passes; shell-level invalid output still fails closed | `infra_failed` | No |
+| CLI timeout / error | Engine logs and passes; shell-level invalid output still fails closed | `infra_failed` | No |
+| Malformed model output | Engine logs and passes; shell-level invalid output still fails closed | `infra_failed` | No |
 | Python interpreter missing | Block (fail-closed) | Shell exits non-zero | No |
 | Policy file too large | Warn + truncate at limit | Normal | 50-line content limit |
 

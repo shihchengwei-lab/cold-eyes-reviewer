@@ -28,6 +28,7 @@ def test_log_to_history_writes_gate_fields(tmp_path, monkeypatch):
         authority="coverage_gate",
         override_note="manual note",
         checks={"mode": "auto", "hard_failed": False, "results": []},
+        target={"scope": "staged", "policy_action": "pass"},
     )
 
     entry = json.loads(history_path.read_text().strip())
@@ -37,6 +38,7 @@ def test_log_to_history_writes_gate_fields(tmp_path, monkeypatch):
     assert entry["authority"] == "coverage_gate"
     assert entry["override_note"] == "manual note"
     assert entry["checks"]["mode"] == "auto"
+    assert entry["target"]["scope"] == "staged"
 
 
 def test_quality_report_gate_quality_counts_new_actions(tmp_path):

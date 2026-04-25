@@ -1,8 +1,13 @@
 import json
 from datetime import datetime, timedelta, timezone
 
-from cold_eyes.constants import STATE_BLOCKED, STATE_INFRA_FAILED, STATE_PASSED
-from cold_eyes.history import runtime_status
+from cold_eyes.constants import (
+    STATE_BLOCKED,
+    STATE_INFRA_FAILED,
+    STATE_PASSED,
+    STATE_SKIPPED,
+)
+from cold_eyes.history import format_human_status, runtime_status
 
 
 def _iso(dt):
@@ -102,3 +107,88 @@ def test_status_summarizes_local_check_health_without_findings(tmp_path):
     assert result["ok"] is True
     assert result["checks"]["status"] == "warning"
     assert "tool not available" not in result["checks"]["message"]
+
+
+def _doctor(*checks):
+    return {"checks": list(checks), "all_ok": all(c.get("status") != "fail" for c in checks)}
+
+
+def _check(name, status="ok", detail=""):
+    return {"name": name, "status": status, "detail": detail}
+
+
+def _human_status(health="ok", target=None, **extra):
+    status = {
+        "health": health,
+        "last_seen": "2026-04-26T00:00:00Z",
+        "last_state": STATE_PASSED,
+        "mode": "block",
+        "scope": "staged",
+        "target": target or {
+            "scope": "staged",
+            "review_file_count": 2,
+            "unreviewed_unstaged_files": [],
+            "unreviewed_untracked_files": [],
+            "unreviewed_partial_stage_files": [],
+            "policy_action": "pass",
+        },
+    }
+    status.update(extra)
+    return status
+
+
+def test_human_status_ready():
+    text = format_human_status(
+        _human_status(),
+        _doctor(
+            _check("settings_hook"),
+            _check("claude_cli"),
+            _check("git_repo"),
+            _check("health_schedule"),
+        ),
+    )
+
+    assert "Cold Eyes: READY" in text
+    assert "Review target: 2 staged files" in text
+
+
+def test_human_status_attention_for_target_warning():
+    target = {
+        "scope": "staged",
+        "review_file_count": 0,
+        "unreviewed_unstaged_files": ["app.py"],
+        "unreviewed_untracked_files": [],
+        "unreviewed_partial_stage_files": [],
+        "policy_action": "warn",
+    }
+    text = format_human_status(
+        _human_status(health="attention", target=target, last_state=STATE_SKIPPED),
+        _doctor(_check("settings_hook"), _check("claude_cli"), _check("git_repo")),
+    )
+
+    assert "Cold Eyes: ATTENTION" in text
+    assert "Not reviewed: 1 unstaged files, 0 untracked files" in text
+    assert "Next action: stage intended changes" in text
+
+
+def test_human_status_not_protecting_for_gate_failure_without_low_level_detail():
+    text = format_human_status(
+        _human_status(health="ok"),
+        _doctor(
+            _check("settings_hook"),
+            _check("claude_cli", "fail", "secret low-level stack trace"),
+            _check("git_repo"),
+        ),
+    )
+
+    assert "Cold Eyes: NOT_PROTECTING" in text
+    assert "secret low-level stack trace" not in text
+
+
+def test_human_status_unknown_without_history():
+    text = format_human_status(
+        _human_status(health="unknown", last_seen=None, last_state=None),
+        _doctor(_check("settings_hook"), _check("claude_cli"), _check("git_repo")),
+    )
+
+    assert "Cold Eyes: UNKNOWN" in text

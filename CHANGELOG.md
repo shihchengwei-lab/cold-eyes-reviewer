@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.18.0 - feat: review-target sentinel
+
+### What changed
+
+- Added a target sentinel that records staged, unstaged, untracked, partially staged, and high-risk unreviewed files before model review.
+- Added target policies for dirty worktrees, untracked files, and partial staging: `ignore`, `warn`, `block-high-risk`, or `block`.
+- Added `status --human`, a short `READY` / `ATTENTION` / `NOT_PROTECTING` / `UNKNOWN` status view with review-target and not-reviewed counts.
+- History entries can now include a `target` summary, and target blocks use `final_action: target_block` with `authority: target_sentinel`.
+- Docs now clarify that a pass means the configured review target passed, not necessarily the whole working tree.
+
+### Behavior changes
+
+- In staged scope, unstaged or untracked files are visible as target attention instead of silent blind spots.
+- High-risk partially staged files block by default in `mode: block`.
+- Engine-level `infra_failed` wording is aligned across docs as pass-and-log; shell-level invalid engine output still fails closed.
+
+### Test count
+
+- 650 passed, 6 skipped.
+
 ## v1.17.1 - fix: default to staged scope
 
 ### What changed

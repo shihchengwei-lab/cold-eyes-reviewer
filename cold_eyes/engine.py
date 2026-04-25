@@ -39,6 +39,12 @@ from cold_eyes.coverage_gate import (
     format_coverage_block_reason,
     is_truthy,
 )
+from cold_eyes.target import (
+    attach_target_decision,
+    evaluate_target_policy,
+    format_target_block_reason,
+    inspect_review_target,
+)
 from cold_eyes.local_checks import (
     compact_history as checks_history_summary,
     format_block_reason as format_check_block_reason,
@@ -83,7 +89,9 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         context_tokens=None, max_input_tokens=None, history_path=None,
         minimum_coverage_pct=None, coverage_policy=None,
         fail_on_unreviewed_high_risk=None, override_note=None,
-        hook_input_path=None, checks=None, check_timeout_sec=None):
+        hook_input_path=None, checks=None, check_timeout_sec=None,
+        dirty_worktree_policy=None, untracked_policy=None,
+        partial_stage_policy=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
@@ -171,6 +179,27 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         120,
         cast=int,
     ))
+    dirty_worktree_policy = _resolve(
+        dirty_worktree_policy,
+        "COLD_REVIEW_DIRTY_WORKTREE_POLICY",
+        policy,
+        "dirty_worktree_policy",
+        "warn",
+    )
+    untracked_policy = _resolve(
+        untracked_policy,
+        "COLD_REVIEW_UNTRACKED_POLICY",
+        policy,
+        "untracked_policy",
+        "warn",
+    )
+    partial_stage_policy = _resolve(
+        partial_stage_policy,
+        "COLD_REVIEW_PARTIAL_STAGE_POLICY",
+        policy,
+        "partial_stage_policy",
+        "block-high-risk",
+    )
     agent_brief_enabled = protection_setting_enabled(os.environ.get("COLD_REVIEW_AGENT_BRIEF"), True)
     intent_enabled = intent_setting_enabled(os.environ.get("COLD_REVIEW_INTENT_CONTEXT"), True)
     intent_max_chars = _resolve(
@@ -214,6 +243,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     override_reason = override_reason or os.environ.get("COLD_REVIEW_OVERRIDE_REASON", "")
     override_note = override_note or token_note or os.environ.get("COLD_REVIEW_OVERRIDE_NOTE", "")
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
+    target = _inspect_target(scope, ignore_file)
 
     # 1. Collect files
     try:
@@ -230,21 +260,61 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
                        override_note=outcome.get("override_note", ""),
+                       target=target,
                        duration_ms=_elapsed_ms(started))
         return outcome
-    if not all_files:
-        log_to_history(cwd, mode, model, STATE_SKIPPED, "no changes",
-                       min_confidence=min_confidence, scope=scope,
-                       duration_ms=_elapsed_ms(started))
-        return _skip("no changes")
 
     # 2. Filter
     filtered = filter_file_list(all_files, ignore_file)
+    target = _inspect_target(scope, ignore_file, review_files=filtered) or target
+    target_decision = evaluate_target_policy(
+        target or {},
+        dirty_worktree_policy=dirty_worktree_policy,
+        untracked_policy=untracked_policy,
+        partial_stage_policy=partial_stage_policy,
+    )
+    target = attach_target_decision(target or {}, target_decision)
+    target_gate = _apply_target_policy_gate(
+        target, target_decision, mode, allow_once,
+        override_reason=override_reason, override_note=override_note,
+    )
+    if target_gate:
+        target_gate = _attach_protection_brief(
+            target_gate, language=language, intent=intent_capsule,
+            enabled=agent_brief_enabled,
+        )
+        log_to_history(
+            cwd, mode, model, target_gate["state"],
+            reason=target_gate.get("reason", ""),
+            min_confidence=min_confidence, scope=scope,
+            override_reason=override_reason,
+            cold_eyes_verdict=target_gate.get("cold_eyes_verdict"),
+            final_action=target_gate.get("final_action"),
+            authority=target_gate.get("authority"),
+            override_note=target_gate.get("override_note", ""),
+            target=target,
+            protection=protection_history_summary(target_gate.get("protection")),
+            duration_ms=_elapsed_ms(started),
+        )
+        return target_gate
+
+    if not all_files:
+        result = _attach_target_metadata(_skip("no changes"), target)
+        display_suffix = _target_display_suffix(target)
+        if display_suffix:
+            result["display"] = f"{result['display']} - {display_suffix}"
+        log_to_history(cwd, mode, model, STATE_SKIPPED, "no changes",
+                       min_confidence=min_confidence, scope=scope,
+                       target=target,
+                       duration_ms=_elapsed_ms(started))
+        return result
     if not filtered:
+        result = _attach_target_metadata(_skip("all files ignored"), target)
         log_to_history(cwd, mode, model, STATE_SKIPPED, "all files ignored",
                        min_confidence=min_confidence, scope=scope,
+                       target=target,
                        duration_ms=_elapsed_ms(started))
-        return _skip("all files ignored")
+        return result
 
     # 3. Rank
     ranked = rank_file_list(filtered, untracked)
@@ -258,8 +328,9 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         log_to_history(cwd, mode, model, STATE_SKIPPED, reason,
                        min_confidence=min_confidence, scope=scope,
                        review_depth=review_depth,
+                       target=target,
                        duration_ms=_elapsed_ms(started))
-        result = _skip(reason)
+        result = _attach_target_metadata(_skip(reason), target)
         result["review_depth"] = review_depth
         result["why_depth_selected"] = triage["why_depth_selected"]
         return result
@@ -284,6 +355,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
                        override_note=outcome.get("override_note", ""),
+                       target=target,
                        duration_ms=_elapsed_ms(started))
         return outcome
 
@@ -356,6 +428,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             _skip("no diff content"), coverage, mode, allow_once,
             override_reason=override_reason, override_note=override_note,
         )
+        result = _attach_target_metadata(result, target)
         result = _attach_protection_brief(
             result, language=language, intent=intent_capsule,
             enabled=agent_brief_enabled,
@@ -369,6 +442,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             authority=result.get("authority"),
             override_reason=override_reason,
             override_note=result.get("override_note", ""),
+            target=target,
             protection=protection_history_summary(result.get("protection")),
             duration_ms=_elapsed_ms(started),
         )
@@ -398,6 +472,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
                        override_note=outcome.get("override_note", ""),
+                       target=target,
                        duration_ms=_elapsed_ms(started))
         return outcome
 
@@ -415,6 +490,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
                        override_note=outcome.get("override_note", ""),
+                       target=target,
                        duration_ms=_elapsed_ms(started))
         return outcome
 
@@ -450,6 +526,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         outcome, local_checks, mode, allow_once,
         override_reason=override_reason, override_note=override_note,
     )
+    outcome = _attach_target_metadata(outcome, target)
     outcome = _attach_protection_brief(
         outcome, review=review, language=language, intent=intent_capsule,
         enabled=agent_brief_enabled,
@@ -489,11 +566,75 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         final_action=outcome.get("final_action"),
         authority=outcome.get("authority"),
         override_note=outcome.get("override_note", ""),
+        target=target,
         protection=protection_history_summary(outcome.get("protection")),
         duration_ms=_elapsed_ms(started),
     )
 
     return outcome
+
+
+def _inspect_target(scope, ignore_file, review_files=None):
+    try:
+        return inspect_review_target(
+            scope=scope,
+            ignore_file=ignore_file,
+            review_files=review_files,
+        )
+    except GitCommandError:
+        return None
+
+
+def _apply_target_policy_gate(target, decision, mode, allow_once,
+                              override_reason="", override_note=""):
+    if not target or decision.get("action") != "block" or mode != "block":
+        return None
+
+    if allow_once:
+        reason_suffix = f" [{override_reason}]" if override_reason else ""
+        outcome = {
+            "action": "pass",
+            "state": STATE_OVERRIDDEN,
+            "reason": override_reason,
+            "display": f"cold-review: override - target block skipped{reason_suffix}",
+            "cold_eyes_verdict": "target_incomplete",
+            "final_action": "override_pass",
+            "authority": "human_override",
+            "target": target,
+        }
+        if override_note:
+            outcome["override_note"] = override_note
+        return outcome
+
+    return {
+        "action": "block",
+        "state": STATE_BLOCKED,
+        "reason": format_target_block_reason(target, decision),
+        "display": "cold-review: blocking (review target incomplete)",
+        "cold_eyes_verdict": "target_incomplete",
+        "final_action": "target_block",
+        "authority": "target_sentinel",
+        "target": target,
+    }
+
+
+def _attach_target_metadata(outcome, target):
+    outcome = dict(outcome)
+    if target:
+        outcome["target"] = target
+        if target.get("policy_action") == "warn":
+            outcome["target_warning"] = target.get("policy_reason", "")
+    return outcome
+
+
+def _target_display_suffix(target):
+    if not target or target.get("policy_action") != "warn":
+        return ""
+    unreviewed = int(target.get("unreviewed_count", 0) or 0)
+    partial = int(target.get("partial_stage_count", 0) or 0)
+    if unreviewed or partial:
+        return "review target attention: unreviewed changes present"
+    return "review target attention"
 
 
 def _attach_protection_brief(outcome, review=None, language=None, intent=None, enabled=True):

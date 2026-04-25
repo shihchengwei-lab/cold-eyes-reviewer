@@ -23,7 +23,7 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
                    failure_kind=None, stderr_excerpt="", review_depth=None,
                    coverage=None, cold_eyes_verdict=None, final_action=None,
                    authority=None, override_note="", duration_ms=None,
-                   protection=None, checks=None):
+                   protection=None, checks=None, target=None):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -60,6 +60,8 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
         entry["protection"] = protection
     if checks is not None:
         entry["checks"] = checks
+    if target is not None:
+        entry["target"] = target
 
     if review is not None:
         entry["diff_stats"] = {
@@ -237,6 +239,7 @@ def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
     cwd = cwd or os.getcwd()
     entries = _read_history(path)
     matching = [entry for entry in entries if _same_project(entry.get("cwd", ""), cwd)]
+    runtime_context = _current_runtime_context(cwd)
 
     if not matching:
         return {
@@ -248,6 +251,7 @@ def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
             "history_path": path,
             "last_seen": None,
             "last_state": None,
+            **runtime_context,
             "checks": {"status": "not_run", "message": "No local-check record found."},
         }
 
@@ -265,11 +269,18 @@ def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
         state == STATE_INFRA_FAILED
         or latest.get("cold_eyes_verdict") == "infra_failed"
     )
+    latest_target = latest.get("target") if isinstance(latest.get("target"), dict) else None
+    current_target = runtime_context.get("target")
+    target_attention = _target_needs_attention(current_target or latest_target)
 
     if is_infra_failed:
         ok = False
         health = "problem"
         message = "Cold Eyes ran, but the reviewer tool needs attention."
+    elif target_attention:
+        ok = True
+        health = "attention"
+        message = "Cold Eyes is running, but the current review target needs attention."
     elif is_stale:
         ok = False
         health = "unknown"
@@ -301,9 +312,35 @@ def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
         "last_final_action": latest.get("final_action", ""),
         "last_duration_ms": latest.get("duration_ms"),
         "age_hours": age_hours,
+        "last_target": latest_target,
+        **runtime_context,
         "checks": _checks_status(latest.get("checks")),
     }
     return result
+
+
+def format_human_status(status: dict, doctor: dict | None = None) -> str:
+    """Format status for a non-technical user."""
+    doctor = doctor or {}
+    level = _human_status_level(status, doctor)
+    target = status.get("target") or status.get("last_target") or {}
+    mode = status.get("mode", "")
+    scope = target.get("scope") or status.get("scope") or ""
+
+    lines = [f"Cold Eyes: {level}", ""]
+    lines.append(f"Protecting: {'yes' if level in {'READY', 'ATTENTION'} else 'no'}")
+    lines.append(f"Hook: {_doctor_check_label(doctor, 'settings_hook')}")
+    lines.append(f"Claude CLI: {_doctor_check_label(doctor, 'claude_cli')}")
+    lines.append(f"Repo: {_doctor_check_label(doctor, 'git_repo')}")
+    if mode:
+        lines.append(f"Mode: {mode}")
+    if scope:
+        lines.append(f"Scope: {scope}")
+    lines.append(_review_target_line(target, scope))
+    lines.append(_not_reviewed_line(target))
+    lines.append(f"Last run: {_last_run_label(status)}")
+    lines.append(f"Next action: {_next_action(level, status, target, doctor)}")
+    return "\n".join(lines)
 
 
 def _same_project(entry_cwd, cwd):
@@ -379,6 +416,164 @@ def _checks_status(checks):
         "message": "Local checks ran normally.",
         "result_count": len(results),
     }
+
+
+def _current_runtime_context(cwd):
+    context = {
+        "repo_root": None,
+        "mode": "",
+        "scope": "",
+        "target": None,
+    }
+    try:
+        from cold_eyes.config import load_policy
+        from cold_eyes.git import git_cmd
+        from cold_eyes.target import (
+            attach_target_decision,
+            evaluate_target_policy,
+            inspect_review_target,
+        )
+    except ImportError:
+        return context
+
+    old_cwd = os.getcwd()
+    try:
+        os.chdir(cwd)
+        repo_root = git_cmd("rev-parse", "--show-toplevel")
+        policy = load_policy(repo_root)
+        mode = os.environ.get("COLD_REVIEW_MODE") or policy.get("mode", "block")
+        scope = os.environ.get("COLD_REVIEW_SCOPE") or policy.get("scope", "staged")
+        dirty_policy = (
+            os.environ.get("COLD_REVIEW_DIRTY_WORKTREE_POLICY")
+            or policy.get("dirty_worktree_policy", "warn")
+        )
+        untracked_policy = (
+            os.environ.get("COLD_REVIEW_UNTRACKED_POLICY")
+            or policy.get("untracked_policy", "warn")
+        )
+        partial_policy = (
+            os.environ.get("COLD_REVIEW_PARTIAL_STAGE_POLICY")
+            or policy.get("partial_stage_policy", "block-high-risk")
+        )
+        ignore_file = os.path.join(repo_root, ".cold-review-ignore")
+        target = inspect_review_target(scope=scope, ignore_file=ignore_file)
+        decision = evaluate_target_policy(
+            target,
+            dirty_worktree_policy=dirty_policy,
+            untracked_policy=untracked_policy,
+            partial_stage_policy=partial_policy,
+        )
+        context.update({
+            "repo_root": repo_root,
+            "mode": str(mode).lower(),
+            "scope": str(scope).lower(),
+            "target": attach_target_decision(target, decision),
+        })
+    except Exception:
+        pass
+    finally:
+        try:
+            os.chdir(old_cwd)
+        except OSError:
+            pass
+    return context
+
+
+def _target_needs_attention(target):
+    if not isinstance(target, dict):
+        return False
+    return target.get("policy_action") in {"warn", "block"}
+
+
+def _human_status_level(status, doctor):
+    mode = str(status.get("mode") or "").lower()
+    if mode == "off":
+        return "NOT_PROTECTING"
+    if _doctor_has_gate_failure(doctor):
+        return "NOT_PROTECTING"
+    if status.get("health") == "problem":
+        return "NOT_PROTECTING"
+    if status.get("health") == "unknown" and not status.get("last_seen"):
+        return "UNKNOWN"
+    if status.get("health") == "unknown":
+        return "ATTENTION"
+    if status.get("health") == "attention":
+        return "ATTENTION"
+    if _schedule_missing(doctor):
+        return "ATTENTION"
+    return "READY"
+
+
+def _doctor_has_gate_failure(doctor):
+    critical = {"deploy_files", "settings_hook", "claude_cli", "git_repo"}
+    for check in doctor.get("checks", []) or []:
+        if check.get("name") in critical and check.get("status") == "fail":
+            return True
+    return False
+
+
+def _schedule_missing(doctor):
+    for check in doctor.get("checks", []) or []:
+        if check.get("name") != "health_schedule":
+            continue
+        detail = str(check.get("detail", "")).lower()
+        return check.get("status") != "ok" and "schedule not found" in detail
+    return False
+
+
+def _doctor_check_label(doctor, name):
+    checks = doctor.get("checks", []) or []
+    for check in checks:
+        if check.get("name") == name:
+            return "ok" if check.get("status") == "ok" else "needs attention"
+    return "unknown"
+
+
+def _review_target_line(target, scope):
+    if not isinstance(target, dict) or not target:
+        return "Review target: unknown"
+    scope = scope or target.get("scope", "staged")
+    count = int(target.get("review_file_count", 0) or 0)
+    return f"Review target: {count} {scope} files"
+
+
+def _not_reviewed_line(target):
+    if not isinstance(target, dict) or not target:
+        return "Not reviewed: unknown"
+    unstaged = len(target.get("unreviewed_unstaged_files", []) or [])
+    untracked = len(target.get("unreviewed_untracked_files", []) or [])
+    partial = len(target.get("unreviewed_partial_stage_files", []) or [])
+    line = f"Not reviewed: {unstaged} unstaged files, {untracked} untracked files"
+    if partial:
+        line += f", {partial} partially staged files"
+    return line
+
+
+def _last_run_label(status):
+    last_seen = status.get("last_seen")
+    last_state = status.get("last_state")
+    if not last_seen:
+        return "none"
+    if last_state:
+        return f"{last_state} at {last_seen}"
+    return str(last_seen)
+
+
+def _next_action(level, status, target, doctor):
+    if level == "NOT_PROTECTING":
+        if _doctor_has_gate_failure(doctor):
+            return "run doctor --fix, then doctor"
+        return "fix the gate before relying on it"
+    if level == "UNKNOWN":
+        return "stage intended changes, then end the Claude Code turn"
+    if isinstance(target, dict):
+        if target.get("unreviewed_partial_stage_files"):
+            return "stage the complete intended change or split the diff"
+        if target.get("policy_action") in {"warn", "block"}:
+            return "stage intended changes, then end the Claude Code turn"
+    if status.get("last_state") == STATE_SKIPPED:
+        return "stage intended changes, then end the Claude Code turn"
+    return "end the Claude Code turn"
 
 
 def quality_report(history_path=None, last=None):

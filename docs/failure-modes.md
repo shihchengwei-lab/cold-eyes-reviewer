@@ -10,7 +10,7 @@ Every review exits through one of six states, logged to `~/.claude/cold-review-h
 | `infra_failed` | Git error, Claude CLI error/timeout, empty output, parse failure | logs, passes | logs, passes |
 | `passed` | Review completed, no issues at/above threshold | passes | passes |
 | `reported` | Issues found but mode is report | n/a | logs, passes |
-| `blocked` | Issues at/above threshold in block mode | **blocks** | n/a |
+| `blocked` | Issues at/above threshold, incomplete coverage, hard local check failure, or review-target mismatch in block mode | **blocks** | n/a |
 | `overridden` | Would have blocked, but override token was armed | passes | n/a |
 
 ## Infrastructure failures
@@ -79,6 +79,18 @@ Coverage is evaluated after the diff is filtered and risk-ranked. `partial_files
 | High-risk unreviewed file and `fail_on_unreviewed_high_risk: true` | Blocks only in `mode: block` |
 
 Coverage block is distinct from review block: it does not add to `issues`, sets `cold_eyes_verdict: incomplete`, `final_action: coverage_block`, and `authority: coverage_gate`.
+
+## Review target incomplete
+
+The target sentinel runs before model review. It records what the configured scope will review and what remains outside it.
+
+| Condition | Default result |
+|-----------|----------------|
+| Unstaged files outside `staged` scope | Passes with target warning |
+| Untracked files outside `staged` or `head` scope | Passes with target warning |
+| High-risk partially staged file | Blocks only in `mode: block` |
+
+Target blocks are distinct from model review blocks: they do not add to `issues`, set `cold_eyes_verdict: target_incomplete`, `final_action: target_block`, and `authority: target_sentinel`.
 
 ## False positives
 

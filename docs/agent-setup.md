@@ -99,6 +99,16 @@ The block message explains the issue. Options:
 2. Override once: `python ~/.claude/scripts/cold_eyes/cli.py arm-override --reason "reason"`
 3. Add to ignore: edit `.cold-review-ignore`
 
+### Cold Eyes reports target attention
+
+Run:
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py status --human
+```
+
+If it says there are files not reviewed, make the review target match the intended change before claiming a pass: stage the complete intended diff, intentionally ignore files that should stay outside review, or switch scope when the broader target should be reviewed.
+
 ### Doctor check fails
 
 | Check | Fix |

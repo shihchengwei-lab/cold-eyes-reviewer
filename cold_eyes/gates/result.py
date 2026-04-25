@@ -156,6 +156,23 @@ def _parse_llm_review(raw: str, exit_code: int) -> tuple[str, list[dict], list[s
             f"coverage warning: {coverage.get('reason', 'incomplete review')}"
         )
 
+    target = outcome.get("target") or {}
+    target_action = target.get("policy_action")
+    if target_action == "block":
+        findings.append({
+            "type": "target_block",
+            "message": target.get("policy_reason", "review target incomplete")
+            or "review target incomplete",
+            "unreviewed_files": target.get("unreviewed_files", []),
+            "partial_stage_files": target.get("unreviewed_partial_stage_files", []),
+            "high_risk_unreviewed_files": target.get("high_risk_unreviewed_files", []),
+        })
+        status = "fail"
+    elif target_action == "warn":
+        warnings.append(
+            f"target warning: {target.get('policy_reason', 'review target attention')}"
+        )
+
     return status, findings, warnings
 
 
