@@ -137,6 +137,10 @@ class TestNoPythonInterpreter:
             assert "python interpreter not found" in result.stderr
             out = json.loads(result.stdout)
             assert out["decision"] == "block"
+            notice = os.path.join(tmpdir, ".claude", "cold-review-agent-notice.txt")
+            assert os.path.isfile(notice)
+            with open(notice, "r", encoding="utf-8") as f:
+                assert "gate is not reliable" in f.read()
 
     def test_report_mode_warns_on_missing_python(self):
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -264,18 +268,31 @@ class TestShellParserFailClosed:
 
     def _run_parser(self, mode, stdin_data):
         code = self._extract_parser_code()
-        env = {**os.environ, "COLD_REVIEW_PARSE_MODE": mode}
-        return subprocess.run(
-            ["python", "-c", code],
-            input=stdin_data, capture_output=True, text=True, timeout=10,
-            env=env,
-        )
+        with tempfile.TemporaryDirectory() as tmpdir:
+            notice = os.path.join(tmpdir, "notice.txt")
+            env = {
+                **os.environ,
+                "COLD_REVIEW_PARSE_MODE": mode,
+                "COLD_REVIEW_NOTICE_FILE": notice,
+            }
+            result = subprocess.run(
+                ["python", "-c", code],
+                input=stdin_data, capture_output=True, text=True, timeout=10,
+                env=env,
+            )
+            result.notice_path = notice
+            result.notice_text = ""
+            if os.path.isfile(notice):
+                with open(notice, "r", encoding="utf-8") as f:
+                    result.notice_text = f.read()
+            return result
 
     # --- Block mode: must block on failures ---
 
     def test_block_on_empty_output(self):
         r = self._run_parser("block", "")
         assert "infrastructure failure" in r.stderr
+        assert "gate is not reliable" in r.notice_text
         out = json.loads(r.stdout)
         assert out["decision"] == "block"
 
@@ -288,8 +305,19 @@ class TestShellParserFailClosed:
     def test_block_on_missing_action(self):
         r = self._run_parser("block", json.dumps({"display": "x"}))
         assert "infrastructure failure" in r.stderr
+        assert "gate is not reliable" in r.notice_text
         out = json.loads(r.stdout)
         assert out["decision"] == "block"
+
+    def test_infra_failed_result_writes_notice(self):
+        data = json.dumps({
+            "action": "block",
+            "state": "infra_failed",
+            "display": "infra",
+            "reason": "infra failed",
+        })
+        r = self._run_parser("block", data)
+        assert "reviewer infrastructure problem" in r.notice_text
 
     def test_block_on_non_dict_json(self):
         r = self._run_parser("block", json.dumps([1, 2, 3]))

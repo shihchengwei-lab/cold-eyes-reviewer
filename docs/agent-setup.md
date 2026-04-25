@@ -16,6 +16,13 @@ bash install.sh
 ```
 
 This copies `cold-review.sh`, `cold-review-prompt.txt`, and `cold_eyes/` to `~/.claude/scripts/`.
+It also creates a low-noise health notice schedule by default. The schedule runs every 7 days at 09:00 and writes an Agent notice only when the gate setup needs attention.
+
+To adjust the interval during install:
+
+```bash
+COLD_REVIEW_HEALTH_INTERVAL_DAYS=14 COLD_REVIEW_HEALTH_TIME=08:30 bash install.sh
+```
 
 ### Step 2: Configure the Stop hook
 
@@ -101,6 +108,9 @@ The block message explains the issue. Options:
 | `git_repo` | Run from inside a git repository |
 | `legacy_helper` | Run `doctor --fix` or delete `~/.claude/scripts/cold-review-helper.py` |
 | `shell_version` | Re-run `bash install.sh` to update shell script |
+| `health_schedule` | Re-run `bash install.sh` or run `install-health-schedule` |
+
+`doctor --fix` can auto-remove the legacy helper, restore the Agent health notice schedule when supported, and clear stale health notices after the setup is clean.
 
 ### settings.json doesn't exist
 

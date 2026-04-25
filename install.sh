@@ -53,6 +53,21 @@ for pkg in session contract retry noise runner; do
   rm -rf "$SCRIPTS_DIR/cold_eyes/$pkg"
 done
 
+# Create/update the low-noise Agent health notice schedule by default.
+# Override with:
+#   COLD_REVIEW_HEALTH_SCHEDULE=off
+#   COLD_REVIEW_HEALTH_INTERVAL_DAYS=14
+#   COLD_REVIEW_HEALTH_TIME=09:00
+if [[ "${COLD_REVIEW_HEALTH_SCHEDULE:-on}" != "off" ]]; then
+  echo "Configuring Agent health notice schedule..."
+  "$PYTHON_CMD" "$SCRIPTS_DIR/cold_eyes/cli.py" install-health-schedule \
+    --repo-root "$SRC_DIR" \
+    --scripts-dir "$SCRIPTS_DIR" \
+    --every-days "${COLD_REVIEW_HEALTH_INTERVAL_DAYS:-7}" \
+    --time "${COLD_REVIEW_HEALTH_TIME:-09:00}" || true
+  echo ""
+fi
+
 # Verify
 echo "Verifying installation..."
 "$PYTHON_CMD" - "$SCRIPTS_DIR" "$SETTINGS_PATH" <<'PY'

@@ -34,6 +34,31 @@ All `fail` messages now include `Fix:` instructions. Common failures:
 | `claude_cli` | Install Claude Code CLI, verify with `claude --version` |
 | `legacy_helper` | Run `doctor --fix` to auto-remove, or delete manually |
 | `shell_version` | Re-run `bash install.sh` to update the shell script |
+| `health_schedule` | Re-run `bash install.sh` or `python ~/.claude/scripts/cold_eyes/cli.py install-health-schedule` |
+
+## Agent health notice schedule
+
+The install script creates a weekly low-detail health notice schedule by default. It runs `agent-notice --write --only-problem`: healthy checks clear old notices; setup/tool problems write `~/.claude/cold-review-agent-notice.txt`, which the Stop hook surfaces to the Agent on the next run.
+
+`doctor --fix` restores the schedule when supported and clears stale notices once health is clean.
+
+Notice levels:
+
+- `attention` — Cold Eyes needs Agent attention.
+- `gate_unreliable` — do not rely on the gate until setup is fixed.
+- `schedule_missing` — the background health notice schedule is missing.
+
+Adjust the cadence:
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py install-health-schedule --every-days 14 --time 08:30
+```
+
+Remove it:
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py remove-health-schedule
+```
 
 ## Windows-specific issues
 

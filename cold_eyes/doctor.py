@@ -193,6 +193,19 @@ def run_doctor(scripts_dir=None, settings_path=None, repo_root=None):
         checks.append({"name": "legacy_env", "status": "info",
                        "detail": "COLD_REVIEW_MAX_LINES is set — use COLD_REVIEW_MAX_TOKENS instead"})
 
+    # 12. Agent health notice schedule (best-effort Windows integration)
+    try:
+        from cold_eyes.health import health_schedule_status
+        schedule = health_schedule_status()
+        checks.append({
+            "name": "health_schedule",
+            "status": schedule["status"],
+            "detail": schedule["detail"],
+        })
+    except Exception as e:
+        checks.append({"name": "health_schedule", "status": "info",
+                       "detail": f"could not inspect health notice schedule: {e}"})
+
     all_ok = all(c["status"] != "fail" for c in checks)
     return {"action": "doctor", "checks": checks, "all_ok": all_ok}
 
@@ -229,6 +242,8 @@ def run_doctor_fix(scripts_dir=None, repo_root=None):
 
     Fixable:
       - legacy_helper: remove cold-review-helper.py from scripts_dir
+      - health_schedule: create/update scheduled Agent health notice
+      - stale Agent notice: clear it when health is now clean
     Not auto-fixed (manual decision required):
       - deploy_files: re-run install.sh
       - settings_hook: edit settings.json manually
@@ -251,10 +266,32 @@ def run_doctor_fix(scripts_dir=None, repo_root=None):
         os.remove(helper_path)
         fixed.append("legacy_helper: removed cold-review-helper.py")
 
+    # Fix: ensure scheduled health notices are installed when supported.
+    try:
+        from cold_eyes.health import agent_notice, health_schedule_status, install_health_schedule
+        schedule = health_schedule_status()
+        if schedule.get("status") != "ok":
+            scheduled = install_health_schedule(repo_root=repo_root or os.getcwd(), scripts_dir=scripts_dir)
+            if scheduled.get("ok"):
+                fixed.append("health_schedule: installed Agent health notice schedule")
+            elif scheduled.get("supported") is False:
+                skipped.append(f"health_schedule: {scheduled.get('reason', 'not supported')}")
+            else:
+                skipped.append(
+                    "health_schedule: could not install schedule "
+                    f"({scheduled.get('stderr') or scheduled.get('reason') or 'unknown error'})"
+                )
+        notice = agent_notice(repo_root=repo_root or os.getcwd(), write=True, only_problem=True)
+        if not notice.get("emitted"):
+            fixed.append("agent_notice: cleared stale notice")
+    except Exception as e:
+        skipped.append(f"health_schedule: could not repair ({e})")
+
     # Report: items that need manual action
     report = run_doctor(scripts_dir=scripts_dir, repo_root=repo_root)
+    auto_fixable = {"legacy_helper", "health_schedule"}
     for check in report["checks"]:
-        if check["status"] == "fail" and check["name"] not in ("legacy_helper",):
+        if check["status"] == "fail" and check["name"] not in auto_fixable:
             skipped.append(f"{check['name']}: {check['detail']} (manual fix required)")
 
     return {"action": "doctor-fix", "fixed": fixed, "skipped": skipped,

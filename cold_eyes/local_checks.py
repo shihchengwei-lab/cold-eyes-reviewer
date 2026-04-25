@@ -115,7 +115,7 @@ def select_checks(changed_files: list[str], *, repo_root: str | None = None) -> 
         ])
 
     if (test_py or (high_risk and source_py)) and _repo_has_pytest(repo_root, changed_files):
-        test_targets = _existing_paths(test_py, repo_root) if test_py else []
+        test_targets = _pytest_targets_for(test_py, source_py, repo_root)
         selected.append(_entry(
             "test_runner",
             "hard",
@@ -321,6 +321,61 @@ def _is_dependency_file(path: str) -> bool:
     if name in _PY_DEPENDENCY_FILES:
         return True
     return name.startswith("requirements") and name.endswith(".txt")
+
+
+def _pytest_targets_for(
+    test_py: list[str],
+    source_py: list[str],
+    repo_root: str,
+) -> list[str]:
+    targets = _existing_paths(test_py, repo_root)
+    for path in source_py:
+        targets.extend(_matching_test_paths(path, repo_root))
+    return _unique(targets)
+
+
+def _matching_test_paths(source_path: str, repo_root: str) -> list[str]:
+    normalized = source_path.replace("\\", "/").strip("/")
+    if not normalized.endswith(".py"):
+        return []
+
+    parts = [part for part in normalized.split("/") if part]
+    if not parts:
+        return []
+    stem = parts[-1][:-3]
+    if stem == "__init__":
+        return []
+
+    module_parts = parts[:-1]
+    trimmed_parts = module_parts[1:] if module_parts and module_parts[0] in {"src", "lib", "app"} else module_parts
+    rel_dir = "/".join(trimmed_parts)
+    flat_name = "_".join([*trimmed_parts, stem]) if trimmed_parts else stem
+
+    candidates = [
+        f"tests/test_{stem}.py",
+        f"tests/{stem}_test.py",
+        f"test_{stem}.py",
+        f"{stem}_test.py",
+        f"tests/test_{flat_name}.py",
+    ]
+    if rel_dir:
+        candidates.extend([
+            f"tests/{rel_dir}/test_{stem}.py",
+            f"tests/{rel_dir}/{stem}_test.py",
+        ])
+    return _existing_paths(_unique(candidates), repo_root)
+
+
+def _unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        normalized = item.replace("\\", "/")
+        if normalized in seen:
+            continue
+        seen.add(normalized)
+        result.append(item)
+    return result
 
 
 def _repo_has_pytest(repo_root: str, changed_files: list[str]) -> bool:

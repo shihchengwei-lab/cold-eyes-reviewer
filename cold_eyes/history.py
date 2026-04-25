@@ -13,6 +13,7 @@ from cold_eyes.constants import (
     STATE_INFRA_FAILED,
     STATE_PASSED,
     STATE_REPORTED,
+    STATE_SKIPPED,
 )
 
 
@@ -223,6 +224,161 @@ def compute_stats(history_path=None, last=None, by_reason=False, by_path=False):
         )
 
     return result
+
+
+def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
+    """Return a low-detail health signal for the current repo.
+
+    This is intentionally not a "what did it block" report.  A normal block is
+    still healthy runtime behavior; only missing, stale, or infrastructure
+    failure signals need user attention.
+    """
+    path = history_path or constants.HISTORY_FILE
+    cwd = cwd or os.getcwd()
+    entries = _read_history(path)
+    matching = [entry for entry in entries if _same_project(entry.get("cwd", ""), cwd)]
+
+    if not matching:
+        return {
+            "action": "status",
+            "ok": False,
+            "health": "unknown",
+            "message": "No Cold Eyes run was found for this repo.",
+            "cwd": cwd,
+            "history_path": path,
+            "last_seen": None,
+            "last_state": None,
+            "checks": {"status": "not_run", "message": "No local-check record found."},
+        }
+
+    latest = matching[-1]
+    state = latest.get("state", "unknown")
+    last_seen = latest.get("timestamp", "")
+    age_hours = _age_hours(last_seen)
+    stale_after_hours = _normalize_stale_after(stale_after_hours)
+    is_stale = (
+        age_hours is not None
+        and stale_after_hours is not None
+        and age_hours > stale_after_hours
+    )
+    is_infra_failed = (
+        state == STATE_INFRA_FAILED
+        or latest.get("cold_eyes_verdict") == "infra_failed"
+    )
+
+    if is_infra_failed:
+        ok = False
+        health = "problem"
+        message = "Cold Eyes ran, but the reviewer tool needs attention."
+    elif is_stale:
+        ok = False
+        health = "unknown"
+        message = "Cold Eyes has not run recently, so current status is unknown."
+    elif state in {
+        STATE_PASSED,
+        STATE_BLOCKED,
+        STATE_OVERRIDDEN,
+        STATE_SKIPPED,
+        STATE_REPORTED,
+    }:
+        ok = True
+        health = "ok"
+        message = "Cold Eyes is running normally."
+    else:
+        ok = False
+        health = "unknown"
+        message = "Cold Eyes has a history entry, but the state is not recognized."
+
+    result = {
+        "action": "status",
+        "ok": ok,
+        "health": health,
+        "message": message,
+        "cwd": cwd,
+        "history_path": path,
+        "last_seen": last_seen or None,
+        "last_state": state,
+        "last_final_action": latest.get("final_action", ""),
+        "last_duration_ms": latest.get("duration_ms"),
+        "age_hours": age_hours,
+        "checks": _checks_status(latest.get("checks")),
+    }
+    return result
+
+
+def _same_project(entry_cwd, cwd):
+    if not entry_cwd:
+        return False
+    left = _normalize_path(entry_cwd)
+    right = _normalize_path(cwd)
+    if left == right:
+        return True
+    return _is_parent_path(left, right) or _is_parent_path(right, left)
+
+
+def _normalize_path(path):
+    try:
+        return os.path.normcase(os.path.abspath(os.path.normpath(path)))
+    except (TypeError, ValueError):
+        return ""
+
+
+def _is_parent_path(parent, child):
+    if not parent or not child or parent == child:
+        return False
+    parent = parent.rstrip(os.sep)
+    return child.startswith(parent + os.sep)
+
+
+def _age_hours(timestamp):
+    if not timestamp:
+        return None
+    try:
+        seen = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+    age = datetime.now(timezone.utc) - seen
+    return round(max(age.total_seconds(), 0) / 3600, 2)
+
+
+def _normalize_stale_after(value):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        return 24.0
+    if parsed <= 0:
+        return None
+    return parsed
+
+
+def _checks_status(checks):
+    if not checks:
+        return {
+            "status": "not_run",
+            "message": "Local checks did not run for the last review.",
+        }
+
+    results = checks.get("results") or []
+    warnings = checks.get("warnings") or []
+    infra_count = sum(1 for result in results if result.get("infrastructure"))
+    if infra_count or warnings:
+        return {
+            "status": "warning",
+            "message": "Cold Eyes ran, but at least one optional local check was unavailable or timed out.",
+            "result_count": len(results),
+        }
+    if not results:
+        return {
+            "status": "not_run",
+            "message": "Local checks were not needed for the last review.",
+        }
+    return {
+        "status": "ok",
+        "message": "Local checks ran normally.",
+        "result_count": len(results),
+    }
 
 
 def quality_report(history_path=None, last=None):

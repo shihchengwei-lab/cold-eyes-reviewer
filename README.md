@@ -135,6 +135,15 @@ mkdir -p ~/.claude/scripts
 cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt cold-review-prompt-shallow.txt ~/.claude/scripts/
 ```
 
+The install script creates a low-noise Agent health notice schedule by default. It runs every 7 days at 09:00, writes a notice only when the gate setup needs attention, and stays quiet when healthy.
+
+Adjust or disable it at install time:
+
+```bash
+COLD_REVIEW_HEALTH_INTERVAL_DAYS=14 COLD_REVIEW_HEALTH_TIME=08:30 bash install.sh
+COLD_REVIEW_HEALTH_SCHEDULE=off bash install.sh
+```
+
 ### 2. Add Stop hook to `~/.claude/settings.json`
 
 ```json
@@ -172,7 +181,7 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 
 Checks Python, Git, Claude CLI, deploy files, hook config, and current repo. All checks should show `"ok"`. `"info"` items are optional hints.
 
-Use `doctor --fix` to auto-remove legacy helper if detected. Other failures require manual action.
+Use `doctor --fix` to auto-remove legacy helper if detected, restore the Agent health notice schedule when supported, and clear stale health notices after the setup is clean. Other failures require manual action.
 
 ### 5. Done
 
@@ -195,7 +204,7 @@ Every review consumes tokens from your Claude usage quota. How much depends on:
 - **Diff size** — larger diffs send more input tokens (budget default: 12000)
 - **Context and hints** — deep reviews add up to ~2200 tokens (context + detector hints) on top of the diff
 
-**Automatic local checks:** selected checks (`pytest`, `ruff`, `mypy`, `pip check`) use no model tokens. They can add wall-clock time, so the default `auto` mode runs them only for risky Python or dependency changes, runs each selected check once, and treats timeouts as warnings instead of blocks.
+**Automatic local checks:** selected checks (`pytest`, `ruff`, `mypy`, `pip check`) use no model tokens. They can add wall-clock time, so the default `auto` mode runs them only for risky Python or dependency changes, prefers mapped pytest targets when obvious, runs each selected check once, and treats timeouts as warnings instead of blocks.
 
 Subscription users (Pro/Max): reviews count against your plan's usage quota, not billed separately. API users: cost follows Anthropic's published per-token pricing, which changes over time.
 
@@ -206,7 +215,7 @@ To reduce token usage manually: use `COLD_REVIEW_MODEL=haiku`, lower `COLD_REVIE
 `COLD_REVIEW_CHECKS=auto` lets the unified v1 path run selected local checks once when the diff shape justifies it:
 
 - Python source or high-risk Python changes can run `ruff check <changed files>` and `mypy <changed files>` as soft checks.
-- Test changes or high-risk Python changes in a repo with tests can run `pytest --tb=short -q` as a hard check.
+- Test changes or high-risk Python changes in a repo with tests can run `pytest --tb=short -q` as a hard check. When an obvious matching test file exists, Cold Eyes targets that test file first instead of immediately sweeping the full suite.
 - Python dependency/build config changes can run `python -m pip check --quiet` as a hard check.
 
 Hard check failures can block in `COLD_REVIEW_MODE=block`. Soft check failures are folded into the Agent repair task but do not block by themselves. Missing tools and timeouts are warnings, not blockers.
@@ -553,6 +562,30 @@ python ~/.claude/scripts/cold_eyes/cli.py aggregate-overrides
 
 Returns a JSON summary of all override entries in history: total count, reasons grouped by frequency, and recent override entries. Use this to identify false-positive patterns and tune thresholds or prompts.
 
+### Status
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py status
+```
+
+Returns a low-detail health signal for the current repo. It answers whether Cold Eyes has run normally without exposing the review findings. A normal block is still reported as healthy runtime behavior; infrastructure failures or missing history show as attention-needed states. Add `--stale-after-hours N` only if you also want to treat old history as unknown.
+
+### Agent health notices
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py agent-notice --write --only-problem
+python ~/.claude/scripts/cold_eyes/cli.py install-health-schedule --every-days 7 --time 09:00
+python ~/.claude/scripts/cold_eyes/cli.py remove-health-schedule
+```
+
+`agent-notice` is the scheduled, Agent-facing form of `status`: normal runs clear old notices, while setup/tool problems write `~/.claude/cold-review-agent-notice.txt`. The Stop hook surfaces that notice to the Agent on the next run. It does not include review findings or blocked-file details.
+
+Notice levels stay low-detail:
+
+- `attention` — Cold Eyes needs Agent attention.
+- `gate_unreliable` — do not rely on the gate until setup is fixed.
+- `schedule_missing` — the background health notice schedule is missing.
+
 ### Stats
 
 ```bash
@@ -609,6 +642,7 @@ python ~/.claude/scripts/cold_eyes/cli.py history-archive --before 2026-01-01
 - **Review history is append-only.** Use `history-prune` and `history-archive` to manage growth (see Diagnostics).
 - **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. Truncation metadata tracks partial files, budget-skipped files, binary files, and unreadable files separately. Block messages include a warning listing what was not reviewed.
 - **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. Check history for patterns.
+- **Health notices still need a trigger.** The installer creates a weekly Windows scheduled task by default. If that schedule is disabled and the Stop hook is removed, Cold Eyes has no always-on process that can notify the Agent by itself.
 - **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
 - **Windows (Git Bash) lock caveats.** The atomic `mkdir` lock and `kill -0` stale PID check work in Git Bash but are less reliable than on native Unix. Concurrent Claude Code sessions on Windows may occasionally bypass the lock.
 - **Local checks are bounded.** Selected checks run once and respect `COLD_REVIEW_CHECK_TIMEOUT_SEC`. Timeouts and missing tools are warnings, not blockers.

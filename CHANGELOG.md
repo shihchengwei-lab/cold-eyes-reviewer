@@ -1,5 +1,27 @@
 # Changelog
 
+## v1.17.0 - feat: Agent health notices
+
+### What changed
+
+- Added `status`, a low-detail health command that says whether Cold Eyes has run normally for the current repo without exposing review findings.
+- Added `agent-notice`, a low-detail Agent-facing health notice command.
+- Install now creates a weekly Agent health notice schedule by default, adjustable with install-time environment variables.
+- `doctor --fix` can restore the Agent health notice schedule when supported and clear stale health notices after the setup is clean.
+- Stop hook infrastructure failures now write the same low-detail Agent notice.
+- Agent notices now include a low-detail `level`: `attention`, `gate_unreliable`, or `schedule_missing`.
+- Made automatic pytest selection more precise for high-risk Python source changes by targeting obvious matching test files before falling back to the full suite.
+
+### Behavior changes
+
+- A normal block is treated as healthy runtime behavior in `status`; missing or infrastructure-failed history asks for attention, with optional stale-history checks available by flag.
+- Scheduled health notices stay quiet when healthy and write a notice only when the gate setup needs Agent attention.
+- Hook-level infrastructure failures leave a persistent Agent notice so the next Agent run can see that the gate itself needs repair.
+
+### Test count
+
+- 631 passed, 6 skipped.
+
 ## v1.16.1 - chore: remove retired session code
 
 ### What changed

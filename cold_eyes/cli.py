@@ -16,6 +16,12 @@ from cold_eyes.engine import run
 from cold_eyes.doctor import run_doctor, run_doctor_fix, run_init
 from cold_eyes.history import (
     aggregate_overrides, compute_stats, prune_history, archive_history, quality_report,
+    runtime_status,
+)
+from cold_eyes.health import (
+    agent_notice,
+    install_health_schedule,
+    remove_health_schedule,
 )
 from cold_eyes.override import arm_override
 from cold_eyes import __version__
@@ -68,7 +74,8 @@ def main():
                         version=f"cold-eyes-reviewer {__version__}")
     parser.add_argument("command", choices=[
         "run", "doctor", "init", "aggregate-overrides", "stats", "quality-report",
-        "arm-override", "history-prune", "history-archive",
+        "status", "arm-override", "history-prune", "history-archive",
+        "agent-notice", "install-health-schedule", "remove-health-schedule",
         "eval", "verify-install", "auto-tune",
     ])
     parser.add_argument("--mode", default=None)
@@ -113,6 +120,24 @@ def main():
                         help="Keep most recent N entries (for history-prune)")
     parser.add_argument("--before", default=None,
                         help="Archive entries before date YYYY-MM-DD (for history-archive)")
+    parser.add_argument("--stale-after-hours", type=float, default=0,
+                        help="Optional age threshold for status health checks")
+    parser.add_argument("--repo-root", default=None,
+                        help="Repository root for health notice commands")
+    parser.add_argument("--scripts-dir", default=None,
+                        help="Installed scripts directory for schedule commands")
+    parser.add_argument("--notice-dir", default=None,
+                        help="Directory for agent notice files")
+    parser.add_argument("--write", action="store_true",
+                        help="Write agent notice file when used with agent-notice")
+    parser.add_argument("--only-problem", action="store_true",
+                        help="Emit agent notice only when attention is needed")
+    parser.add_argument("--every-days", type=int, default=7,
+                        help="Health schedule interval in days (default: 7)")
+    parser.add_argument("--time", default="09:00",
+                        help="Health schedule local time HH:MM (default: 09:00)")
+    parser.add_argument("--task-name", default=None,
+                        help="Windows scheduled task name for health notices")
     parser.add_argument("--shallow-model", default=None,
                         help="Model for shallow reviews (default: sonnet)")
     parser.add_argument("--context-tokens", type=int, default=None,
@@ -168,6 +193,30 @@ def main():
                                by_path=args.by_path)
     elif args.command == "quality-report":
         result = quality_report(last=args.last)
+    elif args.command == "status":
+        result = runtime_status(stale_after_hours=args.stale_after_hours)
+    elif args.command == "agent-notice":
+        result = agent_notice(
+            repo_root=args.repo_root,
+            notice_dir=args.notice_dir,
+            write=args.write,
+            only_problem=args.only_problem,
+        )
+    elif args.command == "install-health-schedule":
+        schedule_kwargs = {
+            "repo_root": args.repo_root,
+            "scripts_dir": args.scripts_dir,
+            "every_days": args.every_days,
+            "time_of_day": args.time,
+        }
+        if args.task_name:
+            schedule_kwargs["task_name"] = args.task_name
+        result = install_health_schedule(**schedule_kwargs)
+    elif args.command == "remove-health-schedule":
+        schedule_kwargs = {"scripts_dir": args.scripts_dir}
+        if args.task_name:
+            schedule_kwargs["task_name"] = args.task_name
+        result = remove_health_schedule(**schedule_kwargs)
     elif args.command == "auto-tune":
         from cold_eyes.autotune import auto_tune
         from cold_eyes.git import git_cmd, GitCommandError

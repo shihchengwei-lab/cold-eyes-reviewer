@@ -50,6 +50,29 @@ def test_select_checks_for_high_risk_python_source_with_tests(tmp_path):
     assert "test_runner" in ids
 
 
+def test_high_risk_python_source_uses_mapped_pytest_target(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "auth.py").write_text("AUTH = True\n", encoding="utf-8")
+    (tmp_path / "tests" / "test_auth.py").write_text("def test_auth(): pass\n", encoding="utf-8")
+
+    selected = select_checks(["src/auth.py"], repo_root=str(tmp_path))
+    test_runner = next(entry for entry in selected if entry["check_id"] == "test_runner")
+
+    assert test_runner["targets"] == ["tests/test_auth.py"]
+
+
+def test_high_risk_python_source_falls_back_to_full_pytest_when_unmapped(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "auth.py").write_text("AUTH = True\n", encoding="utf-8")
+
+    selected = select_checks(["src/auth.py"], repo_root=str(tmp_path))
+    test_runner = next(entry for entry in selected if entry["check_id"] == "test_runner")
+
+    assert "targets" not in test_runner
+
+
 def test_select_checks_for_dependency_file():
     selected = select_checks(["pyproject.toml"])
 
