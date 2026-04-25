@@ -6,17 +6,17 @@ Last updated: 2026-04-26
 
 - Version in source: `v2.0.0`
 - Branch: `master`
-- Latest pushed release commit: `f2d289f Release v1.18.0 target sentinel`
-- Latest tag / release: `v1.18.0`
-- Release target for current local work: `v2.0.0 - No Silent Pass Delta Gate`
+- Latest pushed release commit: `7105fc9 Release v2.0.0 no silent pass delta gate`
+- Latest tag / release: `v2.0.0`
+- Latest GitHub Release title: `v2.0.0 - No Silent Pass Delta Gate`
 - Repository: `https://github.com/shihchengwei-lab/cold-eyes-reviewer`
 - Default branch: `master`
 - Local deployed version: `2.0.0`
 - Installed scripts path: `C:\Users\kk789\.claude\scripts`
 - Windows-side `doctor`: `all_ok: true`
 - Health notice schedule: configured as Windows scheduled task `Cold Eyes Reviewer Health Notice`
-- GitHub Actions for latest pushed `master`, `v1.18.0`, and Release: success
-- Current v2 implementation is local and installed, but not yet committed, pushed, tagged, or released.
+- GitHub Actions for latest pushed `master`, `v2.0.0`, and Release: success
+- Working tree is clean after the v2.0.0 release and this handover update.
 
 ## Product Shape
 
@@ -47,7 +47,7 @@ Important boundary:
 
 ### v2.0.0 - No Silent Pass Delta Gate
 
-Status: implemented locally, installed locally, and validation green. Not yet committed, pushed, tagged, released, or CI-verified.
+Status: committed, pushed, tagged, released, installed locally, and CI green.
 
 Purpose: keep the low-friction staged default without allowing source/config changes outside the staged target to silently pass.
 
@@ -102,11 +102,10 @@ Validation:
 - `python C:\Users\kk789\.claude\scripts\cold_eyes\cli.py --version`: `cold-eyes-reviewer 2.0.0`
 - Windows installed `doctor`: `all_ok: true`, deploy files `32 files`
 
-Release next steps:
+Release:
 
-- Commit the v2 implementation.
-- Push the branch and wait for CI.
-- If CI is green, tag `v2.0.0` and create GitHub Release title `v2.0.0 - No Silent Pass Delta Gate`.
+- `https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v2.0.0`
+- Release title: `v2.0.0 - No Silent Pass Delta Gate`
 
 ### v1.18.0 - review-target sentinel
 
@@ -293,9 +292,14 @@ Windows installed `doctor` details from the latest check:
 Latest GitHub Actions:
 
 - `master` Tests: success
+  - v2.0.0 release commit: `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24942125804`
   - v1.18.0 release commit: `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24940912898`
   - Latest README quick start commit: `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24939921011`
   - v1.17.1 release commit: `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24937221771`
+- `v2.0.0` Tests: success
+  - `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24942177919`
+- `v2.0.0` Release: success
+  - `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24942177923`
 - `v1.18.0` Tests: success
   - `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24940980621`
 - `v1.18.0` Release: success
@@ -307,19 +311,21 @@ Latest GitHub Actions:
 
 Release:
 
-- `https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.18.0`
+- `https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v2.0.0`
 
 ## Last Released Repo Page Alignment
 
-Checked after v1.18.0:
+Checked after v2.0.0:
 
-- Latest release is `v1.18.0`.
-- Latest tag is `v1.18.0`.
+- Latest release is `v2.0.0 - No Silent Pass Delta Gate`.
+- Latest tag is `v2.0.0`.
 - Default branch is `master`.
-- `v1.18.0` tag points at `f2d289f`.
+- `origin/master` points at `7105fc9`.
+- `v2.0.0` tag dereferences to `7105fc9`.
 - README has a Quick start section near the top.
-- README describes staged scope as the default.
-- Local README now also documents target sentinel policy keys and `status --human`.
+- README describes v2 envelope scanning, no-silent-pass delta protection, `gate_state`, and staged primary scope.
+- `CHANGELOG.md` top entry is `v2.0.0 - feat: No Silent Pass Delta Gate`.
+- `cold_eyes/__init__.py` reports `__version__ = "2.0.0"`.
 - README still documents `working`, `head`, and `pr-diff` as explicit alternatives.
 - README describes Agent health notices and automatic local checks.
 - CI on `master` and tag are green.
@@ -444,22 +450,23 @@ Known environment detail:
 - The authoritative Windows-side check is the PowerShell `doctor` command above.
 - Current Windows-side `doctor` is green.
 
-Installed package shape after v1.18.0:
+Installed package shape after v2.0.0:
 
 - `C:\Users\kk789\.claude\scripts\cold_eyes`
+- Active v2 envelope module under deployed `cold_eyes`: `envelope.py`
 - Active target sentinel module under deployed `cold_eyes`: `target.py`
 - Active support subpackage under deployed `cold_eyes`: `gates`
 - Retired v2 directories should not appear in deployed scripts.
 
 ## Slow Stop Hook Diagnosis
 
-The slowdown reported before v1.17.1 was caused by the default `working` scope reviewing the full dirty working tree on every Stop hook.
+The slowdown reported before v1.17.1 was caused by the default `working` scope reviewing the full dirty working tree on every Stop hook. v2.0.0 further reduced wasted review time by adding the no-silent-pass envelope: no-change turns skip, safe docs/generated turns skip, and matching protected envelopes can use cache without another LLM call.
 
 The fix is now both local and repo-level:
 
-- Local Claude hook was changed to `COLD_REVIEW_SCOPE=staged`.
 - Repo hardcoded default was changed to `staged`.
 - New `init` policy template writes `scope: staged`.
+- v2 envelope keeps staged as the primary target while scanning source/config working-tree delta.
 - Docs and tests were updated.
 
 If the user reports another multi-minute Stop delay:
@@ -490,6 +497,7 @@ Current tool quality:
 - Stronger after v1.17.0 because gate health can notify the Agent without user prompting.
 - Stronger after v1.17.1 because default staged scope makes the background gate low-noise enough for ordinary handoff reading and conversation.
 - Stronger after v1.18.0 because target sentinel makes staged-scope blind spots visible and can block high-risk partial staging.
+- Stronger after v2.0.0 because pure chat/no-change turns skip quickly, cached protected envelopes do not re-review, and unstaged/untracked source/config delta cannot silently pass.
 
 What it is not:
 
@@ -509,7 +517,7 @@ Remaining useful iteration areas:
 Avoid:
 
 - Reintroducing session memory or repair-session tracking.
-- Reintroducing v2 as a product route.
+- Reintroducing the retired `--v2` session path as a product route.
 - Making Cold Eyes decide user/product intent.
 - Returning to `working` as the default scope.
 - Expanding prompts as the main quality lever before measuring misses.
