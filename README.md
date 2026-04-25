@@ -5,13 +5,13 @@
 ![Review](https://img.shields.io/badge/Review-diff--centered-green)
 ![Scope](https://img.shields.io/badge/Scope-not%20full%20review-lightgrey)
 
-A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook.
+A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook, defaults to gate mode, and auto-tunes the quality/time balance from local review history.
 
 This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/index-en.html), a Claude Code buddy companion that provided independent commentary during coding sessions. Cinder was silently shut down on April 11, 2026. Cold Eyes carries forward the idea that a second pair of eyes — even artificial ones — catches things the first pair misses. Cinder was a companion. Cold Eyes is a gate.
 
 ## What it is
 
-Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages and co-changed files from git history, plus regex-based detector hints — to reduce obvious blind spots. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
+Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages and co-changed files from git history, plus regex-based detector hints — to reduce obvious blind spots. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
 
 ## What it is not
 
@@ -25,14 +25,14 @@ Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the workin
 
 - Claude Code workflows where an automatic second pass catches surface-level slips before they compound.
 - Catching high-cost surface issues: removed error handling, hardcoded secrets, dangling references within the diff, obvious injection shapes.
-- Teams willing to run in `report` mode first and calibrate thresholds before enabling blocking.
+- Claude Code loops where quality-first blocking is useful, with auto-tune trimming review time only after recent history stays clean.
 
 ## When not to use it as a blocking gate
 
 - Tasks where the bug is driven by requirements or specs that are not visible in the diff.
 - Large, non-local semantic refactors where most of the signal lives outside the changed lines.
 - Teams with very low false-positive tolerance that have not yet measured Cold Eyes' noise rate on their own code.
-- New adopters who have not walked through the adoption path — start in `report`, then narrow.
+- Repos that cannot tolerate any interruption yet. Use `COLD_REVIEW_MODE=report` as a temporary local override while collecting history.
 
 ## Review paths overview
 
