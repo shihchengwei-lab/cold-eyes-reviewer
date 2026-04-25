@@ -4,19 +4,18 @@ Last updated: 2026-04-26
 
 ## Current State
 
-- Version: local working tree `v1.18.0` candidate
+- Version: `v1.18.0`
 - Branch: `master`
-- Latest pushed commit: `36a6e74 docs: add quick start to readme`
-- Latest release commit: `1283bf7 Release v1.17.1 staged scope default`
-- Latest tag / release: `v1.17.1`
+- Latest pushed release commit: `f2d289f Release v1.18.0 target sentinel`
+- Latest tag / release: `v1.18.0`
 - Repository: `https://github.com/shihchengwei-lab/cold-eyes-reviewer`
 - Default branch: `master`
 - Local deployed version: `1.18.0`
 - Installed scripts path: `C:\Users\kk789\.claude\scripts`
 - Windows-side `doctor`: `all_ok: true`
 - Health notice schedule: configured as Windows scheduled task `Cold Eyes Reviewer Health Notice`
-- GitHub Actions for latest pushed `master`, `v1.17.1`, and Release: success
-- Working tree now contains the local `v1.18.0` target-sentinel implementation plus this handover update; it is not committed or pushed yet.
+- GitHub Actions for latest pushed `master`, `v1.18.0`, and Release: success
+- Working tree is clean after the v1.18.0 release and this handover alignment.
 
 ## Product Shape
 
@@ -41,9 +40,9 @@ Important boundary:
 
 ## Recent Release Summary
 
-### v1.18.0 - review-target sentinel (local candidate)
+### v1.18.0 - review-target sentinel
 
-Status: implemented locally, installed locally, not committed, not tagged, not released.
+Status: committed, pushed, tagged, released, installed locally, and CI green.
 
 Purpose: make Cold Eyes tell the Agent whether the configured review target actually covers the current changes, without requiring the user to understand staged diff, untracked files, or partial staging.
 
@@ -75,7 +74,11 @@ Validation:
 - `python cold_eyes\cli.py --version`: `cold-eyes-reviewer 1.18.0`
 - Local deployed version: `cold-eyes-reviewer 1.18.0`
 - Windows installed `doctor`: `all_ok: true`
-- `status --human` currently reports `ATTENTION` because the v1.18.0 implementation files are intentionally unstaged.
+- `status --human` currently reports `READY` in the clean working tree.
+
+Release:
+
+- `https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.18.0`
 
 ### Post-release README quick start
 
@@ -196,7 +199,7 @@ Changes:
 
 ## Validation
 
-Latest local validation for the v1.18.0 candidate:
+Latest local validation for v1.18.0:
 
 - `python -m pytest tests -q`: `650 passed, 6 skipped`
 - `python -m ruff check .`: passed
@@ -222,8 +225,13 @@ Windows installed `doctor` details from the latest check:
 Latest GitHub Actions:
 
 - `master` Tests: success
+  - v1.18.0 release commit: `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24940912898`
   - Latest README quick start commit: `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24939921011`
   - v1.17.1 release commit: `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24937221771`
+- `v1.18.0` Tests: success
+  - `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24940980621`
+- `v1.18.0` Release: success
+  - `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24940980651`
 - `v1.17.1` Tests: success
   - `https://github.com/shihchengwei-lab/cold-eyes-reviewer/actions/runs/24937222235`
 - `v1.17.1` Release: success
@@ -231,17 +239,16 @@ Latest GitHub Actions:
 
 Release:
 
-- `https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.17.1`
+- `https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.18.0`
 
 ## Repo Page Alignment
 
-Checked after v1.17.1 and before the local v1.18.0 candidate is published:
+Checked after v1.18.0:
 
-- Latest release is `v1.17.1`.
-- Latest tag is `v1.17.1`.
+- Latest release is `v1.18.0`.
+- Latest tag is `v1.18.0`.
 - Default branch is `master`.
-- `origin/master` points at `36a6e74`.
-- Local working tree version is `1.18.0`; repo page will not reflect it until commit, tag, push, and release.
+- `v1.18.0` tag points at `f2d289f`.
 - README has a Quick start section near the top.
 - README describes staged scope as the default.
 - Local README now also documents target sentinel policy keys and `status --human`.
@@ -354,7 +361,7 @@ Known environment detail:
 - The authoritative Windows-side check is the PowerShell `doctor` command above.
 - Current Windows-side `doctor` is green.
 
-Installed package shape after v1.18.0 candidate:
+Installed package shape after v1.18.0:
 
 - `C:\Users\kk789\.claude\scripts\cold_eyes`
 - Active target sentinel module under deployed `cold_eyes`: `target.py`
@@ -399,7 +406,7 @@ Current tool quality:
 - Stronger after v1.14-v1.16 because block output is Agent-actionable.
 - Stronger after v1.17.0 because gate health can notify the Agent without user prompting.
 - Stronger after v1.17.1 because default staged scope makes the background gate low-noise enough for ordinary handoff reading and conversation.
-- Stronger after local v1.18.0 because target sentinel makes staged-scope blind spots visible and can block high-risk partial staging.
+- Stronger after v1.18.0 because target sentinel makes staged-scope blind spots visible and can block high-risk partial staging.
 
 What it is not:
 
