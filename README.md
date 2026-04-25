@@ -5,20 +5,20 @@
 ![Review](https://img.shields.io/badge/Review-diff--centered-green)
 ![Scope](https://img.shields.io/badge/Scope-not%20full%20review-lightgrey)
 
-A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook, defaults to gate mode, and auto-tunes the quality/time balance from local review history.
+A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook, defaults to gate mode, auto-tunes the quality/time balance from local review history, and turns blocks into agent repair tasks.
 
 This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/index-en.html), a Claude Code buddy companion that provided independent commentary during coding sessions. Cinder was silently shut down on April 11, 2026. Cold Eyes carries forward the idea that a second pair of eyes — even artificial ones — catches things the first pair misses. Cinder was a companion. Cold Eyes is a gate.
 
 ## What it is
 
-Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages and co-changed files from git history, plus regex-based detector hints — to reduce obvious blind spots. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
+Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it now produces an agent-facing repair task plus a plain-language message the agent can relay to a non-engineer user. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata — to reduce obvious blind spots without treating conversation context as authority. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
 
 ## What it is not
 
 - **Not a replacement for human review.** It is a pre-hint before the real reviewer looks.
 - **Not a full PR review platform.** No cross-file search, no repo-wide symbol analysis, no issue tracking.
 - **Not a full-context code understanding system.** What the deep path sees is bounded to a handful of git-adjacent signals, not the whole codebase.
-- **Not requirement-aware / intent-aware in the strong sense.** It has no specification and does not know what the change is supposed to do.
+- **Not requirement-aware / intent-aware in the strong sense.** The optional intent capsule is a low-weight hint. A mismatch still needs concrete diff evidence before it can block.
 - **Not a sufficient gate for semantic design correctness.** Multi-file logic, business rules, architectural decisions are out of scope.
 
 ## When it works best
@@ -113,6 +113,7 @@ Every issue includes severity, confidence, category, file, line_hint, a three-pa
 
 - `schema_version` — output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
 - `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain. Displayed with `~` prefix (e.g., `(~L42)`) to indicate it is an estimate, not a precise location. In block mode, verify the line number before acting on it.
+- `protection` — optional block wrapper with `user_message`, `agent_task`, `risk_summary`, and low-weight intent metadata. It is added after the review decision and does not change schema version.
 
 **Severity levels:**
 - `critical` — production crash, data loss, or security breach
@@ -262,6 +263,9 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | `COLD_REVIEW_AUTO_TUNE_INTERVAL_HOURS` | `24` | any integer | Minimum hours between automatic tuning checks per repo |
 | `COLD_REVIEW_AUTO_TUNE_LAST` | `7d` | `24h`, `7d`, `2w`, etc. | History window used by automatic tuning |
 | `COLD_REVIEW_AUTO_TUNE_MIN_SAMPLES` | `5` | any integer | Minimum history samples before automatic tuning writes policy |
+| `COLD_REVIEW_AGENT_BRIEF` | `on` | `on`, `off` | Add agent repair task and user-facing plain-language message to blocks |
+| `COLD_REVIEW_INTENT_CONTEXT` | `on` | `on`, `off` | Read a low-weight user intent capsule from Claude Code hook metadata when available |
+| `COLD_REVIEW_INTENT_MAX_CHARS` | `1200` | any integer | Character cap for the low-weight intent capsule |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | **Deprecated.** Use `arm-override` instead. Still works but emits a warning. |
 | `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override (used with ALLOW_ONCE or arm-override) |
 
@@ -452,7 +456,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package (20 top-level modules + 6 v2 sub-packages: session, contract, gates, retry, noise, runner). v1 core: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune. v2 adds session engine, contract generation, multi-gate orchestration, retry loop, noise suppression. |
+| `cold_eyes/` | Python package (22 top-level modules + 6 v2 sub-packages: session, contract, gates, retry, noise, runner). v1 core: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune, intent capsule, protection brief. v2 adds session engine, contract generation, multi-gate orchestration, retry loop, noise suppression. |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | Deep review system prompt: input type descriptions, check items, evidence principles, severity/confidence/category definitions, output schema |
 | `cold-review-prompt-shallow.txt` | Shallow review system prompt: critical-only checks, minimal schema |
@@ -467,7 +471,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
+- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`, and optional `protection` summary). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
 - **`cold-review-sessions/sessions.jsonl`** — v2 session records (`--v2` only). Each line is a full session: contracts, gate plan, gate results, retry briefs, events timeline, final outcome. Path: `~/.claude/cold-review-sessions/sessions.jsonl`.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.

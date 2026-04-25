@@ -110,6 +110,7 @@ def _run_v2(args):
         ("minimum_coverage_pct", "minimum_coverage_pct"),
         ("coverage_policy", "coverage_policy"),
         ("fail_on_unreviewed_high_risk", "fail_on_unreviewed_high_risk"),
+        ("hook_input_path", "hook_input_path"),
     ]:
         val = getattr(args, attr, None)
         if val is not None:
@@ -233,6 +234,8 @@ def main():
     parser.add_argument("--fail-on-unreviewed-high-risk",
                         action="store_true", default=None,
                         help="Block if a high-risk file was not fully reviewed")
+    parser.add_argument("--hook-input-path", default=None,
+                        help=argparse.SUPPRESS)
     parser.add_argument("--v2", action="store_true",
                         help="Use v2 session pipeline (opt-in)")
     parser.add_argument("--eval-mode", default="deterministic",
@@ -344,7 +347,8 @@ def main():
                          max_input_tokens=args.max_input_tokens,
                          minimum_coverage_pct=args.minimum_coverage_pct,
                          coverage_policy=args.coverage_policy,
-                         fail_on_unreviewed_high_risk=args.fail_on_unreviewed_high_risk)
+                         fail_on_unreviewed_high_risk=args.fail_on_unreviewed_high_risk,
+                         hook_input_path=args.hook_input_path)
         result = _attach_auto_tune(result)
     print(json.dumps(result, ensure_ascii=False))
 

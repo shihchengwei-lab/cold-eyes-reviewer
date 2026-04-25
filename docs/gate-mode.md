@@ -6,6 +6,10 @@ Gate mode turns Cold Eyes into a Claude Code Stop-hook blocking gate. It is stil
 
 Gate mode reviews the configured diff scope. The default is `working`, so the Stop hook can see changes Claude Code just made without requiring you to stage files first. Use `staged` manually when you want pre-commit-only review. Cold Eyes does not know the full product intent, all untouched code paths, or every external contract. Its job is to stop obvious high-cost risk before Claude Code continues.
 
+When gate mode blocks, the hook reason is agent-first: it tells the agent what
+to fix, includes a plain-language message to relay to the user, and asks the
+agent to run checks before letting Cold Eyes review again.
+
 ## Baseline Profile
 
 ```yaml
@@ -44,6 +48,14 @@ Coverage is based on candidate files after filtering and risk ranking.
 - Partial files count as incomplete.
 
 Coverage block is not a model issue. It records `cold_eyes_verdict: incomplete`, `final_action: coverage_block`, and `authority: coverage_gate`.
+
+## Intent Capsule
+
+When Claude Code hook metadata exposes a transcript path, Cold Eyes extracts a
+small recent-user-goal capsule for deep reviews. This is low authority: it can
+help catch obvious "the diff does the opposite of what the user asked" cases,
+but it cannot override diff evidence. Intent findings without concrete diff
+evidence are downgraded below the default confidence threshold.
 
 ## Override Governance
 

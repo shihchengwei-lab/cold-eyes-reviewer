@@ -11,7 +11,7 @@
 #
 # Environment variables (resolved by Python engine):
 #   COLD_REVIEW_MODE            — block (default), report, off
-#   COLD_REVIEW_MODEL           — opus (default), sonnet, haiku
+#   COLD_REVIEW_MODEL           — sonnet (default), opus, haiku
 #   COLD_REVIEW_MAX_TOKENS      — token budget for diff (default: 12000)
 #   COLD_REVIEW_BLOCK_THRESHOLD — critical (default), major
 #   COLD_REVIEW_CONFIDENCE      — minimum confidence to keep: high, medium (default), low
@@ -20,6 +20,10 @@
 #   COLD_REVIEW_BASE            — base branch for pr-diff scope
 #   COLD_REVIEW_OVERRIDE_REASON — reason text when overriding (legacy)
 #   COLD_REVIEW_AUTO_TUNE       — low-frequency automatic tuning: on (default) / off
+
+#   COLD_REVIEW_AGENT_BRIEF     - agent repair brief: on (default) / off
+#   COLD_REVIEW_INTENT_CONTEXT  - low-weight user intent capsule: on (default) / off
+#   COLD_REVIEW_INTENT_MAX_CHARS - intent capsule char cap (default: 1200)
 
 set -uo pipefail
 
@@ -95,6 +99,8 @@ trap 'release_lock' EXIT
 
 # --- Read hook input, check stop_hook_active ---
 INPUT=$(head -c 1048576)  # 1 MB cap to prevent unbounded reads
+HOOK_INPUT_FILE="$LOCKDIR/hook-input.json"
+printf '%s' "$INPUT" > "$HOOK_INPUT_FILE" 2>/dev/null || HOOK_INPUT_FILE=""
 # If the hook input JSON has stop_hook_active=true, another stop hook is
 # already active (e.g. the agent itself).  Skip to avoid recursion.
 # Fallback to "false" on any parse error so we proceed with the review.
@@ -120,6 +126,7 @@ ENGINE_ARGS=(run)
 [[ -n "${COLD_REVIEW_OVERRIDE_REASON:-}" ]]  && ENGINE_ARGS+=(--override-reason "${COLD_REVIEW_OVERRIDE_REASON}")
 [[ -n "${COLD_REVIEW_MINIMUM_COVERAGE_PCT:-}" ]] && ENGINE_ARGS+=(--minimum-coverage-pct "${COLD_REVIEW_MINIMUM_COVERAGE_PCT}")
 [[ -n "${COLD_REVIEW_COVERAGE_POLICY:-}" ]]      && ENGINE_ARGS+=(--coverage-policy "${COLD_REVIEW_COVERAGE_POLICY}")
+[[ -n "$HOOK_INPUT_FILE" && -f "$HOOK_INPUT_FILE" ]] && ENGINE_ARGS+=(--hook-input-path "$HOOK_INPUT_FILE")
 case "${COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK:-}" in
   1|true|TRUE|yes|YES|on|ON)
     ENGINE_ARGS+=(--fail-on-unreviewed-high-risk)

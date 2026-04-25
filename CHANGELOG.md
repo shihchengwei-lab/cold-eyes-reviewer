@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.14.0 - feat: agent-first protection brief
+
+### What changed
+
+- Added a deterministic protection brief for blocks: `agent_task`, `user_message`, `risk_summary`, and intent metadata under `protection`.
+- Block reasons are now agent-first: tell the agent what to fix, include plain-language text to relay to the user, then preserve the original Cold Eyes detail.
+- Added low-weight intent capsules from Claude Code hook metadata via internal `--hook-input-path`.
+- Added `COLD_REVIEW_AGENT_BRIEF`, `COLD_REVIEW_INTENT_CONTEXT`, and `COLD_REVIEW_INTENT_MAX_CHARS`.
+- History can now record compact `protection` summaries for block analysis and future tuning.
+
+### Blocking / policy changes
+
+- Intent mismatch findings require concrete diff evidence. Intent-only claims without evidence are downgraded below the default confidence threshold and do not block.
+- Auto-tune treats intent-mismatch blocks as quality signals and keeps `hold-quality` instead of reducing review time.
+
+### Test count
+
+- 823 passed, 5 skipped.
+
 ## v1.13.0 - feat: self-tuning gate defaults
 
 ### What changed

@@ -4,7 +4,7 @@ How Cold Eyes works, what it can and cannot catch, and how to verify.
 
 ## What Cold Eyes is
 
-A diff-centered second-pass gate. It reads a git diff and produces a block/pass verdict. The diff is the primary input. On the deep path it also pulls limited, structured supporting context — recent commit messages and co-changed files from git history — plus regex-based detector hints, to reduce obvious blind spots. It has no conversation content, no requirements spec, and no access to the full codebase beyond what that bounded context surfaces.
+A diff-centered second-pass gate. It reads a git diff and produces a block/pass verdict. The diff is the primary input. On the deep path it also pulls limited, structured supporting context — recent commit messages and co-changed files from git history — plus regex-based detector hints, to reduce obvious blind spots. When Claude Code hook metadata exposes a transcript path, it may add a small low-weight user-intent capsule. That capsule cannot override diff evidence and intent findings without concrete diff evidence do not block. Cold Eyes still has no requirements spec and no access to the full codebase beyond what bounded context surfaces.
 
 It is not an AI code reviewer in the general sense. It is a **risk gate** that catches surface-level issues visible in a single diff.
 
@@ -27,7 +27,7 @@ These are the six check items defined in the system prompt (`cold-review-prompt.
 | Gap | Why |
 |---|---|
 | Business logic errors | Requires understanding intent and requirements |
-| Requirement violations | Cold Eyes does not know what the code should do |
+| Requirement violations | The optional intent capsule is only a weak hint, not a requirements spec |
 | Cross-file issues not in diff | Only files in the diff are visible |
 | Subtle algorithmic bugs | Requires reasoning beyond diff surface |
 | Race conditions / timing issues | Rarely visible in a single diff |
@@ -48,6 +48,8 @@ These are the six check items defined in the system prompt (`cold-review-prompt.
 **No persistent state.** Review history is an append-only JSONL file. Override tokens are single-use files with TTL. No database, no service, no daemon.
 
 **No code execution.** Cold Eyes never generates, modifies, or executes code. It reads diffs and produces JSON verdicts.
+
+**Agent-first block output.** When Cold Eyes blocks, it can package the result as an agent repair task plus a plain-language message for the agent to relay to the user. This packaging does not change the underlying pass/block decision.
 
 ## False positive direction
 

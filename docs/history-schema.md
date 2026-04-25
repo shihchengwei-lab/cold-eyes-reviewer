@@ -21,6 +21,16 @@ Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each l
   "cold_eyes_verdict": "fail",
   "final_action": "block",
   "authority": "cold_eyes",
+  "protection": {
+    "agent_task": true,
+    "user_message": true,
+    "block_type": "finding_block",
+    "risk_summary": ["可能有安全風險"],
+    "intent": {
+      "status": "found",
+      "has_summary": true
+    }
+  },
   "coverage": {
     "status": "complete",
     "coverage_pct": 100.0,
@@ -64,6 +74,7 @@ Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each l
 | `cold_eyes_verdict` | string | New entries | Original reviewer verdict: `pass`, `fail`, `incomplete`, `infra_failed` |
 | `final_action` | string | New entries | Final disposition: `pass`, `report`, `block`, `override_pass`, `coverage_block` |
 | `authority` | string | New entries | Decision authority: `cold_eyes`, `human_override`, `coverage_gate`, `infrastructure` |
+| `protection` | object | When available | Compact protection summary: whether an agent task/user message was generated, block type, risk summary, and intent capsule status |
 | `coverage` | object | When coverage evaluated | Coverage gate status and unreviewed file details |
 | `failure_kind` | string | When infra failed | `timeout`, `cli_not_found`, `cli_error`, `empty_output` |
 | `stderr_excerpt` | string | When infra failed | First 500 chars of CLI stderr |
@@ -109,6 +120,19 @@ Present when the engine reached diff construction and could evaluate review cove
 | `policy` | string | `warn`, `block`, or `fail-closed` |
 | `action` | string | Coverage decision: `pass`, `warn`, or `block` |
 | `reason` | string | Machine-readable reason, such as `coverage_below_minimum` |
+
+## protection object
+
+Present when Cold Eyes attached a non-engineer protection brief or recorded intent capsule status.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `agent_task` | bool | Whether the block produced an agent-facing repair task |
+| `user_message` | bool | Whether the block produced a plain-language message for the agent to relay |
+| `block_type` | string | `finding_block`, `coverage_block`, `intent_mismatch`, or `incomplete_review` |
+| `risk_summary` | array | Short non-engineer risk labels |
+| `intent.status` | string | Intent capsule status, such as `found`, `missing_transcript`, `disabled`, or `skipped_budget` |
+| `intent.has_summary` | bool | Whether a user-goal summary was recorded |
 
 ## review object
 

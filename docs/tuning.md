@@ -112,7 +112,8 @@ Auto-tune may reduce `context_tokens` when recent reviews are clean but slow or
 token-heavy. It does not reduce the primary diff budget. It will hold or
 increase strictness instead of reducing time when recent history contains
 blocks, overrides, infra failures, coverage blocks, or unreviewed high-risk
-files.
+files. Intent-mismatch blocks also hold quality, because they indicate the
+agent may be drifting away from the user's recent goal.
 
 Automatic tuning defaults:
 
@@ -124,6 +125,18 @@ COLD_REVIEW_AUTO_TUNE_MIN_SAMPLES=5
 ```
 
 Set `COLD_REVIEW_AUTO_TUNE=off` to disable automatic writes.
+
+Agent protection and intent-capsule defaults:
+
+```bash
+COLD_REVIEW_AGENT_BRIEF=on
+COLD_REVIEW_INTENT_CONTEXT=on
+COLD_REVIEW_INTENT_MAX_CHARS=1200
+```
+
+`COLD_REVIEW_INTENT_CONTEXT` only supplies a low-weight hint. Intent findings
+without concrete diff evidence are downgraded below the default confidence
+threshold and do not block.
 
 Fixed safety floor:
 

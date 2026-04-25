@@ -315,6 +315,7 @@ def _diagnostics(entries: list[dict]) -> dict:
     infra = 0
     coverage_blocks = 0
     high_risk_unreviewed = 0
+    intent_mismatch_blocks = 0
 
     for entry in entries:
         depth = entry.get("review_depth", "unknown")
@@ -330,6 +331,9 @@ def _diagnostics(entries: list[dict]) -> dict:
 
         if entry.get("final_action") == "coverage_block":
             coverage_blocks += 1
+        protection = entry.get("protection")
+        if isinstance(protection, dict) and protection.get("block_type") == "intent_mismatch":
+            intent_mismatch_blocks += 1
 
         coverage = entry.get("coverage")
         if isinstance(coverage, dict):
@@ -363,6 +367,7 @@ def _diagnostics(entries: list[dict]) -> dict:
         "infra_failure_rate": _rate(infra, total),
         "coverage_block_rate": _rate(coverage_blocks, total),
         "high_risk_unreviewed_count": high_risk_unreviewed,
+        "intent_mismatch_blocks": intent_mismatch_blocks,
     }
 
 
@@ -372,6 +377,8 @@ def _quality_blocker(diagnostics: dict) -> list[str]:
         reasons.append("infra failures are above 5%; fix reliability before reducing time")
     if diagnostics["coverage_block_rate"] > 0:
         reasons.append("coverage blocks occurred; do not reduce review input yet")
+    if diagnostics["intent_mismatch_blocks"] > 0:
+        reasons.append("intent mismatch blocks occurred; keep context until the pattern is understood")
     if diagnostics["high_risk_unreviewed_count"] > 0:
         reasons.append("high-risk files were unreviewed; keep coverage protection strict")
     if diagnostics["override_rate"] > 0.10:

@@ -31,6 +31,10 @@ def calibrate_evidence(issues, fp_patterns=None):
     for issue in issues:
         issue = dict(issue)
         evidence = issue.get("evidence", [])
+        # Intent mismatch is low-authority. It can only block when the model
+        # cites concrete diff evidence instead of relying on conversation context.
+        if str(issue.get("category", "")).lower() == "intent" and not evidence:
+            issue["confidence"] = "low"
         # Rule 1: high confidence without evidence → medium
         if issue.get("confidence") == "high" and not evidence:
             issue["confidence"] = "medium"

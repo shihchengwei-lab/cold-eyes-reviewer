@@ -72,7 +72,7 @@ Based on external review, the project follows a phased trust engineering plan. T
 
 - [x] `--v2` CLI flag: opt-in session pipeline via `cli.py run --v2`
 - [x] Session persistence: `SessionStore.save()` writes to `sessions.jsonl`
-- [x] `DEPLOY_FILES` covers all v2 sub-packages (53 files total)
+- [x] `DEPLOY_FILES` covers all v2 sub-packages and protection modules (57 files total)
 - [x] Shell hook compatible: output preserves `action`/`display`/`reason` keys
 - [x] install.sh copies v2 sub-packages
 

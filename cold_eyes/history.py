@@ -21,7 +21,8 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
                    min_confidence="medium", scope="working", override_reason="",
                    failure_kind=None, stderr_excerpt="", review_depth=None,
                    coverage=None, cold_eyes_verdict=None, final_action=None,
-                   authority=None, override_note="", duration_ms=None):
+                   authority=None, override_note="", duration_ms=None,
+                   protection=None):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -54,6 +55,8 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
         entry["override_note"] = override_note
     if duration_ms is not None:
         entry["duration_ms"] = int(duration_ms)
+    if protection is not None:
+        entry["protection"] = protection
 
     if review is not None:
         entry["diff_stats"] = {

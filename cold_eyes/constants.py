@@ -63,6 +63,7 @@ DEPLOY_FILES = [
     "cold_eyes/prompt.py", "cold_eyes/claude.py", "cold_eyes/review.py",
     "cold_eyes/policy.py", "cold_eyes/history.py", "cold_eyes/config.py",
     "cold_eyes/autotune.py",
+    "cold_eyes/intent.py", "cold_eyes/protection.py",
     "cold_eyes/override.py", "cold_eyes/doctor.py",
     "cold_eyes/schema.py", "cold_eyes/triage.py",
     "cold_eyes/context.py", "cold_eyes/detector.py",

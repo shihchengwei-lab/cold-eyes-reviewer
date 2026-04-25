@@ -314,6 +314,15 @@ class TestShellParserFailClosed:
         assert out["decision"] == "block"
         assert out["reason"] == "test reason"
 
+    def test_block_action_preserves_agent_brief_reason(self):
+        reason = "Message to relay to the user:\nplain text\n\nAgent repair task:\nfix it"
+        data = json.dumps({"action": "block", "display": "blocking", "reason": reason})
+        r = self._run_parser("block", data)
+        out = json.loads(r.stdout)
+        assert set(out) == {"decision", "reason"}
+        assert out["decision"] == "block"
+        assert "Agent repair task" in out["reason"]
+
     def test_coverage_block_action_emits_json_decision_only(self):
         data = json.dumps({
             "action": "block",
@@ -338,6 +347,12 @@ class TestShellShimIntegrity:
             content = f.read()
         assert "cold-review-helper" not in content
         assert "cold_eyes/helper.py" not in content.replace("cold_eyes/cli.py", "")
+
+    def test_passes_hook_input_path_to_engine(self):
+        with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:
+            content = f.read()
+        assert "HOOK_INPUT_FILE" in content
+        assert "--hook-input-path" in content
 
     def test_no_direct_claude_call(self):
         with open(SHELL_SCRIPT, "r", encoding="utf-8") as f:

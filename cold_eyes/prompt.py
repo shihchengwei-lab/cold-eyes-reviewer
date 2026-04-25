@@ -8,6 +8,17 @@ from cold_eyes.constants import PROMPT_TEMPLATE, PROMPT_TEMPLATE_SHALLOW
 # Allow alphanumeric, spaces, hyphens, parens, and common CJK/unicode letters
 _LANG_ALLOW = re.compile(r'[^\w\s\-\(\)\u3000-\u9fff\uf900-\ufaff]', re.UNICODE)
 
+_INTENT_INSTRUCTION = """
+
+## Low-weight user intent capsule
+
+The input may include `[Cold Eyes: User intent capsule - low weight]`.
+Treat it only as a weak hint about the user's recent goal. It must not override
+diff evidence. Only report category `intent` when the visible diff clearly
+contradicts a clear user goal and the issue's evidence cites the diff. If the
+claim depends only on conversation context, do not report it.
+"""
+
 
 def _sanitize_language(value: str) -> str:
     """Sanitize language string to prevent prompt injection."""
@@ -42,4 +53,7 @@ def build_prompt_text(language=None, depth="deep"):
         return ("You are Cold Eyes, a diff-centered reviewer. "
                 "Review the diff. Output JSON: {pass, issues, summary}.")
 
-    return template.replace("{language}", language)
+    text = template.replace("{language}", language)
+    if depth != "shallow":
+        text += _INTENT_INSTRUCTION
+    return text

@@ -19,6 +19,7 @@ def _write_entry(
     files=3,
     final_action=None,
     coverage=None,
+    protection=None,
 ):
     entry = {
         "version": 2,
@@ -36,6 +37,8 @@ def _write_entry(
         entry["final_action"] = final_action
     if coverage:
         entry["coverage"] = coverage
+    if protection:
+        entry["protection"] = protection
     with open(path, "a", encoding="utf-8") as f:
         f.write(json.dumps(entry) + "\n")
 
@@ -94,6 +97,22 @@ def test_auto_tune_holds_quality_when_high_risk_files_were_unreviewed(tmp_path):
     assert result["changes"]["context_tokens"] == 2000
     assert result["changes"]["coverage_policy"] == "block"
     assert any("high-risk files" in reason for reason in result["reasons"])
+
+
+def test_auto_tune_holds_quality_when_intent_mismatch_blocks_occur(tmp_path):
+    history = tmp_path / "history.jsonl"
+    for _ in range(4):
+        _write_entry(history)
+    _write_entry(
+        history,
+        protection={"block_type": "intent_mismatch"},
+    )
+
+    result = auto_tune(str(history), min_samples=5)
+
+    assert result["recommended_profile"] == "hold-quality"
+    assert result["changes"]["context_tokens"] == 2000
+    assert any("intent mismatch" in reason for reason in result["reasons"])
 
 
 def test_write_auto_policy_is_low_priority_to_manual_policy(tmp_path):

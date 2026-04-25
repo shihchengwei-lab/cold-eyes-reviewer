@@ -11,6 +11,17 @@ from cold_eyes.triage import classify_depth
 from cold_eyes.context import build_context
 from cold_eyes.detector import build_detector_hints
 from cold_eyes.prompt import build_prompt_text
+from cold_eyes.intent import (
+    DEFAULT_INTENT_MAX_CHARS,
+    intent_prompt_block,
+    is_enabled as intent_setting_enabled,
+    load_intent_capsule,
+)
+from cold_eyes.protection import (
+    attach_protection,
+    history_summary as protection_history_summary,
+    is_enabled as protection_setting_enabled,
+)
 
 try:
     from cold_eyes.memory import extract_fp_patterns as _extract_fp
@@ -64,7 +75,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         adapter=None, base=None, truncation_policy=None, shallow_model=None,
         context_tokens=None, max_input_tokens=None, history_path=None,
         minimum_coverage_pct=None, coverage_policy=None,
-        fail_on_unreviewed_high_risk=None, override_note=None):
+        fail_on_unreviewed_high_risk=None, override_note=None,
+        hook_input_path=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
@@ -136,6 +148,21 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         "fail_on_unreviewed_high_risk",
         True,
         cast=is_truthy,
+    )
+    agent_brief_enabled = protection_setting_enabled(os.environ.get("COLD_REVIEW_AGENT_BRIEF"), True)
+    intent_enabled = intent_setting_enabled(os.environ.get("COLD_REVIEW_INTENT_CONTEXT"), True)
+    intent_max_chars = _resolve(
+        None,
+        "COLD_REVIEW_INTENT_MAX_CHARS",
+        {},
+        "intent_max_chars",
+        DEFAULT_INTENT_MAX_CHARS,
+        cast=int,
+    )
+    intent_capsule = load_intent_capsule(
+        hook_input_path,
+        enabled=intent_enabled,
+        max_chars=intent_max_chars,
     )
 
     # mode=off: skip immediately (normally caught by shell, but policy file may set it)
@@ -279,6 +306,20 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                 detector_meta["hint_text"] = ""
                 hints_dropped = True
 
+    # Low-weight intent capsule: only deep reviews get this extra hint, and it
+    # must fit the remaining budget. Policy later prevents intent-only blocks
+    # without concrete diff evidence.
+    intent_text = intent_prompt_block(intent_capsule) if review_depth == "deep" else ""
+    if intent_text:
+        intent_tokens = estimate_tokens(intent_text)
+        if intent_tokens <= input_remaining:
+            diff_text = diff_text + "\n" + intent_text
+            input_remaining -= intent_tokens
+            token_count += intent_tokens
+        else:
+            intent_capsule = dict(intent_capsule)
+            intent_capsule["status"] = "skipped_budget"
+
     # Coverage visibility and gate decision
     coverage = build_coverage_report(
         ranked,
@@ -293,6 +334,10 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             _skip("no diff content"), coverage, mode, allow_once,
             override_reason=override_reason, override_note=override_note,
         )
+        result = _attach_protection_brief(
+            result, language=language, intent=intent_capsule,
+            enabled=agent_brief_enabled,
+        )
         log_to_history(
             cwd, mode, effective_model, result["state"], "no diff content",
             min_confidence=min_confidence, scope=scope,
@@ -302,6 +347,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             authority=result.get("authority"),
             override_reason=override_reason,
             override_note=result.get("override_note", ""),
+            protection=protection_history_summary(result.get("protection")),
             duration_ms=_elapsed_ms(started),
         )
         return result
@@ -372,6 +418,10 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         outcome, coverage, mode, allow_once,
         override_reason=override_reason, override_note=override_note,
     )
+    outcome = _attach_protection_brief(
+        outcome, review=review, language=language, intent=intent_capsule,
+        enabled=agent_brief_enabled,
+    )
 
     # Add review path visibility
     outcome["review_depth"] = review_depth
@@ -406,10 +456,21 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         final_action=outcome.get("final_action"),
         authority=outcome.get("authority"),
         override_note=outcome.get("override_note", ""),
+        protection=protection_history_summary(outcome.get("protection")),
         duration_ms=_elapsed_ms(started),
     )
 
     return outcome
+
+
+def _attach_protection_brief(outcome, review=None, language=None, intent=None, enabled=True):
+    return attach_protection(
+        outcome,
+        review=review,
+        language=language,
+        intent=intent,
+        enabled=enabled,
+    )
 
 
 def _elapsed_ms(started):
