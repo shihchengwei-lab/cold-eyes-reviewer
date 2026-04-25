@@ -1,5 +1,30 @@
 # Changelog
 
+## v1.16.1 - chore: remove retired session code
+
+### What changed
+
+- Removed the retired session, contract, retry, noise, and runner experiment packages from active source.
+- Kept the unified v1 behavior unchanged: one cold review, selected local checks, agent repair task, and fresh-review rerun protocol.
+- Made `gates/result.py` self-contained so local check parsing no longer depends on v2-only type definitions.
+- Scoped soft local checks to changed Python files when possible, instead of sweeping the whole repo for every source edit.
+
+### Behavior changes
+
+- `none`.
+
+### Cost changes
+
+- Runtime cost is lower for Python source edits in larger repos because `ruff` and `mypy` target changed files when possible. Source and test surface are smaller.
+
+### Blocking / policy changes
+
+- `none`.
+
+### Test count
+
+- 616 passed, 6 skipped.
+
 ## v1.15.0 - feat: fresh-review rerun protocol
 
 ### What changed

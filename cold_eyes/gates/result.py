@@ -1,6 +1,10 @@
-"""Gate result normalizer — convert raw gate outputs to GateResult."""
+"""Local check result normalizer."""
 
-from cold_eyes.type_defs import GateResult, generate_id
+import uuid
+
+
+def _generate_id() -> str:
+    return uuid.uuid4().hex[:12]
 
 
 def normalize_result(
@@ -9,25 +13,25 @@ def normalize_result(
     exit_code: int,
     duration_ms: int = 0,
     blocking_mode: str = "soft",
-) -> GateResult:
-    """Convert raw gate output into a normalized GateResult.
+) -> dict:
+    """Convert raw check output into a normalized result dict.
 
     Uses gate-specific parsers when available, falls back to generic.
     """
     parser = _PARSERS.get(gate_name, _parse_generic)
     status, findings, warnings = parser(raw_output, exit_code)
 
-    return GateResult(
-        gate_id=generate_id(),
-        gate_name=gate_name,
-        status=status,
-        blocking_mode=blocking_mode,
-        findings=findings,
-        warnings=warnings,
-        raw_output=raw_output[:5000],  # cap raw output
-        duration_ms=duration_ms,
-        metadata={},
-    )
+    return {
+        "gate_id": _generate_id(),
+        "gate_name": gate_name,
+        "status": status,
+        "blocking_mode": blocking_mode,
+        "findings": findings,
+        "warnings": warnings,
+        "raw_output": raw_output[:5000],
+        "duration_ms": duration_ms,
+        "metadata": {},
+    }
 
 
 # ---------------------------------------------------------------------------

@@ -26,14 +26,21 @@ def test_normalize_timeout_is_bounded():
 
 
 def test_select_checks_for_python_source(tmp_path):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("print('ok')\n", encoding="utf-8")
+
     selected = select_checks(["src/app.py"], repo_root=str(tmp_path))
     ids = [entry["check_id"] for entry in selected]
 
     assert ids == ["lint_checker", "type_checker"]
+    assert selected[0]["targets"] == ["src/app.py"]
+    assert selected[1]["targets"] == ["src/app.py"]
 
 
 def test_select_checks_for_high_risk_python_source_with_tests(tmp_path):
+    (tmp_path / "src").mkdir()
     (tmp_path / "tests").mkdir()
+    (tmp_path / "src" / "auth.py").write_text("AUTH = True\n", encoding="utf-8")
 
     selected = select_checks(["src/auth.py"], repo_root=str(tmp_path))
     ids = [entry["check_id"] for entry in selected]
@@ -92,6 +99,8 @@ def test_pytest_failure_is_hard_failure(tmp_path, monkeypatch):
 
 
 def test_ruff_failure_is_soft_only(tmp_path, monkeypatch):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("import os\n", encoding="utf-8")
     monkeypatch.setattr("cold_eyes.local_checks.shutil.which", lambda _cmd: "tool")
     proc = MagicMock()
     proc.stdout = "src/app.py:1:1: F401 unused import\n"
@@ -105,6 +114,28 @@ def test_ruff_failure_is_soft_only(tmp_path, monkeypatch):
     assert result["results"][0]["check_id"] == "lint_checker"
     assert result["results"][0]["blocking"] == "soft"
     assert result["results"][0]["status"] == "fail"
+
+
+def test_soft_checks_target_changed_python_files(tmp_path, monkeypatch):
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src" / "app.py").write_text("print('ok')\n", encoding="utf-8")
+    monkeypatch.setattr("cold_eyes.local_checks.shutil.which", lambda _cmd: "tool")
+    commands = []
+    proc = MagicMock()
+    proc.stdout = ""
+    proc.stderr = ""
+    proc.returncode = 0
+
+    def _capture(command, **_kwargs):
+        commands.append(command)
+        return proc
+
+    monkeypatch.setattr("cold_eyes.local_checks.subprocess.run", _capture)
+
+    run_local_checks(["src/app.py"], mode="auto", repo_root=str(tmp_path))
+
+    assert commands[0] == ["ruff", "check", "src/app.py"]
+    assert commands[1] == ["mypy", "src/app.py"]
 
 
 def test_timeout_warns_without_hard_failure(tmp_path, monkeypatch):

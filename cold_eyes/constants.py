@@ -1,4 +1,4 @@
-"""Shared constants — single source of truth for all modules."""
+"""Shared constants - single source of truth for all modules."""
 
 import os
 import re
@@ -16,7 +16,7 @@ SCHEMA_VERSION = 1
 SEVERITY_ORDER = {"critical": 3, "major": 2, "minor": 1}
 CONFIDENCE_ORDER = {"high": 3, "medium": 2, "low": 1}
 
-# Review outcome states — single source of truth for all modules.
+# Review outcome states - single source of truth for all modules.
 STATE_PASSED = "passed"
 STATE_BLOCKED = "blocked"
 STATE_OVERRIDDEN = "overridden"
@@ -34,7 +34,7 @@ RISK_PATTERN = re.compile(
     r"(auth|payment|db|migration|secret|credential|config|api)", re.IGNORECASE
 )
 
-# Risk categories — structured classification for triage depth decisions.
+# Risk categories - structured classification for triage depth decisions.
 RISK_CATEGORIES = {
     "auth_permission": re.compile(
         r"(auth|permission|guard|middleware|policy|ownership)", re.IGNORECASE),
@@ -71,8 +71,7 @@ DEPLOY_FILES = [
     "cold_eyes/memory.py",
     "cold_eyes/coverage_gate.py",
     "cold-review-prompt-shallow.txt",
-    # Support packages for unified local checks
-    "cold_eyes/type_defs.py",
-    "cold_eyes/gates/__init__.py", "cold_eyes/gates/catalog.py",
+    # Support package for unified local checks
+    "cold_eyes/gates/__init__.py",
     "cold_eyes/gates/result.py",
 ]

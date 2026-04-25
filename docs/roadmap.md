@@ -33,12 +33,14 @@ This is a personal tool. The roadmap is directional, not committed.
 - [x] Fresh-review rerun protocol for the main agent
 - [x] No repair memory: no pending-block store and no validation against previous block records
 
-### Unified local checks (v1.16.0)
+### Unified local checks and cleanup (v1.16.x)
 
 - [x] Single v1 run path; hidden `--v2` compatibility falls back to v1
 - [x] Risk-based automatic local checks: pytest, ruff, mypy, pip check
 - [x] Hard local check failures can block; soft failures feed the Agent task
 - [x] Local check results are attached to outcome and history without schema-major bump
+- [x] Soft checks target changed Python files when possible to avoid unnecessary full-repo sweeps
+- [x] Removed retired session, contract, retry, noise, and runner source modules after v1 absorbed the useful local-check parser
 
 ## Future
 

@@ -14,7 +14,7 @@ Current target positioning:
 | Low-weight intent capsule | Active | `cold_eyes/intent.py` | Reads recent user goal from hook metadata when available; cannot block without diff evidence |
 | Fresh-review rerun protocol | Active | `cold_eyes/protection.py` | Tells the main agent to fix, run checks, and end the turn for a fresh next review |
 | Automatic local checks | Active | `cold_eyes/local_checks.py` | Runs selected local checks once; hard failures can block, soft failures feed Agent task |
-| Session/retry pipeline | Retired | `cold_eyes/cli.py` | `--v2` is hidden compatibility only and falls back to unified v1 |
+| Session/retry pipeline | Retired and removed from active source | `cold_eyes/cli.py`, `cold_eyes/gates/result.py` | `--v2` is hidden compatibility only and falls back to unified v1 |
 
 ## Wording Direction
 

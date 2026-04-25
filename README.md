@@ -205,7 +205,7 @@ To reduce token usage manually: use `COLD_REVIEW_MODEL=haiku`, lower `COLD_REVIE
 
 `COLD_REVIEW_CHECKS=auto` lets the unified v1 path run selected local checks once when the diff shape justifies it:
 
-- Python source or high-risk Python changes can run `ruff check .` and `mypy .` as soft checks.
+- Python source or high-risk Python changes can run `ruff check <changed files>` and `mypy <changed files>` as soft checks.
 - Test changes or high-risk Python changes in a repo with tests can run `pytest --tb=short -q` as a hard check.
 - Python dependency/build config changes can run `python -m pip check --quiet` as a hard check.
 

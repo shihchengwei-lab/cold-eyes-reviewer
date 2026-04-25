@@ -1,1 +1,1 @@
-"""Gates sub-package — verification gate orchestration for v2."""
+"""Support package for local check result parsing."""

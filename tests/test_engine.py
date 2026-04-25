@@ -528,7 +528,7 @@ class TestFinalOutcome:
 # ===========================================================================
 
 class TestHistory:
-    def test_log_review_writes_v2(self, tmp_path):
+    def test_log_review_writes_history_schema_v2(self, tmp_path):
         history = tmp_path / "history.jsonl"
         original = engine.HISTORY_FILE
         constants.HISTORY_FILE = str(history)

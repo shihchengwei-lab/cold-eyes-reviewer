@@ -13,7 +13,7 @@ Cold Eyes is a diff-centered, second-pass gate for Claude Code. It may use bound
 - [ ] README explains that local checks run once and do not create repair memory.
 - [ ] GitHub About stays short: Claude Code, second-pass gate, Stop hook, diff-centered.
 - [ ] Release notes mention concrete identifiers such as `COLD_REVIEW_CHECKS` when behavior changes.
-- [ ] Docs do not reintroduce the retired session/retry path as a current product mode.
+- [ ] Docs do not reintroduce the retired session/retry path as a current product mode or active source package.
 - [ ] `rg -i "zero-context|diff-only|only reads the diff"` has no new non-historical hits.
 
 ## Intentionally Historical

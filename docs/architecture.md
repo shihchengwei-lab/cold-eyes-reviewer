@@ -17,6 +17,7 @@ Layer 2 - CLI + Engine (cli.py -> engine.py)
 Layer 3 - Modules
   Core review modules handle diff collection, triage, context, model review,
   policy, coverage, local checks, protection output, history, and diagnostics.
+  Retired session/retry/contract experiment code is not part of the package.
 ```
 
 ## Data Flow
@@ -44,7 +45,7 @@ Layer 3 - Modules
 |--------|---------|
 | `engine.py` | Unified `run()` orchestrator and gate enforcement |
 | `cli.py` | argparse dispatcher for subcommands, `--version`, and hidden retired `--v2` compatibility |
-| `local_checks.py` | Risk-based local check selection, execution, result summaries, and hard-check block reason |
+| `local_checks.py` | Risk-based local check selection, changed-file targeting for soft checks, execution, result summaries, and hard-check block reason |
 | `gates/result.py` | Normalizes local check output into structured findings |
 | `protection.py` | Agent repair task, user-facing message, fresh-review rerun protocol, compact history summary |
 | `history.py` | History logging, stats, quality report, prune, archive |
@@ -55,7 +56,8 @@ Layer 3 - Modules
 
 - **Single product path.** Cold Eyes has one review pipeline. Local checks are a v1 protection layer, not a second reviewer.
 - **No repair memory.** Block output can tell the main agent to fix and rerun, but Cold Eyes does not store pending block state or compare the next review against prior block records.
-- **Local checks are bounded.** Selected checks run once. `pytest` and `pip check` are hard checks; `ruff` and `mypy` are soft checks. Missing tools and timeouts are warnings.
+- **No retired session code in the runtime package.** The separate session, contract, retry, noise, and runner experiment is preserved only in release history, not as active source modules.
+- **Local checks are bounded.** Selected checks run once. `pytest` and `pip check` are hard checks; `ruff` and `mypy` are soft checks scoped to changed Python files when possible. Missing tools and timeouts are warnings.
 - **No PyYAML dependency.** Policy files use a flat `key: value` format parsed by a small custom parser. Unknown keys are silently dropped for forward compatibility.
 - **No network connections.** All external communication goes through `git` and `claude` CLI subprocesses. Cold Eyes never opens sockets.
 - **Fail-closed shell parser.** The hook parser emits a block decision in block mode if engine output is missing or malformed.

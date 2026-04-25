@@ -1,4 +1,4 @@
-# History JSONL Schema (v2)
+# History JSONL Schema (format version 2)
 
 Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each line is a complete JSON entry.
 
@@ -201,9 +201,9 @@ When present, the review object follows the schema defined in `cold_eyes/schema.
 
 ## Migration notes
 
-### v1 to v2
+### History format v1 to v2
 
 - v1 entries (from v0.10.x and earlier) have `"version": 1` or no version field
-- v1 used `"state": "failed"` for infrastructure failures; v2 uses `"infra_failed"`
+- History format v1 used `"state": "failed"` for infrastructure failures; format v2 uses `"infra_failed"`
 - v1 did not have `min_confidence`, `scope`, `failure_kind`, `stderr_excerpt`
-- The `stats` and `quality-report` commands handle both v1 and v2 entries
+- The `stats` and `quality-report` commands handle both history format v1 and v2 entries

@@ -108,13 +108,20 @@ def select_checks(changed_files: list[str], *, repo_root: str | None = None) -> 
 
     selected: list[dict] = []
     if source_py or (high_risk and py_files):
+        soft_targets = _existing_paths(source_py or py_files, repo_root)
         selected.extend([
-            _entry("lint_checker", "soft", "python source changed"),
-            _entry("type_checker", "soft", "python source changed"),
+            _entry("lint_checker", "soft", "python source changed", targets=soft_targets),
+            _entry("type_checker", "soft", "python source changed", targets=soft_targets),
         ])
 
     if (test_py or (high_risk and source_py)) and _repo_has_pytest(repo_root, changed_files):
-        selected.append(_entry("test_runner", "hard", "tests or high-risk python changed"))
+        test_targets = _existing_paths(test_py, repo_root) if test_py else []
+        selected.append(_entry(
+            "test_runner",
+            "hard",
+            "tests or high-risk python changed",
+            targets=test_targets,
+        ))
 
     if dependency_change:
         selected.append(_entry("build_checker", "hard", "python dependency/build config changed"))
@@ -175,8 +182,17 @@ def repair_lines(checks: dict | None) -> list[str]:
     return lines
 
 
-def _entry(check_id: str, blocking: str, reason: str) -> dict:
-    return {"check_id": check_id, "blocking": blocking, "reason": reason}
+def _entry(
+    check_id: str,
+    blocking: str,
+    reason: str,
+    *,
+    targets: list[str] | None = None,
+) -> dict:
+    entry = {"check_id": check_id, "blocking": blocking, "reason": reason}
+    if targets:
+        entry["targets"] = targets
+    return entry
 
 
 def _dedupe(entries: list[dict]) -> list[dict]:
@@ -194,7 +210,7 @@ def _dedupe(entries: list[dict]) -> list[dict]:
 def _run_check(entry: dict, *, timeout: int, cwd: str) -> dict:
     check_id = entry["check_id"]
     blocking = entry.get("blocking", "soft")
-    command = _command_for(check_id)
+    command = _command_for(entry)
     base = {
         "check_id": check_id,
         "blocking": blocking,
@@ -262,11 +278,13 @@ def _run_check(entry: dict, *, timeout: int, cwd: str) -> dict:
     }
 
 
-def _command_for(check_id: str) -> list[str]:
+def _command_for(entry: dict) -> list[str]:
+    check_id = entry["check_id"]
+    targets = list(entry.get("targets") or [])
     commands = {
-        "test_runner": ["pytest", "--tb=short", "-q"],
-        "lint_checker": ["ruff", "check", "."],
-        "type_checker": ["mypy", "."],
+        "test_runner": ["pytest", "--tb=short", "-q", *targets],
+        "lint_checker": ["ruff", "check", *(targets or ["."])],
+        "type_checker": ["mypy", *(targets or ["."])],
         "build_checker": [sys.executable, "-m", "pip", "check", "--quiet"],
     }
     return commands.get(check_id, [check_id])
@@ -280,6 +298,14 @@ def _is_available(check_id: str, command: list[str]) -> bool:
 
 def _display_command(command: list[str]) -> str:
     return " ".join(command)
+
+
+def _existing_paths(paths: list[str], repo_root: str) -> list[str]:
+    existing = []
+    for path in paths:
+        if os.path.isfile(os.path.join(repo_root, path)):
+            existing.append(path)
+    return existing
 
 
 def _has_high_risk_path(files: list[str]) -> bool:
