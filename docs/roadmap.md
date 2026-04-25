@@ -76,6 +76,13 @@ Based on external review, the project follows a phased trust engineering plan. T
 - [x] Shell hook compatible: output preserves `action`/`display`/`reason` keys
 - [x] install.sh copies v2 sub-packages
 
+### Agent-first gate hardening (v1.14.0-v1.15.0)
+
+- [x] Protection brief for blocks: agent task, user message, risk summary, intent metadata
+- [x] Low-weight intent capsule from Stop hook metadata, never stronger than diff evidence
+- [x] Fresh-review rerun protocol for the main agent: fix current diff, run checks, end turn, let the next Stop hook rerun Cold Eyes
+- [x] No repair memory: no pending-block store and no validation against previous block records
+
 ### Phase 2 — External evidence (future)
 
 - Release-by-release assurance notes (`docs/reports/vX.Y.Z-assurance.md`)

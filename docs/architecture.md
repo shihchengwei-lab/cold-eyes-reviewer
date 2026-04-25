@@ -35,6 +35,7 @@ Layer 3 — Modules (22 top-level + 6 sub-packages in cold_eyes/)
 10. filter_by_confidence() — remove issues below confidence threshold (deterministic)
 11. apply_policy()        — truncation policy check → block/pass/report decision
 12. attach_protection()   — turn blocks into agent repair task + user message
+                            + fresh-review rerun protocol
 13. log_to_history()      — append outcome to ~/.claude/cold-review-history.jsonl
 ```
 
@@ -54,7 +55,7 @@ Layer 3 — Modules (22 top-level + 6 sub-packages in cold_eyes/)
 | `history.py` | `log_to_history`, `compute_stats`, `quality_report`, `prune`, `archive` |
 | `autotune.py` | Quality-first auto-tune recommendations and low-frequency automatic policy writes |
 | `intent.py` | Low-weight hook/transcript intent capsule extraction |
-| `protection.py` | Agent repair task, user-facing message, and compact protection history summary |
+| `protection.py` | Agent repair task, user-facing message, fresh-review rerun protocol, and compact protection history summary |
 | `override.py` | `arm_override` / `consume_override` (file-based, TTL expiry) |
 | `doctor.py` | `run_doctor` (11 checks), `verify_install`, `run_doctor_fix`, `run_init` |
 | `engine.py` | `run()` orchestrator, `_resolve()` settings, `_skip()`, `_infra_review()` |
@@ -74,4 +75,5 @@ Layer 3 — Modules (22 top-level + 6 sub-packages in cold_eyes/)
 - **No network connections.** All external communication goes through `git` and `claude` CLI subprocesses. Cold Eyes never opens sockets.
 - **Fail-closed by default.** Infrastructure failures (timeout, parse error, missing CLI) produce a block decision in block mode. This is deliberate: a broken reviewer should not silently pass unsafe code.
 - **Confidence filter is deterministic.** The LLM assigns confidence levels, but the filter is a simple threshold comparison — no probabilistic logic.
-- **Override tokens are file-based with TTL.** One-time use, stored in `~/.claude/`, expire after N minutes. No persistent state beyond the token file.
+- **Override tokens are file-based with TTL.** One-time use, stored in `~/.claude/`, expire after N minutes. No service or database is required.
+- **No repair memory.** Block output can tell the main agent to fix and rerun, but Cold Eyes does not store pending block state or compare the next review against prior block records.

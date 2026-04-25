@@ -138,6 +138,11 @@ COLD_REVIEW_INTENT_MAX_CHARS=1200
 without concrete diff evidence are downgraded below the default confidence
 threshold and do not block.
 
+`COLD_REVIEW_AGENT_BRIEF=on` also includes the automatic rerun protocol used by
+the main agent: repair the current diff, run relevant checks, and end the turn
+so the next Stop hook starts a fresh Cold Eyes review. This is not repair
+memory; Cold Eyes does not compare against previous blocks.
+
 Fixed safety floor:
 
 ```yaml

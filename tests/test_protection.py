@@ -35,8 +35,14 @@ def test_block_finding_gets_agent_task_and_user_message():
     assert protected["action"] == "block"
     assert protected["protection"]["agent_task"]
     assert protected["protection"]["user_message"]
+    assert protected["protection"]["rerun_protocol"]["owner"] == "main_agent"
+    assert protected["protection"]["rerun_protocol"]["trigger"] == "next_stop_hook"
+    assert protected["protection"]["rerun_protocol"]["memory_policy"] == "fresh_review_only"
+    assert protected["protection"]["rerun_protocol"]["user_action_required"] is False
     assert protected["protection"]["block_type"] == "finding_block"
     assert "Message to relay to the user" in protected["reason"]
+    assert "Automatic rerun protocol" in protected["reason"]
+    assert "fresh Cold Eyes review" in protected["reason"]
     assert "Agent repair task" in protected["reason"]
     assert "src/app.py" in protected["reason"]
 
@@ -58,8 +64,30 @@ def test_coverage_block_gets_repair_task_for_unreviewed_high_risk_files():
 
     assert protected["protection"]["block_type"] == "coverage_block"
     assert "高風險檔案沒有被完整審到" in protected["protection"]["risk_summary"][0]
+    assert "Reduce or split the current diff" in protected["protection"]["rerun_protocol"]["steps"][1]
     assert "src/auth.py" in protected["protection"]["agent_task"]
+    assert "reviewable in the next fresh review" in protected["protection"]["agent_task"]
     assert "coverage below minimum" in protected["reason"]
+
+
+def test_user_message_says_user_does_not_need_manual_command():
+    review = _critical_review()
+    outcome = apply_policy(review, "block", "critical", False, "medium")
+
+    protected = attach_protection(outcome, review=review)
+
+    assert "不用手動跑指令" in protected["protection"]["user_message"]
+
+
+def test_agent_brief_off_does_not_add_rerun_protocol():
+    review = _critical_review()
+    outcome = apply_policy(review, "block", "critical", False, "medium")
+
+    protected = attach_protection(outcome, review=review, enabled=False)
+
+    assert protected["action"] == "block"
+    assert "protection" not in protected
+    assert "rerun_protocol" not in protected
 
 
 def test_intent_issue_without_diff_evidence_does_not_block():
@@ -80,6 +108,31 @@ def test_intent_issue_with_diff_evidence_can_block():
     assert protected["action"] == "block"
     assert protected["protection"]["block_type"] == "intent_mismatch"
     assert "偏離" in protected["protection"]["risk_summary"][0]
+
+
+def test_previous_block_history_does_not_change_new_policy_decision(tmp_path, monkeypatch):
+    from cold_eyes import constants
+
+    history = tmp_path / "history.jsonl"
+    monkeypatch.setattr(constants, "HISTORY_FILE", str(history))
+    log_to_history(
+        "/repo",
+        "block",
+        "sonnet",
+        "blocked",
+        protection={"block_type": "finding_block", "risk_summary": ["old block"]},
+    )
+    clean_review = {
+        "review_status": "completed",
+        "pass": True,
+        "summary": "clean",
+        "issues": [],
+    }
+
+    outcome = apply_policy(clean_review, "block", "critical", False, "medium")
+
+    assert outcome["action"] == "pass"
+    assert outcome["state"] == "passed"
 
 
 def test_history_summary_keeps_protection_compact(tmp_path, monkeypatch):
@@ -104,4 +157,5 @@ def test_history_summary_keeps_protection_compact(tmp_path, monkeypatch):
     assert entry["protection"]["agent_task"] is True
     assert entry["protection"]["user_message"] is True
     assert "agent_task" in entry["protection"]
+    assert "rerun_protocol" not in entry["protection"]
     assert "Fix:" not in json.dumps(entry["protection"], ensure_ascii=False)

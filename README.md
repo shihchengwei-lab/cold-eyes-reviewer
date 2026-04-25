@@ -5,13 +5,13 @@
 ![Review](https://img.shields.io/badge/Review-diff--centered-green)
 ![Scope](https://img.shields.io/badge/Scope-not%20full%20review-lightgrey)
 
-A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook, defaults to gate mode, auto-tunes the quality/time balance from local review history, and turns blocks into agent repair tasks.
+A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook, defaults to gate mode, auto-tunes the quality/time balance from local review history, and turns blocks into agent repair tasks with a fresh-review rerun protocol.
 
 This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/index-en.html), a Claude Code buddy companion that provided independent commentary during coding sessions. Cinder was silently shut down on April 11, 2026. Cold Eyes carries forward the idea that a second pair of eyes — even artificial ones — catches things the first pair misses. Cinder was a companion. Cold Eyes is a gate.
 
 ## What it is
 
-Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it now produces an agent-facing repair task plus a plain-language message the agent can relay to a non-engineer user. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata — to reduce obvious blind spots without treating conversation context as authority. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
+Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it now produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata — to reduce obvious blind spots without treating conversation context as authority. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
 
 ## What it is not
 
@@ -71,7 +71,8 @@ Claude Code session ends
        ├─ 9. parse review → FP memory lookup → evidence calibration → confidence filter
        ├─ 10. policy decision
        │
-       ├─ block mode: issues at or above threshold → block (Claude Code decides what to do next)
+       ├─ block mode: issues at or above threshold → block
+       │      Agent fixes current diff → ends turn → next Stop hook starts a fresh review
        ├─ report mode: log review → pass
        └─ all engine-level exits logged to ~/.claude/cold-review-history.jsonl
           (shell guard skips — off, recursion, no git repo, lock — are not logged)
@@ -113,7 +114,7 @@ Every issue includes severity, confidence, category, file, line_hint, a three-pa
 
 - `schema_version` — output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
 - `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain. Displayed with `~` prefix (e.g., `(~L42)`) to indicate it is an estimate, not a precise location. In block mode, verify the line number before acting on it.
-- `protection` — optional block wrapper with `user_message`, `agent_task`, `risk_summary`, and low-weight intent metadata. It is added after the review decision and does not change schema version.
+- `protection` — optional block wrapper with `user_message`, `agent_task`, `risk_summary`, `rerun_protocol`, and low-weight intent metadata. It is added after the review decision and does not change schema version.
 
 **Severity levels:**
 - `critical` — production crash, data loss, or security breach
@@ -263,7 +264,7 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | `COLD_REVIEW_AUTO_TUNE_INTERVAL_HOURS` | `24` | any integer | Minimum hours between automatic tuning checks per repo |
 | `COLD_REVIEW_AUTO_TUNE_LAST` | `7d` | `24h`, `7d`, `2w`, etc. | History window used by automatic tuning |
 | `COLD_REVIEW_AUTO_TUNE_MIN_SAMPLES` | `5` | any integer | Minimum history samples before automatic tuning writes policy |
-| `COLD_REVIEW_AGENT_BRIEF` | `on` | `on`, `off` | Add agent repair task and user-facing plain-language message to blocks |
+| `COLD_REVIEW_AGENT_BRIEF` | `on` | `on`, `off` | Add agent repair task, user-facing message, and fresh-review rerun protocol to blocks |
 | `COLD_REVIEW_INTENT_CONTEXT` | `on` | `on`, `off` | Read a low-weight user intent capsule from Claude Code hook metadata when available |
 | `COLD_REVIEW_INTENT_MAX_CHARS` | `1200` | any integer | Character cap for the low-weight intent capsule |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | **Deprecated.** Use `arm-override` instead. Still works but emits a warning. |

@@ -45,11 +45,11 @@ These are the six check items defined in the system prompt (`cold-review-prompt.
 
 **No network.** All external communication happens through local subprocess calls to `git` and `claude` CLI. No HTTP, no API keys, no outbound connections from Cold Eyes itself.
 
-**No persistent state.** Review history is an append-only JSONL file. Override tokens are single-use files with TTL. No database, no service, no daemon.
+**No repair memory.** Review history is an append-only JSONL file for diagnostics, auto-tune, and override false-positive calibration. Cold Eyes does not store pending block state, remember "what it blocked last time," or validate a fix against the previous block.
 
 **No code execution.** Cold Eyes never generates, modifies, or executes code. It reads diffs and produces JSON verdicts.
 
-**Agent-first block output.** When Cold Eyes blocks, it can package the result as an agent repair task plus a plain-language message for the agent to relay to the user. This packaging does not change the underlying pass/block decision.
+**Agent-first block output.** When Cold Eyes blocks, it can package the result as an agent repair task, a plain-language message for the agent to relay to the user, and a rerun protocol. The rerun protocol belongs to the main agent: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. This packaging does not change the underlying pass/block decision.
 
 ## False positive direction
 

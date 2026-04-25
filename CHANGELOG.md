@@ -1,5 +1,22 @@
 # Changelog
 
+## v1.15.0 - feat: fresh-review rerun protocol
+
+### What changed
+
+- Added `protection.rerun_protocol` to block outcomes so the main agent knows to fix the current diff, run relevant checks, and end the turn so the next Stop hook triggers a fresh Cold Eyes review.
+- Reordered block reasons around the no-memory flow: agent action first, plain-language user message second, automatic rerun protocol third, original Cold Eyes detail last.
+- User-facing block messages now explicitly say the user does not need to manually run a command.
+- Coverage blocks now tell the agent to reduce/split the diff or make high-risk files reviewable before the next fresh review.
+
+### Boundary
+
+- Cold Eyes still does not store pending repair state, compare against prior blocks, or use history as repair memory. History remains limited to diagnostics, auto-tune, and override false-positive calibration.
+
+### Test count
+
+- 826 passed, 6 skipped.
+
 ## v1.14.0 - feat: agent-first protection brief
 
 ### What changed

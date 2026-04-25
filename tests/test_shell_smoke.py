@@ -71,6 +71,16 @@ class TestRecursionGuard:
         result = run_shell(env_override={"COLD_REVIEW_ACTIVE": "1"})
         assert result.returncode == 0
 
+    def test_exits_zero_when_stop_hook_already_active(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            os.makedirs(os.path.join(tmpdir, ".claude"), exist_ok=True)
+            result = run_shell(
+                stdin_data='{"stop_hook_active": true}',
+                env_override={"HOME": tmpdir},
+            )
+            assert result.returncode == 0
+            assert result.stdout == ""
+
 
 @skip_no_bash
 class TestNoGitRepo:
@@ -315,13 +325,19 @@ class TestShellParserFailClosed:
         assert out["reason"] == "test reason"
 
     def test_block_action_preserves_agent_brief_reason(self):
-        reason = "Message to relay to the user:\nplain text\n\nAgent repair task:\nfix it"
+        reason = (
+            "Message to relay to the user:\nplain text\n\n"
+            "Automatic rerun protocol:\nOwner: main_agent\nTrigger: next_stop_hook\n\n"
+            "Agent repair task:\nfix it"
+        )
         data = json.dumps({"action": "block", "display": "blocking", "reason": reason})
         r = self._run_parser("block", data)
         out = json.loads(r.stdout)
         assert set(out) == {"decision", "reason"}
         assert out["decision"] == "block"
         assert "Agent repair task" in out["reason"]
+        assert "Automatic rerun protocol" in out["reason"]
+        assert "next_stop_hook" in out["reason"]
 
     def test_coverage_block_action_emits_json_decision_only(self):
         data = json.dumps({

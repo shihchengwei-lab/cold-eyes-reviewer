@@ -49,11 +49,13 @@ def build_protection(
     risk_summary = _risk_summary(outcome, issues, block_type)
     user_message = _user_message(risk_summary, block_type, language)
     agent_task = _agent_task(outcome, issues, risk_summary, user_message, block_type)
+    rerun_protocol = _rerun_protocol(block_type)
     return {
         "block_type": block_type,
         "risk_summary": risk_summary,
         "user_message": user_message,
         "agent_task": agent_task,
+        "rerun_protocol": rerun_protocol,
         "intent": _intent_summary(intent),
     }
 
@@ -61,10 +63,17 @@ def build_protection(
 def format_agent_reason(protection: dict, original_reason: str = "") -> str:
     """Build the hook block reason shown to the agent."""
     lines = [
-        "Cold Eyes blocked this change. Agent: fix the risk before continuing.",
+        (
+            "Cold Eyes blocked this change. Agent: fix the current diff, run "
+            "relevant checks, then end the turn so the next Stop hook starts a "
+            "fresh Cold Eyes review."
+        ),
         "",
         "Message to relay to the user:",
         protection.get("user_message", ""),
+        "",
+        "Automatic rerun protocol:",
+        _format_rerun_protocol(protection.get("rerun_protocol") or {}),
         "",
         "Agent repair task:",
         protection.get("agent_task", ""),
@@ -151,11 +160,18 @@ def _user_message(risk_summary: list[str], block_type: str, language: str | None
     if _is_english(language):
         return (
             "Cold Eyes paused this change because it found a risk the agent should fix first. "
-            "I will repair it and run the review again before treating the work as done."
+            "I will repair it and let the next Stop hook run a fresh review. "
+            "You do not need to run a command manually."
         )
     if block_type == "coverage_block":
-        return f"Cold Eyes 先擋下來了，因為{risks}。我會先讓 Agent 補齊或縮小改動，再重新審查。"
-    return f"Cold Eyes 先擋下來了，因為{risks}。你不用自己看程式碼，我會先讓 Agent 修正後再重新審查。"
+        return (
+            f"Cold Eyes 先擋下來了，因為{risks}。我會先讓 Agent 補齊或縮小改動，"
+            "再讓下一次 Stop hook 自動做全新的冷審；你不用手動跑指令。"
+        )
+    return (
+        f"Cold Eyes 先擋下來了，因為{risks}。你不用自己看程式碼，也不用手動跑指令；"
+        "我會先讓 Agent 修正後，再讓下一次 Stop hook 自動做全新的冷審。"
+    )
 
 
 def _agent_task(
@@ -169,7 +185,9 @@ def _agent_task(
         "1. Relay the user message in plain language before editing.",
         "2. Fix the blocked risk in the current diff. Do not ask the user to review code.",
         "3. Keep the fix narrow and preserve unrelated user changes.",
-        "4. Run the relevant local checks if available, then let Cold Eyes review again.",
+        "4. Run the relevant local checks if available.",
+        "5. End the turn so the next Stop hook runs a fresh Cold Eyes review.",
+        "6. If Cold Eyes blocks again, follow the latest block as a new cold review.",
         "",
         f"User message: {user_message}",
         f"Risk summary: {', '.join(risk_summary)}",
@@ -182,7 +200,10 @@ def _agent_task(
             lines.append(f"High-risk files not fully reviewed: {', '.join(high_risk[:10])}")
         elif unreviewed:
             lines.append(f"Files not fully reviewed: {', '.join(unreviewed[:10])}")
-        lines.append("Repair approach: reduce the diff, split the change, or ensure high-risk files are reviewed.")
+        lines.append(
+            "Repair approach: reduce the diff, split the change, or make sure "
+            "high-risk files are reviewable in the next fresh review."
+        )
         return "\n".join(lines)
 
     if issues:
@@ -219,6 +240,52 @@ def _intent_summary(intent: dict | None) -> dict:
         "source": intent.get("source", ""),
         "truncated": bool(intent.get("truncated")),
     }
+
+
+def _rerun_protocol(block_type: str) -> dict:
+    steps = [
+        "Relay the plain-language user message before editing.",
+        _repair_step(block_type),
+        "Run relevant local checks when available.",
+        "End the turn so Claude Code's next Stop hook runs Cold Eyes again.",
+        "Treat any next block as a fresh review of the current diff, not as validation against prior block history.",
+    ]
+    return {
+        "owner": "main_agent",
+        "required": True,
+        "trigger": "next_stop_hook",
+        "memory_policy": "fresh_review_only",
+        "user_action_required": False,
+        "steps": steps,
+    }
+
+
+def _repair_step(block_type: str) -> str:
+    if block_type == "coverage_block":
+        return (
+            "Reduce or split the current diff, or make high-risk files reviewable, "
+            "before ending the turn."
+        )
+    if block_type == "intent_mismatch":
+        return (
+            "If the fix needs a product or intent decision, ask the user in plain "
+            "language; otherwise fix only the visible diff risk."
+        )
+    return "Fix only the risk visible in the current diff while preserving unrelated user changes."
+
+
+def _format_rerun_protocol(protocol: dict) -> str:
+    steps = protocol.get("steps") if isinstance(protocol.get("steps"), list) else []
+    lines = [
+        f"Owner: {protocol.get('owner', 'main_agent')}",
+        f"Required: {str(bool(protocol.get('required', True))).lower()}",
+        f"Trigger: {protocol.get('trigger', 'next_stop_hook')}",
+        f"Memory policy: {protocol.get('memory_policy', 'fresh_review_only')}",
+        "User action required: false",
+        "Steps:",
+    ]
+    lines.extend(f"- {step}" for step in steps)
+    return "\n".join(lines)
 
 
 def _is_english(language: str | None) -> bool:

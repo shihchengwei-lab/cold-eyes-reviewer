@@ -123,7 +123,7 @@ Present when the engine reached diff construction and could evaluate review cove
 
 ## protection object
 
-Present when Cold Eyes attached a non-engineer protection brief or recorded intent capsule status.
+Present when Cold Eyes attached a non-engineer protection brief or recorded intent capsule status. This is a compact history summary. The full `FinalOutcome.protection` object can include `rerun_protocol`, but history does not store the step list because Cold Eyes does not use previous block records as repair memory.
 
 | Field | Type | Description |
 |-------|------|-------------|
