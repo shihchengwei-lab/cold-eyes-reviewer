@@ -156,12 +156,9 @@ cp -r cold_eyes/ cold-review.sh cold-review-prompt.txt cold-review-prompt-shallo
 
 ```bash
 python ~/.claude/scripts/cold_eyes/cli.py init
-
-# Gate profile for Claude Code Stop-hook blocking
-python ~/.claude/scripts/cold_eyes/cli.py init --profile gate
 ```
 
-Creates default `.cold-review-policy.yml` and `.cold-review-ignore` in the current repo if they don't exist.
+Creates a gate-mode `.cold-review-policy.yml` and `.cold-review-ignore` in the current repo if they don't exist.
 Use `--force` only when you intentionally want to replace an existing policy file.
 
 ### 4. Verify installation
@@ -180,16 +177,11 @@ Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will r
 
 ### Recommended adoption path
 
-Gate mode adoption path:
+Cold Eyes now starts in a balanced gate posture: block mode, critical-only blocking, medium confidence, fast deep model, working-tree scope, and coverage visibility. Auto-tune then adjusts the balance from history:
 
-1. **Observe** - `mode: report`, broad confidence, no blocking. Read history and tune ignores.
-2. **Conservative gate** - `mode: block`, `block_threshold: critical`, `confidence: high`, `coverage_policy: warn`.
-3. **Standard gate** - `mode: block`, `block_threshold: critical`, `confidence: medium`, `minimum_coverage_pct: 80`.
-4. **Strict gate** - add `coverage_policy: block` or lower `block_threshold` to `major` only after the noise rate is understood.
-
-1. Start with `COLD_REVIEW_MODE=report` — review results are logged but nothing is blocked. Read the history to see what it catches.
-2. After a week, switch to `COLD_REVIEW_MODE=block` with `COLD_REVIEW_BLOCK_THRESHOLD=critical` (the default). Only critical issues block.
-3. If the signal-to-noise ratio is good, optionally lower the threshold to `major`.
+1. **Hold quality** — if recent history has blocks, overrides, infra failures, or incomplete high-risk coverage, keep full context and stronger coverage posture.
+2. **Balanced** — if history is quiet and not slow, keep the baseline.
+3. **Fast-safe** — if history is clean but expensive, reduce bounded context first.
 
 ## Token usage
 
@@ -204,7 +196,7 @@ Every review consumes tokens from your Claude usage quota. How much depends on:
 
 Subscription users (Pro/Max): reviews count against your plan's usage quota, not billed separately. API users: cost follows Anthropic's published per-token pricing, which changes over time.
 
-To reduce token usage: use `COLD_REVIEW_MODEL=sonnet` or `haiku`, lower `COLD_REVIEW_MAX_TOKENS`, or set `COLD_REVIEW_CONTEXT_TOKENS=0` to disable context retrieval.
+To reduce token usage manually: use `COLD_REVIEW_MODEL=haiku`, lower `COLD_REVIEW_MAX_TOKENS`, or set `COLD_REVIEW_CONTEXT_TOKENS=0` to disable context retrieval.
 
 ## What gets reviewed
 
@@ -221,7 +213,7 @@ Other scopes:
 
 ### Policy file (per-repo)
 
-Place `.cold-review-policy.yml` in your project root to set repo-level defaults. This replaces the need for global environment variables in repos that need specific settings.
+Place `.cold-review-policy.yml` in your project root to override the gate defaults for that repo. This replaces the need for global environment variables in repos that need specific settings.
 
 ```yaml
 # .cold-review-policy.yml
@@ -240,9 +232,9 @@ fail_on_unreviewed_high_risk: true
 
 All keys are optional. Only include what you want to override.
 
-**Resolution priority:** CLI arg > environment variable > policy file > hardcoded default.
+**Resolution priority:** CLI arg > environment variable > manual policy file > auto policy file > hardcoded default.
 
-If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. If neither env var nor policy file sets a value, the hardcoded default applies.
+If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. Manual `.cold-review-policy.yml` values override auto-tuned values. If neither env var nor policy file sets a value, the hardcoded default applies.
 
 Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`.
 
@@ -253,7 +245,7 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | Variable | Default | Options | Description |
 |---|---|---|---|
 | `COLD_REVIEW_MODE` | `block` | `block`, `report`, `off` | Block and force fix / log only / disable |
-| `COLD_REVIEW_MODEL` | `opus` | `opus`, `sonnet`, `haiku` | Which model runs the deep review |
+| `COLD_REVIEW_MODEL` | `sonnet` | `opus`, `sonnet`, `haiku` | Which model runs the deep review |
 | `COLD_REVIEW_SHALLOW_MODEL` | `sonnet` | `opus`, `sonnet`, `haiku` | Which model runs the shallow review |
 | `COLD_REVIEW_MAX_TOKENS` | `12000` | any integer | Token budget for diff |
 | `COLD_REVIEW_CONTEXT_TOKENS` | `2000` | any integer (0 = off) | Token budget for context section (deep review only) |
@@ -263,15 +255,19 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head`, `pr-diff` | Diff scope: all uncommitted / staged only / vs HEAD / vs base branch |
 | `COLD_REVIEW_BASE` | (unset) | any branch name | Base branch for `pr-diff` scope (e.g. `main`) |
 | `COLD_REVIEW_TRUNCATION_POLICY` | `warn` | `warn`, `soft-pass`, `fail-closed` | How to handle truncated diffs (see Truncation policy) |
-| `COLD_REVIEW_MINIMUM_COVERAGE_PCT` | (unset) | `0`-`100` | Minimum percentage of changed files that must be fully reviewed |
+| `COLD_REVIEW_MINIMUM_COVERAGE_PCT` | `80` | `0`-`100` | Minimum percentage of changed files that must be fully reviewed |
 | `COLD_REVIEW_COVERAGE_POLICY` | `warn` | `warn`, `block`, `fail-closed` | How to handle coverage below the minimum or incomplete coverage |
-| `COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK` | `false` | `true`, `false` | Block if a high-risk path was not fully reviewed |
+| `COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK` | `true` | `true`, `false` | Block if a high-risk path was not fully reviewed |
+| `COLD_REVIEW_AUTO_TUNE` | `on` | `on`, `off` | Low-frequency automatic tuning after `run` |
+| `COLD_REVIEW_AUTO_TUNE_INTERVAL_HOURS` | `24` | any integer | Minimum hours between automatic tuning checks per repo |
+| `COLD_REVIEW_AUTO_TUNE_LAST` | `7d` | `24h`, `7d`, `2w`, etc. | History window used by automatic tuning |
+| `COLD_REVIEW_AUTO_TUNE_MIN_SAMPLES` | `5` | any integer | Minimum history samples before automatic tuning writes policy |
 | `COLD_REVIEW_ALLOW_ONCE` | (unset) | `1` | **Deprecated.** Use `arm-override` instead. Still works but emits a warning. |
 | `COLD_REVIEW_OVERRIDE_REASON` | (unset) | any text | Reason for override (used with ALLOW_ONCE or arm-override) |
 
 ```bash
-# Use sonnet to save tokens
-export COLD_REVIEW_MODEL=sonnet
+# Use opus for a heavier deep review
+export COLD_REVIEW_MODEL=opus
 
 # Just log, don't block
 export COLD_REVIEW_MODE=report
@@ -456,7 +452,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package (19 top-level modules + 6 v2 sub-packages: session, contract, gates, retry, noise, runner). v1 core: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token. v2 adds session engine, contract generation, multi-gate orchestration, retry loop, noise suppression. |
+| `cold_eyes/` | Python package (20 top-level modules + 6 v2 sub-packages: session, contract, gates, retry, noise, runner). v1 core: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune. v2 adds session engine, contract generation, multi-gate orchestration, retry loop, noise suppression. |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | Deep review system prompt: input type descriptions, check items, evidence principles, severity/confidence/category definitions, output schema |
 | `cold-review-prompt-shallow.txt` | Shallow review system prompt: critical-only checks, minimal schema |
@@ -471,7 +467,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`). Build a dashboard, filter by state, chart trends over time. Use `stats` and `aggregate-overrides` commands to query it.
+- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
 - **`cold-review-sessions/sessions.jsonl`** — v2 session records (`--v2` only). Each line is a full session: contracts, gate plan, gate results, retry briefs, events timeline, final outcome. Path: `~/.claude/cold-review-sessions/sessions.jsonl`.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
@@ -561,6 +557,20 @@ python ~/.claude/scripts/cold_eyes/cli.py quality-report --last 7d
 ```
 
 Extended analysis: block rate, override rate, infra failure rate, top noisy paths, top issue categories, and `gate_quality` metrics including normal pass count, override rate, false-positive overrides, accepted-risk overrides, coverage block count/rate, and infra failure rate. `override_pass` is not counted as a normal pass.
+
+### Auto-tune
+
+```bash
+# Inspect the current automatic decision
+python ~/.claude/scripts/cold_eyes/cli.py auto-tune --last 7d
+
+# Optional manual repo-local write
+python ~/.claude/scripts/cold_eyes/cli.py auto-tune --last 7d --write-auto-policy
+```
+
+Quality-first machine-readable tuning. Normal `run` automatically checks it at low frequency, so the Stop hook can tune itself without you remembering a command. Automatic runs write a repo-specific policy under `~/.claude/cold-review-auto-policies/`, keeping the working tree clean. Manual `--write-auto-policy` writes `.cold-review-policy.auto.yml` in the repo when you want an explicit local artifact. Manual `.cold-review-policy.yml` values override all auto files.
+
+Auto-tune never relaxes the critical threshold, never disables high-risk coverage protection, and only reduces `context_tokens` when recent history is clean but expensive. Disable automatic tuning with `COLD_REVIEW_AUTO_TUNE=off`.
 
 ### History management
 

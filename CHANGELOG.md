@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.13.0 - feat: self-tuning gate defaults
+
+### What changed
+
+- Added `auto-tune`, a quality-first tuning command that turns local history into machine-readable policy suggestions.
+- Normal `run` now performs low-frequency automatic tuning, so Stop hook usage can self-adjust without a remembered command.
+- Added low-priority auto policy loading from `~/.claude/cold-review-auto-policies/` and `.cold-review-policy.auto.yml`. Manual `.cold-review-policy.yml` values override auto-tuned values.
+- The default posture is now gate mode: `sonnet`, working-tree scope, 80% coverage visibility, and high-risk unreviewed file protection.
+- History now records `duration_ms` so future tuning can distinguish slow reviews from merely large reviews.
+- Shell smoke tests now skip the WindowsApps/WSL bash launcher, matching the documented Git Bash support boundary.
+
+### Blocking / policy changes
+
+- Auto-tune does not relax the critical threshold, raise confidence above medium, disable high-risk coverage protection, or reduce the primary diff budget. It lowers `context_tokens` only when recent history is clean but expensive, and restores full context / stronger coverage posture when quality signals appear. Set `COLD_REVIEW_AUTO_TUNE=off` to disable automatic writes.
+
+### Test count
+
+- 809 passed, 5 skipped.
+
 ## v1.12.1 — fix: tolerate LLM narration before embedded JSON
 
 ### What changed

@@ -15,7 +15,12 @@ def _check_bash():
     shutil.which("bash") may find WSL bash on Windows CI, which fails
     with 'no installed distributions' when there's no Linux distro.
     """
-    if not shutil.which("bash"):
+    bash_path = shutil.which("bash")
+    if not bash_path:
+        return False
+    if os.name == "nt" and "\\WindowsApps\\" in bash_path:
+        # WindowsApps bash is the WSL launcher.  The shell smoke tests exercise
+        # the documented Git Bash path and pass Windows script paths directly.
         return False
     try:
         r = subprocess.run(

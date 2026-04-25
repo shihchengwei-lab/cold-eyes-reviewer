@@ -4,13 +4,13 @@ Gate mode turns Cold Eyes into a Claude Code Stop-hook blocking gate. It is stil
 
 ## Scope
 
-Gate mode reviews the configured diff scope, usually `staged`. It does not know the full product intent, all untouched code paths, or every external contract. Its job is to stop obvious high-cost risk before Claude Code continues.
+Gate mode reviews the configured diff scope. The default is `working`, so the Stop hook can see changes Claude Code just made without requiring you to stage files first. Use `staged` manually when you want pre-commit-only review. Cold Eyes does not know the full product intent, all untouched code paths, or every external contract. Its job is to stop obvious high-cost risk before Claude Code continues.
 
 ## Baseline Profile
 
 ```yaml
 mode: block
-scope: staged
+scope: working
 model: sonnet
 block_threshold: critical
 confidence: medium
@@ -23,17 +23,16 @@ fail_on_unreviewed_high_risk: true
 Use:
 
 ```bash
-python ~/.claude/scripts/cold_eyes/cli.py init --profile gate
+python ~/.claude/scripts/cold_eyes/cli.py init
 ```
 
-`init --profile gate --force` replaces an existing `.cold-review-policy.yml`; without `--force`, existing policy is preserved.
+Gate is the default init profile. `init --force` replaces an existing `.cold-review-policy.yml`; without `--force`, existing policy is preserved.
 
 ## Adoption Path
 
-1. **Observe** - run in `report` mode first. Review history and tune ignores.
-2. **Conservative gate** - block only high-confidence critical issues; keep coverage as warn.
-3. **Standard gate** - use critical/medium with `minimum_coverage_pct: 80`.
-4. **Strict gate** - enable `coverage_policy: block` or lower the block threshold only after measuring override rate.
+1. **Hold quality** - recent blocks, overrides, infra failures, or high-risk coverage gaps keep full context and stronger coverage posture.
+2. **Balanced** - quiet history keeps the baseline.
+3. **Fast-safe** - clean but expensive history reduces bounded context first.
 
 ## Coverage Behavior
 

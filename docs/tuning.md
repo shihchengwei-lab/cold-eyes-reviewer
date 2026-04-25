@@ -8,13 +8,17 @@ The defaults work well for most repos:
 
 ```yaml
 mode: block
+model: sonnet
 block_threshold: critical
 confidence: medium
 scope: working
 truncation_policy: warn
+minimum_coverage_pct: 80
+coverage_policy: warn
+fail_on_unreviewed_high_risk: true
 ```
 
-Run in `report` mode for the first week, then switch to `block`.
+This is the default gate posture. Auto-tune adjusts around it from history.
 
 ## Week 1: observe
 
@@ -24,13 +28,16 @@ python cold_eyes/cli.py stats --last 7d
 
 # Check quality report
 python cold_eyes/cli.py quality-report --last 7d
+
+# Inspect the automatic tuning decision
+python cold_eyes/cli.py auto-tune --last 7d
 ```
 
 Look at these numbers:
 
 | Metric | Healthy range | Action if out of range |
 |--------|--------------|----------------------|
-| Block rate | 5-30% | Below 5%: normal. Above 30%: raise threshold or confidence |
+| Block rate | 5-30% | Below 5%: normal. Above 30%: inspect causes before changing threshold |
 | Override rate | 0-15% | Above 15%: check override reasons, add to ignore file |
 | Infra failure rate | 0-5% | Above 5%: run `doctor`, check Claude CLI |
 
@@ -80,6 +87,54 @@ Look at the `top_noisy_paths` section. Add patterns for:
 - Binary assets (`*.png`, `*.jpg`)
 - Lock files (`package-lock.json`, `poetry.lock`)
 
+## Auto-tune
+
+`auto-tune` turns recent history into conservative policy inputs instead of a
+human-facing report. It prioritizes review quality first and speed second.
+Normal `run` executes the same check automatically at low frequency, so Stop
+hook usage does not depend on a remembered command.
+
+```bash
+# Inspect the current automatic decision
+python cold_eyes/cli.py auto-tune --last 7d
+
+# Optional manual repo-local write
+python cold_eyes/cli.py auto-tune --last 7d --write-auto-policy
+```
+
+Automatic tuning writes a repo-specific policy under
+`~/.claude/cold-review-auto-policies/`, keeping the working tree clean. Manual
+`--write-auto-policy` writes `.cold-review-policy.auto.yml` in the repo. Manual
+`.cold-review-policy.yml` values override all auto files, so explicit repo
+policy stays in control.
+
+Auto-tune may reduce `context_tokens` when recent reviews are clean but slow or
+token-heavy. It does not reduce the primary diff budget. It will hold or
+increase strictness instead of reducing time when recent history contains
+blocks, overrides, infra failures, coverage blocks, or unreviewed high-risk
+files.
+
+Automatic tuning defaults:
+
+```bash
+COLD_REVIEW_AUTO_TUNE=on
+COLD_REVIEW_AUTO_TUNE_INTERVAL_HOURS=24
+COLD_REVIEW_AUTO_TUNE_LAST=7d
+COLD_REVIEW_AUTO_TUNE_MIN_SAMPLES=5
+```
+
+Set `COLD_REVIEW_AUTO_TUNE=off` to disable automatic writes.
+
+Fixed safety floor:
+
+```yaml
+block_threshold: critical
+confidence: medium
+minimum_coverage_pct: 80
+coverage_policy: warn
+fail_on_unreviewed_high_risk: true
+```
+
 ## When to use truncation policy
 
 | Situation | Policy | Why |
@@ -92,7 +147,8 @@ Look at the `top_noisy_paths` section. Add patterns for:
 
 1. Something feels wrong (too many blocks, missed issue, etc.)
 2. Run `quality-report --last 7d` to see rates
-3. Run `aggregate-overrides` to see why people override
-4. Check `stats --last 7d --by-path` for noisy repos
-5. Adjust settings in `.cold-review-policy.yml`
-6. Wait another week, re-check
+3. Check the `auto_tune` field in `run` output, or run `auto-tune --last 7d`
+4. Run `aggregate-overrides` to see why people override
+5. Check `stats --last 7d --by-path` for noisy repos
+6. Adjust settings in `.cold-review-policy.yml` if you want to override automation
+7. Wait another week, re-check

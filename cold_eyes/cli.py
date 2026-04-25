@@ -11,6 +11,7 @@ if _root not in sys.path:
 
 import argparse
 import json
+import time
 
 from cold_eyes.engine import run
 from cold_eyes.doctor import run_doctor, run_doctor_fix, run_init
@@ -21,8 +22,50 @@ from cold_eyes.override import arm_override
 from cold_eyes import __version__
 
 
+def _auto_tune_enabled():
+    value = os.environ.get("COLD_REVIEW_AUTO_TUNE", "on").strip().lower()
+    return value not in {"0", "false", "no", "off"}
+
+
+def _env_int(name, default):
+    value = os.environ.get(name)
+    if value in (None, ""):
+        return default
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _attach_auto_tune(result):
+    """Run low-frequency auto-tune after reviews without affecting outcome."""
+    if not _auto_tune_enabled():
+        return result
+    from cold_eyes.autotune import maybe_auto_tune
+    from cold_eyes.git import git_cmd, GitCommandError
+
+    try:
+        repo_root = git_cmd("rev-parse", "--show-toplevel")
+    except GitCommandError:
+        return result
+
+    try:
+        tune = maybe_auto_tune(
+            repo_root=repo_root,
+            last=os.environ.get("COLD_REVIEW_AUTO_TUNE_LAST", "7d"),
+            min_samples=_env_int("COLD_REVIEW_AUTO_TUNE_MIN_SAMPLES", 5),
+            interval_hours=_env_int("COLD_REVIEW_AUTO_TUNE_INTERVAL_HOURS", 24),
+        )
+    except Exception as exc:
+        tune = {"action": "auto-tune-skip", "reason": f"error: {exc}"}
+    result = dict(result)
+    result["auto_tune"] = tune
+    return result
+
+
 def _run_v2(args):
     """Run the v2 session pipeline and return a shell-compatible result dict."""
+    started = time.monotonic()
     from cold_eyes.git import collect_files, git_cmd, GitCommandError, ConfigError
     from cold_eyes.config import load_policy
     from cold_eyes.engine import _resolve
@@ -100,6 +143,7 @@ def _run_v2(args):
             reason=v2_outcome.get("stop_reason", ""),
             file_count=len(all_files),
             scope=scope,
+            duration_ms=int((time.monotonic() - started) * 1000),
         )
     except Exception:
         pass  # history logging failure must not block the review outcome
@@ -128,7 +172,7 @@ def main():
     parser.add_argument("command", choices=[
         "run", "doctor", "init", "aggregate-overrides", "stats", "quality-report",
         "arm-override", "history-prune", "history-archive",
-        "eval", "verify-install",
+        "eval", "verify-install", "auto-tune",
     ])
     parser.add_argument("--mode", default=None)
     parser.add_argument("--model", default=None)
@@ -143,6 +187,12 @@ def main():
     parser.add_argument("--override-reason", default=None)
     parser.add_argument("--last", default=None,
                         help="Time filter for stats (e.g. 7d, 24h, 2w)")
+    parser.add_argument("--min-samples", type=int, default=5,
+                        help="Minimum history samples before auto-tune writes policy")
+    parser.add_argument("--write-auto-policy", action="store_true",
+                        help="Write .cold-review-policy.auto.yml for auto-tune")
+    parser.add_argument("--auto-policy-path", default=None,
+                        help="Override output path for auto-tune policy")
     parser.add_argument("--by-reason", action="store_true",
                         help="Include override reason breakdown in stats")
     parser.add_argument("--by-path", action="store_true",
@@ -155,9 +205,9 @@ def main():
                         help="Token TTL in minutes for arm-override (default: 10)")
     parser.add_argument("--fix", action="store_true",
                         help="Auto-fix safe issues (for doctor command)")
-    parser.add_argument("--profile", default="default",
+    parser.add_argument("--profile", default="gate",
                         choices=["default", "gate"],
-                        help="Init profile (default or gate)")
+                        help="Init profile (gate by default; default keeps a minimal policy)")
     parser.add_argument("--force", action="store_true",
                         help="Overwrite existing policy when used with init")
     parser.add_argument("--keep-days", type=int, default=None,
@@ -216,6 +266,20 @@ def main():
                                by_path=args.by_path)
     elif args.command == "quality-report":
         result = quality_report(last=args.last)
+    elif args.command == "auto-tune":
+        from cold_eyes.autotune import auto_tune
+        from cold_eyes.git import git_cmd, GitCommandError
+        try:
+            repo_root = git_cmd("rev-parse", "--show-toplevel")
+        except GitCommandError:
+            repo_root = os.getcwd()
+        result = auto_tune(
+            last=args.last,
+            min_samples=args.min_samples,
+            repo_root=repo_root,
+            write=args.write_auto_policy,
+            output_path=args.auto_policy_path,
+        )
     elif args.command == "history-prune":
         result = prune_history(keep_days=args.keep_days,
                                keep_entries=args.keep_entries)
@@ -281,6 +345,7 @@ def main():
                          minimum_coverage_pct=args.minimum_coverage_pct,
                          coverage_policy=args.coverage_policy,
                          fail_on_unreviewed_high_risk=args.fail_on_unreviewed_high_risk)
+        result = _attach_auto_tune(result)
     print(json.dumps(result, ensure_ascii=False))
 
 

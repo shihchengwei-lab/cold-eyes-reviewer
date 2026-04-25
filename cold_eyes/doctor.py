@@ -13,15 +13,21 @@ from cold_eyes.config import load_policy, POLICY_FILENAME
 DEFAULT_POLICY_TEMPLATE = """# Cold Eyes Reviewer - per-repo configuration
 # See README.md for all options.
 mode: block
+scope: working
+model: sonnet
 block_threshold: critical
 confidence: medium
+truncation_policy: warn
+minimum_coverage_pct: 80
+coverage_policy: warn
+fail_on_unreviewed_high_risk: true
 """
 
 
 GATE_POLICY_TEMPLATE = """# Cold Eyes Reviewer - Claude Code Stop-hook gate profile
 # Gate mode is a diff-centered risk gate, not a full-context reviewer.
 mode: block
-scope: staged
+scope: working
 model: sonnet
 block_threshold: critical
 confidence: medium
@@ -251,7 +257,7 @@ def run_doctor_fix(scripts_dir=None, repo_root=None):
             "doctor": report}
 
 
-def run_init(repo_root=None, profile="default", force=False):
+def run_init(repo_root=None, profile="gate", force=False):
     """Initialize Cold Eyes Reviewer in a git repository.
 
     Creates policy and ignore files if they don't exist. Existing policy is
@@ -293,7 +299,7 @@ def run_init(repo_root=None, profile="default", force=False):
         "Use Claude Code Stop hook with cold-review.sh",
     ]
     if profile == "gate":
-        next_steps.append("Stage a focused diff before running the gate profile")
+        next_steps.append("Use scope: staged manually if you want pre-commit-only review")
 
     return {"action": "init", "ok": True, "repo_root": repo_root,
             "profile": profile, "created": created, "skipped": skipped,

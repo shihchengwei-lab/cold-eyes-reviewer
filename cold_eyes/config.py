@@ -6,8 +6,13 @@ pairs are supported.  Forward-compatible with full YAML when PyYAML is added.
 
 import os
 import sys
+import hashlib
 
 POLICY_FILENAME = ".cold-review-policy.yml"
+AUTO_POLICY_FILENAME = ".cold-review-policy.auto.yml"
+AUTO_POLICY_DIR = os.path.join(
+    os.path.expanduser("~"), ".claude", "cold-review-auto-policies"
+)
 
 # Keys we recognise and their expected types.
 _INT_KEYS = {"max_tokens", "context_tokens", "max_input_tokens", "minimum_coverage_pct"}
@@ -63,12 +68,37 @@ def load_policy(repo_root):
 
     ``threshold`` is accepted as an alias for ``block_threshold``.
     Integer keys (max_tokens) are converted; invalid values are dropped.
+    Auto policy files are loaded first as low-priority tuning layers. Explicit
+    values in .cold-review-policy.yml always win.
     """
     if not repo_root:
         return {}
-    path = os.path.join(repo_root, POLICY_FILENAME)
-    if not os.path.isfile(path):
-        return {}
+    policy = {}
+    paths = [
+        user_auto_policy_path(repo_root),
+        os.path.join(repo_root, AUTO_POLICY_FILENAME),
+        os.path.join(repo_root, POLICY_FILENAME),
+    ]
+    for path in paths:
+        if not os.path.isfile(path):
+            continue
+        policy.update(_load_policy_file(path))
+    return policy
+
+
+def user_auto_policy_path(repo_root):
+    """Return the home-scoped auto policy path for a repo root."""
+    key = _repo_key(repo_root)
+    return os.path.join(AUTO_POLICY_DIR, f"{key}.yml")
+
+
+def _repo_key(repo_root):
+    root = os.path.abspath(repo_root or "")
+    digest = hashlib.sha256(root.lower().encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
+def _load_policy_file(path):
     try:
         with open(path, "r", encoding="utf-8") as f:
             raw = _parse_flat_yaml(f.read())

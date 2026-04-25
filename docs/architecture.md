@@ -14,8 +14,8 @@ Layer 2 — CLI + Engine (cli.py → engine.py or session_runner.py)
   CLI dispatches to engine.run() (v1 default) or run_session() (v2, --v2 flag)
   Engine orchestrates the review pipeline (see Data Flow below)
 
-Layer 3 — Modules (19 top-level + 6 sub-packages in cold_eyes/)
-  v1 core: 19 modules, each with a single responsibility, no circular imports
+Layer 3 — Modules (20 top-level + 6 sub-packages in cold_eyes/)
+  v1 core: 20 modules, each with a single responsibility, no circular imports
   v2 sub-packages: session, contract, gates, retry, noise, runner
 ```
 
@@ -50,6 +50,7 @@ Layer 3 — Modules (19 top-level + 6 sub-packages in cold_eyes/)
 | `schema.py` | `validate_review` (field presence, types, severity/confidence values) |
 | `policy.py` | `apply_policy` (truncation + threshold + override → state), `format_block_reason` |
 | `history.py` | `log_to_history`, `compute_stats`, `quality_report`, `prune`, `archive` |
+| `autotune.py` | Quality-first auto-tune recommendations and low-frequency automatic policy writes |
 | `override.py` | `arm_override` / `consume_override` (file-based, TTL expiry) |
 | `doctor.py` | `run_doctor` (11 checks), `verify_install`, `run_doctor_fix`, `run_init` |
 | `engine.py` | `run()` orchestrator, `_resolve()` settings, `_skip()`, `_infra_review()` |

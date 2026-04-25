@@ -2,6 +2,7 @@
 
 import os
 import sys
+import time
 
 from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED, STATE_BLOCKED, STATE_OVERRIDDEN
 from cold_eyes.git import git_cmd, collect_files, build_diff, estimate_tokens, GitCommandError, ConfigError
@@ -74,6 +75,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     max_input_tokens: total token cap for all content sent to model
                       (diff + context + hints). Default: max_tokens + context_tokens + 1000.
     """
+    started = time.monotonic()
     cwd = os.getcwd()
     try:
         repo_root = git_cmd("rev-parse", "--show-toplevel")
@@ -85,7 +87,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     mode = _resolve(mode, "COLD_REVIEW_MODE", policy, "mode", "block")
     if isinstance(mode, str):
         mode = mode.lower()
-    model = _resolve(model, "COLD_REVIEW_MODEL", policy, "model", "opus")
+    model = _resolve(model, "COLD_REVIEW_MODEL", policy, "model", "sonnet")
     max_tokens = _resolve(max_tokens, "COLD_REVIEW_MAX_TOKENS", policy,
                           "max_tokens", 12000, cast=int)
     threshold = _resolve(threshold, "COLD_REVIEW_BLOCK_THRESHOLD", policy,
@@ -116,7 +118,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         max_input_tokens = max_tokens + context_tokens + 1000
     minimum_coverage_pct = _resolve(
         minimum_coverage_pct, "COLD_REVIEW_MINIMUM_COVERAGE_PCT",
-        policy, "minimum_coverage_pct", None,
+        policy, "minimum_coverage_pct", 80,
         cast=lambda v: int(v) if v not in (None, "") else None,
     )
     if minimum_coverage_pct is not None and not (0 <= minimum_coverage_pct <= 100):
@@ -132,7 +134,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         "COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK",
         policy,
         "fail_on_unreviewed_high_risk",
-        False,
+        True,
         cast=is_truthy,
     )
 
@@ -178,18 +180,21 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
-                       override_note=outcome.get("override_note", ""))
+                       override_note=outcome.get("override_note", ""),
+                       duration_ms=_elapsed_ms(started))
         return outcome
     if not all_files:
         log_to_history(cwd, mode, model, STATE_SKIPPED, "no changes",
-                       min_confidence=min_confidence, scope=scope)
+                       min_confidence=min_confidence, scope=scope,
+                       duration_ms=_elapsed_ms(started))
         return _skip("no changes")
 
     # 2. Filter
     filtered = filter_file_list(all_files, ignore_file)
     if not filtered:
         log_to_history(cwd, mode, model, STATE_SKIPPED, "all files ignored",
-                       min_confidence=min_confidence, scope=scope)
+                       min_confidence=min_confidence, scope=scope,
+                       duration_ms=_elapsed_ms(started))
         return _skip("all files ignored")
 
     # 3. Rank
@@ -203,7 +208,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         reason = f"triage skip: {triage['why_depth_selected']}"
         log_to_history(cwd, mode, model, STATE_SKIPPED, reason,
                        min_confidence=min_confidence, scope=scope,
-                       review_depth=review_depth)
+                       review_depth=review_depth,
+                       duration_ms=_elapsed_ms(started))
         result = _skip(reason)
         result["review_depth"] = review_depth
         result["why_depth_selected"] = triage["why_depth_selected"]
@@ -228,7 +234,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
-                       override_note=outcome.get("override_note", ""))
+                       override_note=outcome.get("override_note", ""),
+                       duration_ms=_elapsed_ms(started))
         return outcome
 
     diff_text = diff_meta["diff_text"]
@@ -295,6 +302,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             authority=result.get("authority"),
             override_reason=override_reason,
             override_note=result.get("override_note", ""),
+            duration_ms=_elapsed_ms(started),
         )
         return result
 
@@ -321,7 +329,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
-                       override_note=outcome.get("override_note", ""))
+                       override_note=outcome.get("override_note", ""),
+                       duration_ms=_elapsed_ms(started))
         return outcome
 
     if not invocation.stdout:
@@ -337,7 +346,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
-                       override_note=outcome.get("override_note", ""))
+                       override_note=outcome.get("override_note", ""),
+                       duration_ms=_elapsed_ms(started))
         return outcome
 
     # 8. Parse review
@@ -396,9 +406,14 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         final_action=outcome.get("final_action"),
         authority=outcome.get("authority"),
         override_note=outcome.get("override_note", ""),
+        duration_ms=_elapsed_ms(started),
     )
 
     return outcome
+
+
+def _elapsed_ms(started):
+    return int((time.monotonic() - started) * 1000)
 
 
 def _skip(reason):

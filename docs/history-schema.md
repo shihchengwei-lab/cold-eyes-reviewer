@@ -12,6 +12,7 @@ Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each l
   "mode": "block",
   "model": "opus",
   "state": "blocked",
+  "duration_ms": 1840,
   "min_confidence": "medium",
   "scope": "working",
   "schema_version": 1,
@@ -54,6 +55,7 @@ Cold Eyes logs every review run to `~/.claude/cold-review-history.jsonl`. Each l
 | `mode` | string | Yes | `block`, `report`, or `off` |
 | `model` | string | Yes | Model used (`opus`, `sonnet`, `haiku`) |
 | `state` | string | Yes | One of 6 outcome states (see below) |
+| `duration_ms` | int | New entries | End-to-end review duration in milliseconds |
 | `min_confidence` | string | Yes | Confidence threshold used (`high`, `medium`, `low`) |
 | `scope` | string | Yes | Diff scope (`working`, `staged`, `head`, `pr-diff`) |
 | `schema_version` | int | Yes | Review output schema version (currently 1) |
@@ -137,12 +139,12 @@ When present, the review object follows the schema defined in `cold_eyes/schema.
 
 ### passed
 ```json
-{"version":2,"timestamp":"2026-04-11T08:30:45Z","cwd":"/home/user/project","mode":"block","model":"opus","state":"passed","min_confidence":"medium","scope":"working","schema_version":1,"diff_stats":{"files":2,"lines":30,"tokens":450,"truncated":false},"review":{"schema_version":1,"review_status":"completed","pass":true,"issues":[],"summary":"Clean changes"}}
+{"version":2,"timestamp":"2026-04-11T08:30:45Z","cwd":"/home/user/project","mode":"block","model":"opus","state":"passed","duration_ms":1840,"min_confidence":"medium","scope":"working","schema_version":1,"diff_stats":{"files":2,"lines":30,"tokens":450,"truncated":false},"review":{"schema_version":1,"review_status":"completed","pass":true,"issues":[],"summary":"Clean changes"}}
 ```
 
 ### blocked
 ```json
-{"version":2,"timestamp":"2026-04-11T08:31:12Z","cwd":"/home/user/project","mode":"block","model":"opus","state":"blocked","min_confidence":"medium","scope":"staged","schema_version":1,"diff_stats":{"files":1,"lines":8,"tokens":120,"truncated":false},"review":{"schema_version":1,"review_status":"completed","pass":false,"issues":[{"check":"Hardcoded secret","verdict":"API key in source","fix":"Use env variable","severity":"critical","confidence":"high","category":"security","file":"config.py","line_hint":"5"}],"summary":"Hardcoded API key"}}
+{"version":2,"timestamp":"2026-04-11T08:31:12Z","cwd":"/home/user/project","mode":"block","model":"opus","state":"blocked","duration_ms":2310,"min_confidence":"medium","scope":"staged","schema_version":1,"diff_stats":{"files":1,"lines":8,"tokens":120,"truncated":false},"review":{"schema_version":1,"review_status":"completed","pass":false,"issues":[{"check":"Hardcoded secret","verdict":"API key in source","fix":"Use env variable","severity":"critical","confidence":"high","category":"security","file":"config.py","line_hint":"5"}],"summary":"Hardcoded API key"}}
 ```
 
 ### skipped
