@@ -9,6 +9,18 @@ A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropi
 
 This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/index-en.html), a Claude Code buddy companion that provided independent commentary during coding sessions. Cinder was silently shut down on April 11, 2026. Cold Eyes carries forward the idea that a second pair of eyes — even artificial ones — catches things the first pair misses. Cinder was a companion. Cold Eyes is a gate.
 
+## Quick start
+
+```bash
+bash install.sh
+python ~/.claude/scripts/cold_eyes/cli.py init
+python ~/.claude/scripts/cold_eyes/cli.py doctor
+```
+
+Then add the Stop hook shown in the Install section to `~/.claude/settings.json`.
+
+Cold Eyes reviews staged changes by default. Stage the diff you want reviewed, let Claude Code end the turn, and the Stop hook will run the gate.
+
 ## What it is
 
 Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the staged diff by default. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, stage the changes that should be reviewed, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it pulls in **limited, structured supporting context** such as recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata. In the unified v1 path, Cold Eyes can also run selected local checks (tests, lint, type, build) once when the diff shape justifies it.
