@@ -6,6 +6,8 @@ outcome into instructions that an agent can act on and explain plainly.
 
 from __future__ import annotations
 
+from cold_eyes.local_checks import repair_lines as local_check_repair_lines
+
 
 _OFF_VALUES = {"0", "false", "no", "off"}
 
@@ -118,6 +120,8 @@ def _block_type(outcome: dict, issues: list[dict]) -> str:
     final_action = outcome.get("final_action")
     if final_action == "coverage_block":
         return "coverage_block"
+    if final_action == "check_block":
+        return "check_block"
     if any(str(i.get("category", "")).lower() == "intent" for i in issues):
         return "intent_mismatch"
     if outcome.get("truncated") and outcome.get("skipped_count", 0):
@@ -132,6 +136,8 @@ def _risk_summary(outcome: dict, issues: list[dict], block_type: str) -> list[st
         if high_risk:
             return ["有高風險檔案沒有被完整審到"]
         return ["這次變更沒有被 Cold Eyes 完整審完"]
+    if block_type == "check_block":
+        return ["本機檢查發現明確失敗"]
     if block_type == "intent_mismatch":
         return ["這次改動可能偏離使用者原本要做的事"]
     if block_type == "incomplete_review":
@@ -167,6 +173,11 @@ def _user_message(risk_summary: list[str], block_type: str, language: str | None
         return (
             f"Cold Eyes 先擋下來了，因為{risks}。我會先讓 Agent 補齊或縮小改動，"
             "再讓下一次 Stop hook 自動做全新的冷審；你不用手動跑指令。"
+        )
+    if block_type == "check_block":
+        return (
+            f"Cold Eyes 先擋下來了，因為{risks}。我會讓 Agent 依照本機檢查結果修正，"
+            "修完後下一次 Stop hook 會自動重新冷審；你不用自己看程式碼，也不用手動跑指令。"
         )
     return (
         f"Cold Eyes 先擋下來了，因為{risks}。你不用自己看程式碼，也不用手動跑指令；"
@@ -204,12 +215,14 @@ def _agent_task(
             "Repair approach: reduce the diff, split the change, or make sure "
             "high-risk files are reviewable in the next fresh review."
         )
+        lines.extend(local_check_repair_lines(outcome.get("checks")))
         return "\n".join(lines)
 
     if issues:
         lines.extend(["", "Findings to fix:"])
         for idx, issue in enumerate(issues[:5], start=1):
             lines.extend(_format_issue(idx, issue))
+    lines.extend(local_check_repair_lines(outcome.get("checks")))
     return "\n".join(lines)
 
 
@@ -265,6 +278,11 @@ def _repair_step(block_type: str) -> str:
         return (
             "Reduce or split the current diff, or make high-risk files reviewable, "
             "before ending the turn."
+        )
+    if block_type == "check_block":
+        return (
+            "Fix the hard local check failure visible in this run, then run the "
+            "relevant local check again before ending the turn."
         )
     if block_type == "intent_mismatch":
         return (

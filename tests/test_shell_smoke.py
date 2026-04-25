@@ -328,7 +328,8 @@ class TestShellParserFailClosed:
         reason = (
             "Message to relay to the user:\nplain text\n\n"
             "Automatic rerun protocol:\nOwner: main_agent\nTrigger: next_stop_hook\n\n"
-            "Agent repair task:\nfix it"
+            "Agent repair task:\nfix it\n\n"
+            "Local checks to fix:\n- [hard] test_runner: status=fail"
         )
         data = json.dumps({"action": "block", "display": "blocking", "reason": reason})
         r = self._run_parser("block", data)
@@ -337,6 +338,7 @@ class TestShellParserFailClosed:
         assert out["decision"] == "block"
         assert "Agent repair task" in out["reason"]
         assert "Automatic rerun protocol" in out["reason"]
+        assert "Local checks to fix" in out["reason"]
         assert "next_stop_hook" in out["reason"]
 
     def test_coverage_block_action_emits_json_decision_only(self):

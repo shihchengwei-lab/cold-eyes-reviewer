@@ -11,7 +11,6 @@ if _root not in sys.path:
 
 import argparse
 import json
-import time
 
 from cold_eyes.engine import run
 from cold_eyes.doctor import run_doctor, run_doctor_fix, run_init
@@ -61,109 +60,6 @@ def _attach_auto_tune(result):
     result = dict(result)
     result["auto_tune"] = tune
     return result
-
-
-def _run_v2(args):
-    """Run the v2 session pipeline and return a shell-compatible result dict."""
-    started = time.monotonic()
-    from cold_eyes.git import collect_files, git_cmd, GitCommandError, ConfigError
-    from cold_eyes.config import load_policy
-    from cold_eyes.engine import _resolve
-    from cold_eyes.filter import filter_file_list
-    from cold_eyes.runner.session_runner import run_session
-    from cold_eyes.session.store import SessionStore
-
-    # Resolve scope/base the same way engine.run() does (CLI > env > policy > default)
-    try:
-        repo_root = git_cmd("rev-parse", "--show-toplevel")
-    except GitCommandError:
-        repo_root = ""
-    policy = load_policy(repo_root)
-    scope = _resolve(args.scope, "COLD_REVIEW_SCOPE", policy, "scope", "working")
-    base = _resolve(args.base, "COLD_REVIEW_BASE", policy, "base", None)
-
-    try:
-        all_files, _untracked = collect_files(scope, base=base)
-    except (GitCommandError, ConfigError) as exc:
-        return {"action": "pass", "state": "infra_failed",
-                "reason": str(exc),
-                "display": f"cold-review: infrastructure failure — {exc}"}
-
-    ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
-    all_files = filter_file_list(all_files, ignore_file)
-
-    if not all_files:
-        return {"action": "pass", "state": "skipped", "reason": "no changes",
-                "display": "cold-review: skipped (no changes)"}
-
-    # Build engine_kwargs so the internal engine.run() call picks up CLI settings
-    engine_kwargs = {}
-    for attr, key in [
-        ("mode", "mode"), ("model", "model"), ("max_tokens", "max_tokens"),
-        ("threshold", "threshold"), ("confidence", "confidence"),
-        ("language", "language"), ("scope", "scope"), ("base", "base"),
-        ("override_reason", "override_reason"),
-        ("truncation_policy", "truncation_policy"),
-        ("shallow_model", "shallow_model"),
-        ("context_tokens", "context_tokens"),
-        ("max_input_tokens", "max_input_tokens"),
-        ("minimum_coverage_pct", "minimum_coverage_pct"),
-        ("coverage_policy", "coverage_policy"),
-        ("fail_on_unreviewed_high_risk", "fail_on_unreviewed_high_risk"),
-        ("hook_input_path", "hook_input_path"),
-    ]:
-        val = getattr(args, attr, None)
-        if val is not None:
-            engine_kwargs[key] = val
-
-    task_desc = f"review {scope} changes ({len(all_files)} files)"
-
-    session = run_session(
-        task_description=task_desc,
-        changed_files=all_files,
-        engine_kwargs=engine_kwargs,
-    )
-
-    # Persist session record
-    try:
-        store = SessionStore()
-        store.save(session)
-    except Exception:
-        pass  # persistence failure must not block the review outcome
-
-    # Log summary to v1 history so stats/quality-report see v2 sessions
-    from cold_eyes.history import log_to_history
-    try:
-        v2_outcome = session.get("final_outcome", {})
-        v2_state = v2_outcome.get("state", "unknown")
-        log_to_history(
-            cwd=repo_root or os.getcwd(),
-            mode="v2-session",
-            model="v2-session",
-            state=v2_state,
-            reason=v2_outcome.get("stop_reason", ""),
-            file_count=len(all_files),
-            scope=scope,
-            duration_ms=int((time.monotonic() - started) * 1000),
-        )
-    except Exception:
-        pass  # history logging failure must not block the review outcome
-
-    # Extract final_outcome and add shell-compatible fields
-    outcome = session.get("final_outcome", {"action": "pass", "state": "unknown"})
-    state = outcome.get("state", "unknown")
-    action = outcome.get("action", "pass")
-
-    if action == "block":
-        reason = outcome.get("stop_reason", "review failed")
-        display = f"cold-review: BLOCKED — {reason}"
-    else:
-        display = f"cold-review: {state}"
-        reason = ""
-
-    outcome.setdefault("display", display)
-    outcome.setdefault("reason", reason)
-    return outcome
 
 
 def main():
@@ -234,10 +130,14 @@ def main():
     parser.add_argument("--fail-on-unreviewed-high-risk",
                         action="store_true", default=None,
                         help="Block if a high-risk file was not fully reviewed")
+    parser.add_argument("--checks", default=None, choices=["auto", "off"],
+                        help="Run automatic local checks when useful (default: auto)")
+    parser.add_argument("--check-timeout-sec", type=int, default=None,
+                        help="Timeout per local check in seconds (default: 120)")
     parser.add_argument("--hook-input-path", default=None,
                         help=argparse.SUPPRESS)
     parser.add_argument("--v2", action="store_true",
-                        help="Use v2 session pipeline (opt-in)")
+                        help=argparse.SUPPRESS)
     parser.add_argument("--eval-mode", default="deterministic",
                         choices=["deterministic", "benchmark", "sweep"],
                         help="Eval mode: deterministic (mock), benchmark (real model), sweep")
@@ -254,9 +154,8 @@ def main():
                         help="Path to baseline JSON for regression check (exit 1 on regression)")
     args = parser.parse_args()
 
-    if getattr(args, "v2", False) and args.command != "run":
-        print(f"warning: --v2 flag is ignored for '{args.command}' (only applies to 'run')",
-              file=sys.stderr)
+    if getattr(args, "v2", False):
+        print("warning: --v2 is retired; using unified v1", file=sys.stderr)
 
     if args.command == "init":
         result = run_init(profile=args.profile, force=args.force)
@@ -333,22 +232,21 @@ def main():
         from cold_eyes.doctor import verify_install
         result = verify_install()
     else:
-        if getattr(args, "v2", False):
-            result = _run_v2(args)
-        else:
-            result = run(mode=args.mode, model=args.model,
-                         max_tokens=args.max_tokens, threshold=args.threshold,
-                         confidence=args.confidence, language=args.language,
-                         scope=args.scope, base=args.base,
-                         override_reason=args.override_reason,
-                         truncation_policy=args.truncation_policy,
-                         shallow_model=args.shallow_model,
-                         context_tokens=args.context_tokens,
-                         max_input_tokens=args.max_input_tokens,
-                         minimum_coverage_pct=args.minimum_coverage_pct,
-                         coverage_policy=args.coverage_policy,
-                         fail_on_unreviewed_high_risk=args.fail_on_unreviewed_high_risk,
-                         hook_input_path=args.hook_input_path)
+        result = run(mode=args.mode, model=args.model,
+                     max_tokens=args.max_tokens, threshold=args.threshold,
+                     confidence=args.confidence, language=args.language,
+                     scope=args.scope, base=args.base,
+                     override_reason=args.override_reason,
+                     truncation_policy=args.truncation_policy,
+                     shallow_model=args.shallow_model,
+                     context_tokens=args.context_tokens,
+                     max_input_tokens=args.max_input_tokens,
+                     minimum_coverage_pct=args.minimum_coverage_pct,
+                     coverage_policy=args.coverage_policy,
+                     fail_on_unreviewed_high_risk=args.fail_on_unreviewed_high_risk,
+                     hook_input_path=args.hook_input_path,
+                     checks=args.checks,
+                     check_timeout_sec=args.check_timeout_sec)
         result = _attach_auto_tune(result)
     print(json.dumps(result, ensure_ascii=False))
 

@@ -65,7 +65,7 @@ If the project adopts shields.io style badges, the following plain-text badges a
 - `Diff-centered + bounded context`
 - `Not a full code review`
 
-Do not add a badge for v2, retry count, gate count, or suppression — those are implementation details and will drift.
+Do not add a badge for retired modes, retry count, gate count, or suppression — those are implementation details and will drift.
 
 ### 3.3 Social preview image
 
@@ -85,11 +85,11 @@ Every release description (the body that appears on the GitHub `Releases` page f
 
 1. **What changed** — 1–2 sentences, imperative voice.
 2. **Behavior changes** — what a Stop-hook invocation does differently. `none` is a valid answer.
-3. **Cost changes** — token budget defaults, per-run worst case if v2-related. `none` is valid.
+3. **Cost changes** — token budget defaults, local-check timeouts, or model-default changes. `none` is valid.
 4. **Context usage changes** — whether the deep path pulls more, less, or different context. `none` is valid.
 5. **Blocking policy changes** — changes to `block_threshold`, `confidence`, `truncation_policy`, or similar defaults. `none` is valid.
-6. **Migration / opt-in notes** — is this a bare version bump, is `--v2` required, is an env var renamed?
-7. **Who should care** — the audience line. Example: `Stop-hook users on block mode.` or `v2 adopters only.`
+6. **Migration / opt-in notes** — is this a bare version bump, is an env var renamed, or is a compatibility flag retired?
+7. **Who should care** — the audience line. Example: `Stop-hook users on block mode.` or `Users with automatic local checks enabled.`
 
 If all six lines are `none`, the release body should still include the checklist with `none` values, so a reader can tell at a glance that nothing about the product's behaviour shifted.
 

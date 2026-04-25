@@ -11,7 +11,7 @@ This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/ind
 
 ## What it is
 
-Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it now produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it also pulls in **limited, structured supporting context** — recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata — to reduce obvious blind spots without treating conversation context as authority. Shallow paths run on the diff alone with a lighter model. The v2 pipeline (opt-in via `--v2`) layers a multi-gate verification loop with retry, suppression, and optional non-LLM checks (tests, lint, type, build) around the same LLM review step.
+Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it pulls in **limited, structured supporting context** such as recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata. In the unified v1 path, Cold Eyes can also run selected local checks (tests, lint, type, build) once when the diff shape justifies it.
 
 ## What it is not
 
@@ -38,11 +38,11 @@ Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the workin
 
 - **Shallow** — test-only or low-risk diffs. Lighter model, critical-only prompt, diff as sole input. Fast and cheap.
 - **Deep** (default for source changes) — full model, diff + bounded supporting context + detector hints. This is what the project name refers to: a diff-centered review with a small amount of structured support.
-- **v2** (opt-in, `--v2`) — deeper verification path: the same LLM review step is wrapped in a multi-gate loop that can also run test / lint / type / build gates, with retry and noise suppression between iterations. Cost can rise up to ~4x a v1 run in the worst case (see Token usage). v2 is not the product headline; it is an opt-in deeper mode.
+- **Automatic local checks** — when a risky Python or dependency change is present, the unified v1 path may run available checks once and fold the result into the same gate outcome.
 
 ### Why deeper paths exist
 
-The diff alone is sometimes not enough to distinguish a real bug from a valid change (a renamed function, a removed resource that was handled elsewhere). The deep path's context block and detector hints exist to reduce that class of false calls without turning the tool into a full-context reviewer. v2 exists to layer mechanical checks (tests, lint) around the LLM review when the user wants stricter gating.
+The diff alone is sometimes not enough to distinguish a real bug from a valid change (a renamed function, a removed resource that was handled elsewhere). The deep path's context block and detector hints exist to reduce that class of false calls without turning the tool into a full-context reviewer. Local checks add mechanical evidence without creating a second review mode: they run once, do not retry, and do not validate against prior block history.
 
 ## How it works
 
@@ -56,8 +56,7 @@ Claude Code session ends
        ├─ atomic lock held by another review → exit
        │
        ▼
-  cold_eyes/cli.py → engine.py (v1 default)
-                   → session_runner.py (v2, opt-in via --v2)
+  cold_eyes/cli.py → engine.py (unified v1)
        │
        ├─ 1. collect files → 2. filter (.cold-review-ignore) → 3. risk-rank
        ├─ 4. triage: skip (docs/generated) / shallow (test-only) / deep (source/risk)
@@ -74,6 +73,7 @@ Claude Code session ends
        ├─ block mode: issues at or above threshold → block
        │      Agent fixes current diff → ends turn → next Stop hook starts a fresh review
        ├─ report mode: log review → pass
+       ├─ 11. selected local checks run once when useful
        └─ all engine-level exits logged to ~/.claude/cold-review-history.jsonl
           (shell guard skips — off, recursion, no git repo, lock — are not logged)
 ```
@@ -115,6 +115,7 @@ Every issue includes severity, confidence, category, file, line_hint, a three-pa
 - `schema_version` — output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
 - `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain. Displayed with `~` prefix (e.g., `(~L42)`) to indicate it is an estimate, not a precise location. In block mode, verify the line number before acting on it.
 - `protection` — optional block wrapper with `user_message`, `agent_task`, `risk_summary`, `rerun_protocol`, and low-weight intent metadata. It is added after the review decision and does not change schema version.
+- `checks` — optional local-check summary with mode, results, warnings, and whether a hard check failed. Added after the model review and does not change schema version.
 
 **Severity levels:**
 - `critical` — production crash, data loss, or security breach
@@ -194,11 +195,21 @@ Every review consumes tokens from your Claude usage quota. How much depends on:
 - **Diff size** — larger diffs send more input tokens (budget default: 12000)
 - **Context and hints** — deep reviews add up to ~2200 tokens (context + detector hints) on top of the diff
 
-**v2 pipeline (`--v2`):** v2 adds multi-gate verification and a retry loop on top of the v1 review. Non-LLM gates (test runner, lint, type check) use no tokens. The LLM review gate is the same `engine.run()` call as v1. If all gates pass on the first try, token cost equals v1. If the retry loop triggers, each iteration makes one additional LLM call. With the default `max_retries=3`, the worst case is **4x the v1 cost** (1 initial + 3 retries). In practice, most reviews pass on the first iteration.
+**Automatic local checks:** selected checks (`pytest`, `ruff`, `mypy`, `pip check`) use no model tokens. They can add wall-clock time, so the default `auto` mode runs them only for risky Python or dependency changes, runs each selected check once, and treats timeouts as warnings instead of blocks.
 
 Subscription users (Pro/Max): reviews count against your plan's usage quota, not billed separately. API users: cost follows Anthropic's published per-token pricing, which changes over time.
 
 To reduce token usage manually: use `COLD_REVIEW_MODEL=haiku`, lower `COLD_REVIEW_MAX_TOKENS`, or set `COLD_REVIEW_CONTEXT_TOKENS=0` to disable context retrieval.
+
+## Automatic local checks
+
+`COLD_REVIEW_CHECKS=auto` lets the unified v1 path run selected local checks once when the diff shape justifies it:
+
+- Python source or high-risk Python changes can run `ruff check .` and `mypy .` as soft checks.
+- Test changes or high-risk Python changes in a repo with tests can run `pytest --tb=short -q` as a hard check.
+- Python dependency/build config changes can run `python -m pip check --quiet` as a hard check.
+
+Hard check failures can block in `COLD_REVIEW_MODE=block`. Soft check failures are folded into the Agent repair task but do not block by themselves. Missing tools and timeouts are warnings, not blockers.
 
 ## What gets reviewed
 
@@ -230,6 +241,8 @@ truncation_policy: warn
 minimum_coverage_pct: 80
 coverage_policy: warn
 fail_on_unreviewed_high_risk: true
+checks: auto
+check_timeout_sec: 120
 ```
 
 All keys are optional. Only include what you want to override.
@@ -238,7 +251,7 @@ All keys are optional. Only include what you want to override.
 
 If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. Manual `.cold-review-policy.yml` values override auto-tuned values. If neither env var nor policy file sets a value, the hardcoded default applies.
 
-Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`.
+Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`, `checks`, `check_timeout_sec`.
 
 `doctor` check 8 reports whether this file exists and what keys it sets.
 
@@ -260,6 +273,8 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | `COLD_REVIEW_MINIMUM_COVERAGE_PCT` | `80` | `0`-`100` | Minimum percentage of changed files that must be fully reviewed |
 | `COLD_REVIEW_COVERAGE_POLICY` | `warn` | `warn`, `block`, `fail-closed` | How to handle coverage below the minimum or incomplete coverage |
 | `COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK` | `true` | `true`, `false` | Block if a high-risk path was not fully reviewed |
+| `COLD_REVIEW_CHECKS` | `auto` | `auto`, `off` | Run selected local checks once when useful |
+| `COLD_REVIEW_CHECK_TIMEOUT_SEC` | `120` | any integer | Timeout per selected local check |
 | `COLD_REVIEW_AUTO_TUNE` | `on` | `on`, `off` | Low-frequency automatic tuning after `run` |
 | `COLD_REVIEW_AUTO_TUNE_INTERVAL_HOURS` | `24` | any integer | Minimum hours between automatic tuning checks per repo |
 | `COLD_REVIEW_AUTO_TUNE_LAST` | `7d` | `24h`, `7d`, `2w`, etc. | History window used by automatic tuning |
@@ -457,7 +472,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package (22 top-level modules + 6 v2 sub-packages: session, contract, gates, retry, noise, runner). v1 core: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune, intent capsule, protection brief. v2 adds session engine, contract generation, multi-gate orchestration, retry loop, noise suppression. |
+| `cold_eyes/` | Python package for the unified v1 pipeline: engine, triage, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune, intent capsule, protection brief, and local checks. |
 | `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
 | `cold-review-prompt.txt` | Deep review system prompt: input type descriptions, check items, evidence principles, severity/confidence/category definitions, output schema |
 | `cold-review-prompt-shallow.txt` | Shallow review system prompt: critical-only checks, minimal schema |
@@ -472,8 +487,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`, and optional `protection` summary). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
-- **`cold-review-sessions/sessions.jsonl`** — v2 session records (`--v2` only). Each line is a full session: contracts, gate plan, gate results, retry briefs, events timeline, final outcome. Path: `~/.claude/cold-review-sessions/sessions.jsonl`.
+- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`, optional `checks`, and optional `protection` summary). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 - **`.cold-review-policy.yml`** — Flat key-value config. Set per-repo defaults for mode, model, threshold, etc.
@@ -597,7 +611,7 @@ python ~/.claude/scripts/cold_eyes/cli.py history-archive --before 2026-01-01
 - **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. Check history for patterns.
 - **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
 - **Windows (Git Bash) lock caveats.** The atomic `mkdir` lock and `kill -0` stale PID check work in Git Bash but are less reliable than on native Unix. Concurrent Claude Code sessions on Windows may occasionally bypass the lock.
-- **v2 session store has no prune mechanism.** `~/.claude/cold-review-sessions/sessions.jsonl` grows indefinitely. v1 history has `history-prune` and `history-archive`; v2 sessions do not yet.
+- **Local checks are bounded.** Selected checks run once and respect `COLD_REVIEW_CHECK_TIMEOUT_SEC`. Timeouts and missing tools are warnings, not blockers.
 
 ## Uninstall
 

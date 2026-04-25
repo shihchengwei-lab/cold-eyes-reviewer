@@ -1383,9 +1383,10 @@ class TestLoadPolicy:
 
     def test_integer_conversion(self, tmp_path):
         policy_file = tmp_path / POLICY_FILENAME
-        policy_file.write_text("max_tokens: 8000\n", encoding="utf-8")
+        policy_file.write_text("max_tokens: 8000\ncheck_timeout_sec: 90\n", encoding="utf-8")
         result = engine.load_policy(str(tmp_path))
         assert result["max_tokens"] == 8000
+        assert result["check_timeout_sec"] == 90
 
     def test_invalid_integer_dropped(self, tmp_path):
         policy_file = tmp_path / POLICY_FILENAME
@@ -1439,6 +1440,14 @@ class TestLoadPolicy:
             "language": "English",
             "scope": "staged",
         }
+
+    def test_local_check_policy_keys(self, tmp_path):
+        policy_file = tmp_path / POLICY_FILENAME
+        policy_file.write_text("checks: off\ncheck_timeout_sec: 45\n", encoding="utf-8")
+
+        result = engine.load_policy(str(tmp_path))
+
+        assert result == {"checks": "off", "check_timeout_sec": 45}
 
 
 class TestResolve:

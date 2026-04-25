@@ -39,6 +39,13 @@ from cold_eyes.coverage_gate import (
     format_coverage_block_reason,
     is_truthy,
 )
+from cold_eyes.local_checks import (
+    compact_history as checks_history_summary,
+    format_block_reason as format_check_block_reason,
+    normalize_check_mode,
+    normalize_timeout,
+    run_local_checks,
+)
 
 # Backward-compatible test seam for older tests that patch
 # cold_eyes.engine.consume_override directly.
@@ -76,7 +83,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         context_tokens=None, max_input_tokens=None, history_path=None,
         minimum_coverage_pct=None, coverage_policy=None,
         fail_on_unreviewed_high_risk=None, override_note=None,
-        hook_input_path=None):
+        hook_input_path=None, checks=None, check_timeout_sec=None):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
@@ -149,6 +156,21 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         True,
         cast=is_truthy,
     )
+    check_mode = normalize_check_mode(_resolve(
+        checks,
+        "COLD_REVIEW_CHECKS",
+        policy,
+        "checks",
+        "auto",
+    ))
+    check_timeout_sec = normalize_timeout(_resolve(
+        check_timeout_sec,
+        "COLD_REVIEW_CHECK_TIMEOUT_SEC",
+        policy,
+        "check_timeout_sec",
+        120,
+        cast=int,
+    ))
     agent_brief_enabled = protection_setting_enabled(os.environ.get("COLD_REVIEW_AGENT_BRIEF"), True)
     intent_enabled = intent_setting_enabled(os.environ.get("COLD_REVIEW_INTENT_CONTEXT"), True)
     intent_max_chars = _resolve(
@@ -418,6 +440,16 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         outcome, coverage, mode, allow_once,
         override_reason=override_reason, override_note=override_note,
     )
+    local_checks = run_local_checks(
+        ranked,
+        mode=check_mode,
+        timeout=check_timeout_sec,
+        repo_root=repo_root or cwd,
+    )
+    outcome = _apply_local_check_gate(
+        outcome, local_checks, mode, allow_once,
+        override_reason=override_reason, override_note=override_note,
+    )
     outcome = _attach_protection_brief(
         outcome, review=review, language=language, intent=intent_capsule,
         enabled=agent_brief_enabled,
@@ -452,6 +484,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         scope=scope, override_reason=override_reason,
         review_depth=review_depth,
         coverage=outcome.get("coverage"),
+        checks=checks_history_summary(outcome.get("checks")),
         cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
         final_action=outcome.get("final_action"),
         authority=outcome.get("authority"),
@@ -549,5 +582,49 @@ def _apply_coverage_gate(outcome, coverage, mode, allow_once,
         "cold_eyes_verdict": "incomplete",
         "final_action": "coverage_block",
         "authority": "coverage_gate",
+    })
+    return outcome
+
+
+def _apply_local_check_gate(outcome, checks, mode, allow_once,
+                            override_reason="", override_note=""):
+    """Attach local check metadata and enforce hard-check failures."""
+    outcome = dict(outcome)
+    outcome["checks"] = checks
+    if not checks or not checks.get("hard_failed"):
+        return outcome
+
+    reason = format_check_block_reason(checks)
+    if mode != "block":
+        outcome["check_warning"] = reason
+        return outcome
+
+    if outcome.get("action") == "block" or outcome.get("state") == STATE_OVERRIDDEN:
+        outcome["check_warning"] = reason
+        return outcome
+
+    if allow_once:
+        reason_suffix = f" [{override_reason}]" if override_reason else ""
+        outcome.update({
+            "action": "pass",
+            "state": STATE_OVERRIDDEN,
+            "reason": override_reason,
+            "display": f"cold-review: override - local check block skipped{reason_suffix}",
+            "cold_eyes_verdict": "local_check_failed",
+            "final_action": "override_pass",
+            "authority": "human_override",
+        })
+        if override_note:
+            outcome["override_note"] = override_note
+        return outcome
+
+    outcome.update({
+        "action": "block",
+        "state": STATE_BLOCKED,
+        "reason": reason,
+        "display": "cold-review: blocking (local hard check failed)",
+        "cold_eyes_verdict": "local_check_failed",
+        "final_action": "check_block",
+        "authority": "local_checks",
     })
     return outcome

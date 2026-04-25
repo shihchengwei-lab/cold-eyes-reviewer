@@ -31,3 +31,9 @@ def scripts_dir():
 @pytest.fixture
 def shell_script():
     return SHELL_SCRIPT
+
+
+@pytest.fixture(autouse=True)
+def disable_local_checks_by_default(monkeypatch):
+    """Keep engine tests focused unless a test opts into local checks."""
+    monkeypatch.setenv("COLD_REVIEW_CHECKS", "off")

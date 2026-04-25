@@ -15,17 +15,21 @@ AUTO_POLICY_DIR = os.path.join(
 )
 
 # Keys we recognise and their expected types.
-_INT_KEYS = {"max_tokens", "context_tokens", "max_input_tokens", "minimum_coverage_pct"}
+_INT_KEYS = {
+    "max_tokens", "context_tokens", "max_input_tokens",
+    "minimum_coverage_pct", "check_timeout_sec",
+}
 _BOOL_KEYS = {"fail_on_unreviewed_high_risk"}
 _VALUE_SETS = {
     "coverage_policy": {"warn", "block", "fail-closed"},
+    "checks": {"auto", "off"},
 }
 _VALID_KEYS = {
     "mode", "model", "shallow_model", "max_tokens", "context_tokens",
     "max_input_tokens",
     "block_threshold", "threshold", "confidence", "language", "scope",
     "base", "truncation_policy", "minimum_coverage_pct", "coverage_policy",
-    "fail_on_unreviewed_high_risk",
+    "fail_on_unreviewed_high_risk", "checks", "check_timeout_sec",
 }
 
 

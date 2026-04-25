@@ -110,6 +110,40 @@ def test_intent_issue_with_diff_evidence_can_block():
     assert "偏離" in protected["protection"]["risk_summary"][0]
 
 
+def test_check_block_gets_local_check_repair_task():
+    outcome = {
+        "action": "block",
+        "state": "blocked",
+        "final_action": "check_block",
+        "reason": "Local check failed",
+        "checks": {
+            "mode": "auto",
+            "hard_failed": True,
+            "warnings": [],
+            "results": [{
+                "check_id": "test_runner",
+                "status": "fail",
+                "blocking": "hard",
+                "findings": [{
+                    "type": "test_failure",
+                    "location": "tests/test_app.py::test_guard",
+                    "message": "AssertionError",
+                }],
+                "raw_output": "",
+                "infrastructure": False,
+            }],
+        },
+    }
+
+    protected = attach_protection(outcome)
+
+    assert protected["protection"]["block_type"] == "check_block"
+    assert "本機檢查發現明確失敗" in protected["protection"]["risk_summary"][0]
+    assert "不用手動跑指令" in protected["protection"]["user_message"]
+    assert "Local checks to fix" in protected["protection"]["agent_task"]
+    assert "tests/test_app.py::test_guard" in protected["protection"]["agent_task"]
+
+
 def test_previous_block_history_does_not_change_new_policy_decision(tmp_path, monkeypatch):
     from cold_eyes import constants
 
