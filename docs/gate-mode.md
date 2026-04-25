@@ -4,7 +4,7 @@ Gate mode turns Cold Eyes into a Claude Code Stop-hook blocking gate. It is stil
 
 ## Scope
 
-Gate mode reviews the configured diff scope. The default is `working`, so the Stop hook can see changes Claude Code just made without requiring you to stage files first. Use `staged` manually when you want pre-commit-only review. Cold Eyes does not know the full product intent, all untouched code paths, or every external contract. Its job is to stop obvious high-cost risk before Claude Code continues.
+Gate mode reviews the configured diff scope. The default is `staged`, so normal reading, handoff review, and scratch edits do not trigger a model review on every Stop hook. Stage the changes you want reviewed before ending the turn. Use `working` manually when you want Cold Eyes to review every uncommitted working-tree change. Cold Eyes does not know the full product intent, all untouched code paths, or every external contract. Its job is to stop obvious high-cost risk before Claude Code continues.
 
 When gate mode blocks, the hook reason is agent-first: it tells the agent what
 to fix, includes a plain-language message to relay to the user, and gives the
@@ -19,7 +19,7 @@ hook blocks again, that result is a new cold review of the current diff.
 
 ```yaml
 mode: block
-scope: working
+scope: staged
 model: sonnet
 block_threshold: critical
 confidence: medium

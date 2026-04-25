@@ -19,7 +19,7 @@ from cold_eyes.constants import (
 
 def log_to_history(cwd, mode, model, state, reason="", review=None,
                    file_count=0, line_count=0, truncated=False, token_count=0,
-                   min_confidence="medium", scope="working", override_reason="",
+                   min_confidence="medium", scope="staged", override_reason="",
                    failure_kind=None, stderr_excerpt="", review_depth=None,
                    coverage=None, cold_eyes_verdict=None, final_action=None,
                    authority=None, override_note="", duration_ms=None,

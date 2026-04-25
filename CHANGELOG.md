@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.17.1 - fix: default to staged scope
+
+### What changed
+
+- Changed the default diff scope from `working` to `staged`, so normal reading, handoff review, and dirty scratch files do not trigger a model review on every Stop hook.
+- Users who want the previous "review every uncommitted working-tree change" behavior can set `COLD_REVIEW_SCOPE=working` or `scope: working` in `.cold-review-policy.yml`.
+
+### Test count
+
+- 632 passed, 6 skipped.
+
 ## v1.17.0 - feat: Agent health notices
 
 ### What changed

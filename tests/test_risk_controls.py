@@ -247,7 +247,7 @@ class TestCoveragePolicyConfig:
         policy_text = (tmp_path / ".cold-review-policy.yml").read_text()
         assert result["profile"] == "gate"
         assert ".cold-review-policy.yml" in result["created"]
-        assert "scope: working" in policy_text
+        assert "scope: staged" in policy_text
         assert "minimum_coverage_pct: 80" in policy_text
 
     def test_init_defaults_to_gate_profile(self, tmp_path):
@@ -256,7 +256,7 @@ class TestCoveragePolicyConfig:
         result = run_init(repo_root=str(tmp_path))
         policy_text = (tmp_path / ".cold-review-policy.yml").read_text()
         assert result["profile"] == "gate"
-        assert "scope: working" in policy_text
+        assert "scope: staged" in policy_text
         assert "model: sonnet" in policy_text
 
     def test_init_gate_profile_skips_existing_policy(self, tmp_path):
@@ -275,7 +275,7 @@ class TestCoveragePolicyConfig:
         policy_file.write_text("mode: report\n")
         result = run_init(repo_root=str(tmp_path), profile="gate", force=True)
         assert ".cold-review-policy.yml" in result["created"]
-        assert "scope: working" in policy_file.read_text()
+        assert "scope: staged" in policy_file.read_text()
 
 
 # ---------------------------------------------------------------------------

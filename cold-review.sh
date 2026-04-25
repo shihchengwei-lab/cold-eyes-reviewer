@@ -16,7 +16,7 @@
 #   COLD_REVIEW_BLOCK_THRESHOLD — critical (default), major
 #   COLD_REVIEW_CONFIDENCE      — minimum confidence to keep: high, medium (default), low
 #   COLD_REVIEW_LANGUAGE        — output language (default: 繁體中文（台灣）)
-#   COLD_REVIEW_SCOPE           — diff scope: working (default), staged, head, pr-diff
+#   COLD_REVIEW_SCOPE           — diff scope: staged (default), working, head, pr-diff
 #   COLD_REVIEW_BASE            — base branch for pr-diff scope
 #   COLD_REVIEW_OVERRIDE_REASON — reason text when overriding (legacy)
 #   COLD_REVIEW_AUTO_TUNE       — low-frequency automatic tuning: on (default) / off

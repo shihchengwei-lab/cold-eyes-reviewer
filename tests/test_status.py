@@ -18,7 +18,7 @@ def _write_entry(path, *, cwd, state, timestamp=None, **extra):
         "model": "sonnet",
         "state": state,
         "min_confidence": "medium",
-        "scope": "working",
+        "scope": "staged",
         "schema_version": 1,
         "review": None,
     }

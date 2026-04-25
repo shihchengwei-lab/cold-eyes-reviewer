@@ -11,7 +11,7 @@ This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/ind
 
 ## What it is
 
-Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the working-tree diff. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it pulls in **limited, structured supporting context** such as recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata. In the unified v1 path, Cold Eyes can also run selected local checks (tests, lint, type, build) once when the diff shape justifies it.
+Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the staged diff by default. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, stage the changes that should be reviewed, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it pulls in **limited, structured supporting context** such as recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata. In the unified v1 path, Cold Eyes can also run selected local checks (tests, lint, type, build) once when the diff shape justifies it.
 
 ## What it is not
 
@@ -189,7 +189,7 @@ Next time Claude Code finishes a turn with uncommitted changes, Cold Eyes will r
 
 ### Recommended adoption path
 
-Cold Eyes now starts in a balanced gate posture: block mode, critical-only blocking, medium confidence, fast deep model, working-tree scope, and coverage visibility. Auto-tune then adjusts the balance from history:
+Cold Eyes now starts in a balanced gate posture: block mode, critical-only blocking, medium confidence, fast deep model, staged scope, and coverage visibility. Auto-tune then adjusts the balance from history:
 
 1. **Hold quality** — if recent history has blocks, overrides, infra failures, or incomplete high-risk coverage, keep full context and stronger coverage posture.
 2. **Balanced** — if history is quiet and not slow, keep the baseline.
@@ -222,12 +222,12 @@ Hard check failures can block in `COLD_REVIEW_MODE=block`. Soft check failures a
 
 ## What gets reviewed
 
-By default (`COLD_REVIEW_SCOPE=working`), Cold Eyes reviews **all uncommitted changes** in the working tree — staged, unstaged, and untracked. It has no way to distinguish "changes Claude made" from "changes you had before opening the session."
+By default (`COLD_REVIEW_SCOPE=staged`), Cold Eyes reviews **only staged changes** (`git diff --cached`). This keeps normal reading, handoff review, and scratch work from triggering a model review on every Stop hook.
 
-**Commit or push before starting a new session.** This keeps the diff clean and the review accurate.
+Stage the changes you want the gate to review before ending the turn. To restore the older "review everything in my working tree" behavior, set `COLD_REVIEW_SCOPE=working`.
 
 Other scopes:
-- `COLD_REVIEW_SCOPE=staged` — only review `git diff --cached` (staged changes)
+- `COLD_REVIEW_SCOPE=working` — review all uncommitted changes: staged, unstaged, and untracked
 - `COLD_REVIEW_SCOPE=head` — review `git diff HEAD` (staged + unstaged, no untracked)
 - `COLD_REVIEW_SCOPE=pr-diff` — review `git diff <base>...HEAD` (PR changes vs base branch, requires `COLD_REVIEW_BASE`)
 
@@ -276,7 +276,7 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | `COLD_REVIEW_BLOCK_THRESHOLD` | `critical` | `critical`, `major` | Minimum severity that triggers a block |
 | `COLD_REVIEW_CONFIDENCE` | `medium` | `high`, `medium`, `low` | Minimum confidence to keep (hard filter) |
 | `COLD_REVIEW_LANGUAGE` | `繁體中文（台灣）` | any string | Output language |
-| `COLD_REVIEW_SCOPE` | `working` | `working`, `staged`, `head`, `pr-diff` | Diff scope: all uncommitted / staged only / vs HEAD / vs base branch |
+| `COLD_REVIEW_SCOPE` | `staged` | `staged`, `working`, `head`, `pr-diff` | Diff scope: staged only / all uncommitted / vs HEAD / vs base branch |
 | `COLD_REVIEW_BASE` | (unset) | any branch name | Base branch for `pr-diff` scope (e.g. `main`) |
 | `COLD_REVIEW_TRUNCATION_POLICY` | `warn` | `warn`, `soft-pass`, `fail-closed` | How to handle truncated diffs (see Truncation policy) |
 | `COLD_REVIEW_MINIMUM_COVERAGE_PCT` | `80` | `0`-`100` | Minimum percentage of changed files that must be fully reviewed |
@@ -310,8 +310,8 @@ export COLD_REVIEW_CONFIDENCE=high
 # Review in English
 export COLD_REVIEW_LANGUAGE=English
 
-# Only review staged changes
-export COLD_REVIEW_SCOPE=staged
+# Review every working-tree change
+export COLD_REVIEW_SCOPE=working
 
 # Review PR changes against main (CI mode)
 export COLD_REVIEW_SCOPE=pr-diff

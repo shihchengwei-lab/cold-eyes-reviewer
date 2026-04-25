@@ -117,7 +117,7 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                               "confidence", "medium")
     if isinstance(min_confidence, str):
         min_confidence = min_confidence.lower()
-    scope = _resolve(scope, "COLD_REVIEW_SCOPE", policy, "scope", "working")
+    scope = _resolve(scope, "COLD_REVIEW_SCOPE", policy, "scope", "staged")
     if isinstance(scope, str):
         scope = scope.lower()
     base = _resolve(base, "COLD_REVIEW_BASE", policy, "base", None)

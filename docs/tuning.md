@@ -11,7 +11,7 @@ mode: block
 model: sonnet
 block_threshold: critical
 confidence: medium
-scope: working
+scope: staged
 truncation_policy: warn
 minimum_coverage_pct: 80
 coverage_policy: warn
@@ -66,12 +66,12 @@ Sweep data (from `python cold_eyes/cli.py eval --eval-mode sweep`):
 
 | Workflow | Recommended scope | Why |
 |----------|------------------|-----|
-| Solo dev, exploring | `working` | See everything |
-| About to commit | `staged` | Review exactly what will be committed |
+| Low-noise default gate | `staged` | Review exactly what will be committed |
+| Full working-tree observation | `working` | See everything |
 | PR review | `pr-diff` (+ base) | Full branch diff |
 | CI gate | `pr-diff` (+ base) | Deterministic, no local state |
 
-If you switch to `staged` or `pr-diff`, truncation risk usually drops (smaller diffs).
+If you switch to `working` or `pr-diff`, expect larger diffs and more truncation risk.
 
 ## When to add to .cold-review-ignore
 

@@ -42,12 +42,12 @@ def git_cmd(*args):
     return r.stdout.strip()
 
 
-def collect_files(scope="working", base=None):
+def collect_files(scope="staged", base=None):
     """Return (all_files sorted list, untracked set).
 
     Scopes:
-      working  — staged + unstaged + untracked (default)
-      staged   — only staged changes
+      staged   — only staged changes (default)
+      working  — staged + unstaged + untracked
       head     — diff against HEAD (staged + unstaged, no untracked)
       pr-diff  — diff of current branch vs base (requires base arg)
     """
@@ -86,7 +86,7 @@ def is_binary(filepath):
         return False
 
 
-def build_diff(ranked_files, untracked, max_tokens=12000, scope="working",
+def build_diff(ranked_files, untracked, max_tokens=12000, scope="staged",
                base=None):
     """Build token-budgeted diff.
 

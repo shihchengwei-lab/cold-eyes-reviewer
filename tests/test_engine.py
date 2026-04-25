@@ -780,7 +780,25 @@ class TestDoctor:
 
 class TestCollectFilesScope:
 
-    def test_default_scope_is_working(self, monkeypatch):
+    def test_engine_default_scope_is_staged(self, monkeypatch, tmp_path):
+        scopes = []
+
+        monkeypatch.delenv("COLD_REVIEW_SCOPE", raising=False)
+        monkeypatch.setattr(_engine_mod, "git_cmd", lambda *args: str(tmp_path))
+        monkeypatch.setattr(_engine_mod, "load_policy", lambda repo_root: {})
+        monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "history.jsonl"))
+
+        def fake_collect(scope, base=None):
+            scopes.append(scope)
+            return [], set()
+
+        monkeypatch.setattr(_engine_mod, "collect_files", fake_collect)
+        result = _engine_mod.run(adapter=MockAdapter())
+
+        assert result["state"] == STATE_SKIPPED
+        assert scopes == ["staged"]
+
+    def test_default_scope_is_staged(self, monkeypatch):
         calls = []
         original = _git_mod.git_cmd
 
@@ -790,10 +808,7 @@ class TestCollectFilesScope:
 
         monkeypatch.setattr(_git_mod, "git_cmd", spy)
         engine.collect_files()
-        # working scope calls diff --cached, diff, and ls-files
-        cmd_args = [c[0] for c in calls]
-        assert "diff" in cmd_args
-        assert "ls-files" in cmd_args
+        assert calls == [("diff", "--cached", "--name-only")]
 
     def test_staged_scope_no_untracked(self, monkeypatch):
         calls = []
@@ -934,7 +949,7 @@ class TestHistoryScope:
         constants.HISTORY_FILE = str(history)
         engine.log_to_history("/tmp", "block", "opus", STATE_PASSED)
         entry = json.loads(history.read_text().strip())
-        assert entry["scope"] == "working"
+        assert entry["scope"] == "staged"
 
 
 # ---------------------------------------------------------------------------

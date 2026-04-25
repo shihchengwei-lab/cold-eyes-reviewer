@@ -13,21 +13,21 @@ Cold Eyes supports four diff scopes. Each has different trade-offs for coverage,
 
 ## Choosing a scope
 
-### Solo development (default)
+### Default gate posture
 
-Use `working` (the default). It sees everything in your working tree, including new untracked files. This gives maximum visibility but may include noise from incomplete changes.
+Use `staged` (the default). It only reviews what you explicitly staged with `git add`, so a dirty working tree or handoff-only session does not trigger a model review.
 
 ```yaml
 # .cold-review-policy.yml
-scope: working
+scope: staged
 ```
 
-### Pre-commit gate
+### Full working-tree observation
 
-Use `staged`. Only reviews what you explicitly staged with `git add`. This is the most predictable scope for a blocking gate because you control exactly what gets reviewed.
+Use `working` when you intentionally want Cold Eyes to see every uncommitted change, including new untracked files. This gives maximum visibility but may include noise from incomplete changes.
 
 ```yaml
-scope: staged
+scope: working
 mode: block
 block_threshold: critical
 ```
