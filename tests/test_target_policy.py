@@ -1,4 +1,5 @@
 import subprocess
+import json
 
 import cold_eyes.constants as constants
 from cold_eyes.engine import run
@@ -99,7 +100,32 @@ class _NoModelAdapter:
         raise AssertionError("model should not be called")
 
 
-def test_engine_blocks_partial_high_risk_before_model(tmp_path, monkeypatch):
+class _CleanAdapter:
+    def __init__(self):
+        self.call_count = 0
+
+    def review(self, *_args, **_kwargs):
+        self.call_count += 1
+        return type(
+            "Invocation",
+            (),
+            {
+                "stdout": json.dumps({
+                    "type": "result",
+                    "result": json.dumps({
+                        "pass": True,
+                        "issues": [],
+                        "summary": "clean",
+                    }),
+                }),
+                "stderr": "",
+                "exit_code": 0,
+                "failure_kind": None,
+            },
+        )()
+
+
+def test_engine_reviews_partial_high_risk_delta(tmp_path, monkeypatch):
     _init_repo(tmp_path, filename="auth.py")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "history.jsonl"))
@@ -107,26 +133,30 @@ def test_engine_blocks_partial_high_risk_before_model(tmp_path, monkeypatch):
     _git(tmp_path, "add", "auth.py")
     (tmp_path / "auth.py").write_text("value = 3\n", encoding="utf-8")
 
-    result = run(adapter=_NoModelAdapter(), checks="off")
+    adapter = _CleanAdapter()
+    result = run(adapter=adapter, checks="off")
 
-    assert result["action"] == "block"
-    assert result["final_action"] == "target_block"
-    assert result["authority"] == "target_sentinel"
+    assert result["action"] == "pass"
+    assert result["gate_state"] == "protected"
+    assert adapter.call_count == 1
     assert result["target"]["policy_action"] == "block"
 
 
-def test_engine_skips_dirty_unstaged_without_model(tmp_path, monkeypatch):
+def test_engine_reviews_dirty_unstaged_delta(tmp_path, monkeypatch):
     _init_repo(tmp_path)
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "history.jsonl"))
     (tmp_path / "app.py").write_text("value = 2\n", encoding="utf-8")
 
-    result = run(adapter=_NoModelAdapter(), checks="off")
+    adapter = _CleanAdapter()
+    result = run(adapter=adapter, checks="off")
 
-    assert result["state"] == "skipped"
+    assert result["gate_state"] == "protected"
+    assert adapter.call_count == 1
     assert result["target"]["policy_action"] == "warn"
     assert result["target_warning"] == "dirty_worktree_unreviewed"
 
 
 def test_target_module_is_deployed():
     assert "cold_eyes/target.py" in constants.DEPLOY_FILES
+    assert "cold_eyes/envelope.py" in constants.DEPLOY_FILES

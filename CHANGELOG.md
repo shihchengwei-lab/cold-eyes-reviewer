@@ -1,5 +1,29 @@
 # Changelog
 
+## v2.0.0 - feat: No Silent Pass Delta Gate
+
+### What changed
+
+- Added a v2 review envelope that scans staged, unstaged, and untracked deltas before any model call.
+- Kept `scope: staged` as the primary intent while reviewing small source/config shadow deltas so unstaged or untracked code cannot silently pass.
+- Added authoritative `gate_state` history values: `protected`, `protected_cached`, `skipped_no_change`, `skipped_safe`, `blocked_issue`, `blocked_unreviewed_delta`, `blocked_stale_review`, `blocked_infra`, `blocked_lock_active`, and `off_explicit`.
+- Added envelope cache reuse for already-protected changesets and repeated blocked changesets.
+- Added flat policy/env controls for shadow delta scanning, envelope cache, byte/file budgets, infra failure, lock contention, stale review, docs-only, and generated-only behavior.
+- Stop-hook lock contention now does a lightweight gate decision instead of silently exiting when changed source/config files need review.
+
+### Behavior changes
+
+- Pure chat or no file changes skips quickly without calling the model.
+- Docs/generated/image-only changes can skip as `skipped_safe` without calling the model.
+- Unstaged or untracked source/config changes are reviewed as delta shadow input or blocked as `blocked_unreviewed_delta` when too large, unreadable, binary, over budget, or high risk.
+- Review-required infrastructure failures block as `blocked_infra` instead of becoming a silent pass.
+- If files change during review, the result blocks as `blocked_stale_review` instead of marking the old review protected.
+- `mode: off` records `off_explicit` so status and handoff can see protection was intentionally disabled.
+
+### Test count
+
+- 662 passed, 6 skipped.
+
 ## v1.18.0 - feat: review-target sentinel
 
 ### What changed

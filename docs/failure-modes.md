@@ -2,16 +2,18 @@
 
 ## Review states
 
-Every review exits through one of six states, logged to `~/.claude/cold-review-history.jsonl`:
+Every review exits through one legacy-compatible `state` plus a v2 `gate_state`, logged to `~/.claude/cold-review-history.jsonl`:
 
 | State | Entry condition | Block mode | Report mode |
 |-------|----------------|------------|-------------|
-| `skipped` | No changes, all files ignored, not a git repo, lock held | exit 0 | exit 0 |
-| `infra_failed` | Git error, Claude CLI error/timeout, empty output, parse failure | logs, passes | logs, passes |
+| `skipped` | No review needed, safe-only changes, cache hit, or explicit off | exit 0 | exit 0 |
+| `infra_failed` | Infrastructure failure where review was not required | logs, passes | logs, passes |
 | `passed` | Review completed, no issues at/above threshold | passes | passes |
 | `reported` | Issues found but mode is report | n/a | logs, passes |
-| `blocked` | Issues at/above threshold, incomplete coverage, hard local check failure, or review-target mismatch in block mode | **blocks** | n/a |
+| `blocked` | Issues at/above threshold, incomplete coverage, hard local check failure, unreviewed delta, stale review, lock contention, or review-required infra failure | **blocks** | n/a |
 | `overridden` | Would have blocked, but override token was armed | passes | n/a |
+
+`gate_state` is the authoritative v2 protection signal: `protected`, `protected_cached`, `skipped_no_change`, `skipped_safe`, `blocked_issue`, `blocked_unreviewed_delta`, `blocked_stale_review`, `blocked_infra`, `blocked_lock_active`, and `off_explicit`.
 
 ## Infrastructure failures
 
@@ -30,7 +32,7 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 tail -5 ~/.claude/cold-review-history.jsonl | python -m json.tool
 ```
 
-Current engine policy treats `infra_failed` as pass-and-log, even in block mode. Shell-level failures that prevent valid engine JSON from being produced still fail closed in `cold-review.sh`.
+Current engine policy blocks review-required infra failures as `gate_state: blocked_infra`. No-change, safe-only, or cached paths do not manufacture an infra block. Shell-level failures that prevent valid engine JSON from being produced still fail closed in `cold-review.sh`.
 
 ## Truncation
 
@@ -55,7 +57,8 @@ To reduce truncation: increase `max_tokens`, add patterns to `.cold-review-ignor
 The shell shim uses `mkdir`-based atomic locking in `~/.claude/.cold-review-lock.d/`. If a lock is held:
 - The PID file is checked with `kill -0` to detect stale locks
 - Stale locks are automatically removed and retried once
-- If the lock is genuinely held, the review is skipped (not blocked)
+- If the lock is genuinely held, the shell asks the engine for a lightweight envelope decision
+- No-change or cache-hit envelopes can pass; source/config changes that need review block as `blocked_lock_active`
 
 **Windows caveat:** `kill -0` in Git Bash is less reliable for Windows PIDs. Concurrent Claude Code sessions may occasionally bypass the lock.
 
@@ -65,7 +68,7 @@ If the LLM returns malformed JSON:
 1. `parse_review_output()` strips markdown code fences and retries
 2. If parsing still fails, a synthetic review with `review_status: "failed"` is created
 3. `validate_review()` checks field types and values; errors are logged in `validation_errors` but do not block
-4. Current engine behavior records `infra_failed` and passes. Shell-level parser failures still fail closed when no valid engine JSON can be read.
+4. If review is required, current engine behavior blocks as `blocked_infra`. If no review is required, it records `infra_failed` and passes. Shell-level parser failures still fail closed when no valid engine JSON can be read.
 
 ## Coverage incomplete
 
@@ -86,11 +89,12 @@ The target sentinel runs before model review. It records what the configured sco
 
 | Condition | Default result |
 |-----------|----------------|
-| Unstaged files outside `staged` scope | Passes with target warning |
-| Untracked files outside `staged` or `head` scope | Passes with target warning |
+| Unstaged source/config outside `staged` scope | Reviewed as shadow delta or blocks as `blocked_unreviewed_delta` |
+| Untracked source/config outside `staged` or `head` scope | Reviewed as shadow delta or blocks as `blocked_unreviewed_delta` |
+| Docs/generated/image-only outside the primary target | Can pass as `skipped_safe` |
 | High-risk partially staged file | Blocks only in `mode: block` |
 
-Target blocks are distinct from model review blocks: they do not add to `issues`, set `cold_eyes_verdict: target_incomplete`, `final_action: target_block`, and `authority: target_sentinel`.
+Target and delta blocks are distinct from model review blocks: they do not add to `issues`. v1 target blocks use `final_action: target_block`; v2 unreviewed delta blocks use `final_action: unreviewed_delta_block`, `authority: delta_sentinel`, and `gate_state: blocked_unreviewed_delta`.
 
 ## False positives
 

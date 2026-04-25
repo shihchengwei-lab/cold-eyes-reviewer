@@ -4,7 +4,25 @@ import os
 import sys
 import time
 
-from cold_eyes.constants import SCHEMA_VERSION, STATE_SKIPPED, STATE_BLOCKED, STATE_OVERRIDDEN
+from cold_eyes import constants
+from cold_eyes.constants import (
+    GATE_BLOCKED_INFRA,
+    GATE_BLOCKED_ISSUE,
+    GATE_BLOCKED_LOCK_ACTIVE,
+    GATE_BLOCKED_STALE_REVIEW,
+    GATE_BLOCKED_UNREVIEWED_DELTA,
+    GATE_OFF_EXPLICIT,
+    GATE_PROTECTED,
+    GATE_PROTECTED_CACHED,
+    GATE_SKIPPED_NO_CHANGE,
+    GATE_SKIPPED_SAFE,
+    SCHEMA_VERSION,
+    STATE_BLOCKED,
+    STATE_INFRA_FAILED,
+    STATE_OVERRIDDEN,
+    STATE_REPORTED,
+    STATE_SKIPPED,
+)
 from cold_eyes.git import git_cmd, collect_files, build_diff, estimate_tokens, GitCommandError, ConfigError
 from cold_eyes.filter import filter_file_list, rank_file_list
 from cold_eyes.triage import classify_depth
@@ -38,6 +56,14 @@ from cold_eyes.coverage_gate import (
     build_coverage_report,
     format_coverage_block_reason,
     is_truthy,
+)
+from cold_eyes.envelope import (
+    build_review_envelope,
+    envelope_summary,
+    fast_path_decision,
+    find_matching_cache,
+    format_cached_block_reason,
+    format_unreviewed_delta_reason,
 )
 from cold_eyes.target import (
     attach_target_decision,
@@ -91,7 +117,12 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         fail_on_unreviewed_high_risk=None, override_note=None,
         hook_input_path=None, checks=None, check_timeout_sec=None,
         dirty_worktree_policy=None, untracked_policy=None,
-        partial_stage_policy=None):
+        partial_stage_policy=None, shadow_scope=None, include_untracked=None,
+        enable_envelope_cache=None, max_shadow_delta_files=None,
+        max_shadow_delta_bytes=None, infra_failure_policy=None,
+        lock_active_policy=None, stale_review_policy=None,
+        docs_only_policy=None, generated_only_policy=None,
+        lock_active=False):
     """Execute full review pipeline. Return FinalOutcome dict.
 
     adapter: ModelAdapter instance.  Defaults to ClaudeCliAdapter().
@@ -200,6 +231,82 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         "partial_stage_policy",
         "block-high-risk",
     )
+    shadow_scope = _resolve(
+        shadow_scope,
+        "COLD_REVIEW_SHADOW_SCOPE",
+        policy,
+        "shadow_scope",
+        "working_delta",
+    )
+    if isinstance(shadow_scope, str):
+        shadow_scope = shadow_scope.lower()
+    include_untracked = _resolve(
+        include_untracked,
+        "COLD_REVIEW_INCLUDE_UNTRACKED",
+        policy,
+        "include_untracked",
+        True,
+        cast=is_truthy,
+    )
+    enable_envelope_cache = _resolve(
+        enable_envelope_cache,
+        "COLD_REVIEW_ENABLE_ENVELOPE_CACHE",
+        policy,
+        "enable_envelope_cache",
+        True,
+        cast=is_truthy,
+    )
+    max_shadow_delta_files = _resolve(
+        max_shadow_delta_files,
+        "COLD_REVIEW_MAX_SHADOW_DELTA_FILES",
+        policy,
+        "max_shadow_delta_files",
+        8,
+        cast=int,
+    )
+    max_shadow_delta_bytes = _resolve(
+        max_shadow_delta_bytes,
+        "COLD_REVIEW_MAX_SHADOW_DELTA_BYTES",
+        policy,
+        "max_shadow_delta_bytes",
+        60000,
+        cast=int,
+    )
+    infra_failure_policy = _resolve(
+        infra_failure_policy,
+        "COLD_REVIEW_INFRA_FAILURE_POLICY",
+        policy,
+        "infra_failure_policy",
+        "block_when_review_required",
+    )
+    lock_active_policy = _resolve(
+        lock_active_policy,
+        "COLD_REVIEW_LOCK_ACTIVE_POLICY",
+        policy,
+        "lock_active_policy",
+        "block_when_review_required",
+    )
+    stale_review_policy = _resolve(
+        stale_review_policy,
+        "COLD_REVIEW_STALE_REVIEW_POLICY",
+        policy,
+        "stale_review_policy",
+        "block",
+    )
+    docs_only_policy = _resolve(
+        docs_only_policy,
+        "COLD_REVIEW_DOCS_ONLY_POLICY",
+        policy,
+        "docs_only_policy",
+        "skip_safe",
+    )
+    generated_only_policy = _resolve(
+        generated_only_policy,
+        "COLD_REVIEW_GENERATED_ONLY_POLICY",
+        policy,
+        "generated_only_policy",
+        "skip_safe",
+    )
     agent_brief_enabled = protection_setting_enabled(os.environ.get("COLD_REVIEW_AGENT_BRIEF"), True)
     intent_enabled = intent_setting_enabled(os.environ.get("COLD_REVIEW_INTENT_CONTEXT"), True)
     intent_max_chars = _resolve(
@@ -215,13 +322,6 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         enabled=intent_enabled,
         max_chars=intent_max_chars,
     )
-
-    # mode=off: skip immediately (normally caught by shell, but policy file may set it)
-    if mode == "off":
-        return _skip("mode is off")
-
-    if adapter is None:
-        adapter = ClaudeCliAdapter()
 
     # Override token (one-time, file-based)
     token = consume_override_metadata(repo_root)
@@ -243,30 +343,82 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     override_reason = override_reason or os.environ.get("COLD_REVIEW_OVERRIDE_REASON", "")
     override_note = override_note or token_note or os.environ.get("COLD_REVIEW_OVERRIDE_NOTE", "")
     ignore_file = os.path.join(repo_root, ".cold-review-ignore") if repo_root else ""
-    target = _inspect_target(scope, ignore_file)
 
-    # 1. Collect files
-    try:
-        all_files, untracked = collect_files(scope, base=base)
-    except (GitCommandError, ConfigError) as exc:
-        review = _infra_review(str(exc))
-        outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language,
-                               override_note=override_note)
-        log_to_history(cwd, mode, model, outcome["state"],
-                       reason=review["summary"], min_confidence=min_confidence,
-                       scope=scope, override_reason=override_reason,
-                       cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
-                       final_action=outcome.get("final_action"),
-                       authority=outcome.get("authority"),
-                       override_note=outcome.get("override_note", ""),
-                       target=target,
-                       duration_ms=_elapsed_ms(started))
-        return outcome
+    envelope = None
+    envelope_log = None
+    cache_lookup = {"hit": False, "reason": "not_checked"}
+    real_envelope = _looks_like_git_repo(repo_root)
+    if real_envelope:
+        try:
+            envelope = build_review_envelope(
+                repo_root=repo_root,
+                policy=policy,
+                scope=scope,
+                shadow_scope=shadow_scope,
+                include_untracked=include_untracked,
+                ignore_file=ignore_file,
+                model_profile="shallow" if model == shallow_model else "deep",
+                max_shadow_delta_files=max_shadow_delta_files,
+                max_shadow_delta_bytes=max_shadow_delta_bytes,
+            )
+            envelope_log = envelope_summary(envelope)
+        except (GitCommandError, ConfigError) as exc:
+            review = _infra_review(str(exc))
+            outcome = _infra_outcome(
+                review["summary"],
+                review_required=True,
+                mode=mode,
+                allow_once=allow_once,
+                infra_failure_policy=infra_failure_policy,
+                override_reason=override_reason,
+                override_note=override_note,
+            )
+            log_to_history(cwd, mode, model, outcome["state"],
+                           reason=review["summary"], min_confidence=min_confidence,
+                           scope=scope, override_reason=override_reason,
+                           failure_kind="git_error",
+                           cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+                           final_action=outcome.get("final_action"),
+                           authority=outcome.get("authority"),
+                           override_note=outcome.get("override_note", ""),
+                           gate_state=outcome.get("gate_state"),
+                           envelope=envelope_log,
+                           duration_ms=_elapsed_ms(started))
+            return outcome
+    else:
+        try:
+            legacy_files, legacy_untracked = collect_files(scope, base=base)
+        except (GitCommandError, ConfigError) as exc:
+            review = _infra_review(str(exc))
+            outcome = _infra_outcome(
+                review["summary"],
+                review_required=True,
+                mode=mode,
+                allow_once=allow_once,
+                infra_failure_policy=infra_failure_policy,
+                override_reason=override_reason,
+                override_note=override_note,
+            )
+            log_to_history(cwd, mode, model, outcome["state"],
+                           reason=review["summary"], min_confidence=min_confidence,
+                           scope=scope, override_reason=override_reason,
+                           failure_kind="git_error",
+                           cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+                           final_action=outcome.get("final_action"),
+                           authority=outcome.get("authority"),
+                           override_note=outcome.get("override_note", ""),
+                           gate_state=outcome.get("gate_state"),
+                           duration_ms=_elapsed_ms(started))
+            return outcome
+        legacy_filtered = filter_file_list(legacy_files, ignore_file)
+        envelope = _legacy_envelope(legacy_filtered, legacy_untracked, scope)
+        envelope_log = envelope_summary(envelope)
 
-    # 2. Filter
-    filtered = filter_file_list(all_files, ignore_file)
-    target = _inspect_target(scope, ignore_file, review_files=filtered) or target
+    target = _inspect_target(
+        scope,
+        ignore_file,
+        review_files=(envelope or {}).get("review_target", {}).get("files", []),
+    )
     target_decision = evaluate_target_policy(
         target or {},
         dirty_worktree_policy=dirty_worktree_policy,
@@ -274,45 +426,148 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         partial_stage_policy=partial_stage_policy,
     )
     target = attach_target_decision(target or {}, target_decision)
-    target_gate = _apply_target_policy_gate(
-        target, target_decision, mode, allow_once,
-        override_reason=override_reason, override_note=override_note,
-    )
-    if target_gate:
-        target_gate = _attach_protection_brief(
-            target_gate, language=language, intent=intent_capsule,
+
+    if mode == "off":
+        result = _gate_skip("mode is off", GATE_OFF_EXPLICIT)
+        log_to_history(
+            cwd, mode, model, result["state"], result.get("reason", ""),
+            min_confidence=min_confidence, scope=scope,
+            target=target, gate_state=result.get("gate_state"),
+            envelope=envelope_log, duration_ms=_elapsed_ms(started),
+        )
+        return result
+
+    if enable_envelope_cache:
+        cache_lookup = find_matching_cache(envelope, constants.HISTORY_FILE)
+    decision = fast_path_decision(envelope, cache_lookup)
+    if decision.get("gate_state") == GATE_SKIPPED_SAFE and (
+        docs_only_policy == "shallow" or generated_only_policy == "shallow"
+    ):
+        decision = {"action": "review", "gate_state": "review_needed", "reason": "safe shallow requested"}
+
+    if lock_active and decision["action"] in {"review", "block"}:
+        if lock_active_policy == "block_when_review_required":
+            reason = (
+                "Cold Eyes could not verify this turn because another review is "
+                "already active and this changeset needs review. End the turn "
+                "again after the active review finishes."
+            )
+            result = _gate_block(
+                GATE_BLOCKED_LOCK_ACTIVE,
+                reason,
+                mode,
+                allow_once,
+                final_action="lock_block",
+                authority="lock_guard",
+                override_reason=override_reason,
+                override_note=override_note,
+            )
+            result = _attach_target_metadata(result, target)
+            result["envelope"] = envelope_log
+            result = _attach_protection_brief(
+                result, language=language, intent=intent_capsule,
+                enabled=agent_brief_enabled,
+            )
+            log_to_history(
+                cwd, mode, model, result["state"], result.get("reason", ""),
+                min_confidence=min_confidence, scope=scope,
+                override_reason=override_reason,
+                cold_eyes_verdict=result.get("cold_eyes_verdict"),
+                final_action=result.get("final_action"),
+                authority=result.get("authority"),
+                override_note=result.get("override_note", ""),
+                target=target,
+                protection=protection_history_summary(result.get("protection")),
+                gate_state=result.get("gate_state"),
+                envelope=envelope_log,
+                cache=_cache_history(cache_lookup),
+                duration_ms=_elapsed_ms(started),
+            )
+            return result
+        result = _gate_skip("lock active", GATE_SKIPPED_NO_CHANGE)
+        result = _attach_target_metadata(result, target)
+        result["envelope"] = envelope_log
+        log_to_history(
+            cwd, mode, model, result["state"], result.get("reason", ""),
+            min_confidence=min_confidence, scope=scope, target=target,
+            gate_state=result.get("gate_state"), envelope=envelope_log,
+            cache=_cache_history(cache_lookup), duration_ms=_elapsed_ms(started),
+        )
+        return result
+
+    if decision["action"] == "pass":
+        result = _gate_skip(decision.get("reason", ""), decision["gate_state"])
+        result = _attach_target_metadata(result, target)
+        result["envelope"] = envelope_log
+        if decision["gate_state"] == GATE_SKIPPED_SAFE:
+            result["review_depth"] = "skip"
+            result["why_depth_selected"] = "safe-only changes"
+        if decision["gate_state"] == GATE_PROTECTED_CACHED:
+            result["cold_eyes_verdict"] = "pass"
+            result["final_action"] = "pass"
+            result["authority"] = "envelope_cache"
+        log_to_history(
+            cwd, mode, model, result["state"], result.get("reason", ""),
+            min_confidence=min_confidence, scope=scope, target=target,
+            cold_eyes_verdict=result.get("cold_eyes_verdict"),
+            final_action=result.get("final_action"),
+            authority=result.get("authority"),
+            gate_state=result.get("gate_state"),
+            envelope=envelope_log,
+            cache=_cache_history(cache_lookup),
+            duration_ms=_elapsed_ms(started),
+        )
+        return result
+
+    if decision["action"] == "block":
+        if decision["gate_state"] == GATE_BLOCKED_UNREVIEWED_DELTA:
+            reason = format_unreviewed_delta_reason(envelope)
+            final_action = "unreviewed_delta_block"
+            authority = "delta_sentinel"
+        else:
+            reason = format_cached_block_reason(cache_lookup, envelope)
+            final_action = "block"
+            authority = "envelope_cache"
+        result = _gate_block(
+            decision["gate_state"], reason, mode, allow_once,
+            final_action=final_action, authority=authority,
+            override_reason=override_reason, override_note=override_note,
+        )
+        result = _attach_target_metadata(result, target)
+        result["envelope"] = envelope_log
+        result = _attach_protection_brief(
+            result, language=language, intent=intent_capsule,
             enabled=agent_brief_enabled,
         )
         log_to_history(
-            cwd, mode, model, target_gate["state"],
-            reason=target_gate.get("reason", ""),
+            cwd, mode, model, result["state"], result.get("reason", ""),
             min_confidence=min_confidence, scope=scope,
             override_reason=override_reason,
-            cold_eyes_verdict=target_gate.get("cold_eyes_verdict"),
-            final_action=target_gate.get("final_action"),
-            authority=target_gate.get("authority"),
-            override_note=target_gate.get("override_note", ""),
+            cold_eyes_verdict=result.get("cold_eyes_verdict"),
+            final_action=result.get("final_action"),
+            authority=result.get("authority"),
+            override_note=result.get("override_note", ""),
             target=target,
-            protection=protection_history_summary(target_gate.get("protection")),
+            protection=protection_history_summary(result.get("protection")),
+            gate_state=result.get("gate_state"),
+            envelope=envelope_log,
+            cache=_cache_history(cache_lookup),
             duration_ms=_elapsed_ms(started),
         )
-        return target_gate
-
-    if not all_files:
-        result = _attach_target_metadata(_skip("no changes"), target)
-        display_suffix = _target_display_suffix(target)
-        if display_suffix:
-            result["display"] = f"{result['display']} - {display_suffix}"
-        log_to_history(cwd, mode, model, STATE_SKIPPED, "no changes",
-                       min_confidence=min_confidence, scope=scope,
-                       target=target,
-                       duration_ms=_elapsed_ms(started))
         return result
+
+    if adapter is None:
+        adapter = ClaudeCliAdapter()
+
+    filtered = list(envelope.get("review_target", {}).get("files", []))
+    untracked = set(envelope.get("review_target", {}).get("untracked_files", []))
     if not filtered:
-        result = _attach_target_metadata(_skip("all files ignored"), target)
-        log_to_history(cwd, mode, model, STATE_SKIPPED, "all files ignored",
-                       min_confidence=min_confidence, scope=scope,
-                       target=target,
+        result = _gate_skip("no reviewable delta", GATE_SKIPPED_SAFE)
+        result = _attach_target_metadata(result, target)
+        result["envelope"] = envelope_log
+        log_to_history(cwd, mode, model, STATE_SKIPPED, "no reviewable delta",
+                       min_confidence=min_confidence, scope=scope, target=target,
+                       gate_state=result.get("gate_state"), envelope=envelope_log,
                        duration_ms=_elapsed_ms(started))
         return result
 
@@ -323,16 +578,25 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     triage = classify_depth(ranked)
     review_depth = triage["review_depth"]
 
+    if review_depth == "skip" and envelope.get("review_required"):
+        review_depth = "shallow"
+        triage = dict(triage)
+        triage["review_depth"] = "shallow"
+        triage["why_depth_selected"] = (
+            "source/config delta requires shallow review"
+        )
+
     if review_depth == "skip":
         reason = f"triage skip: {triage['why_depth_selected']}"
+        result = _attach_target_metadata(_gate_skip(reason, GATE_SKIPPED_SAFE), target)
+        result["envelope"] = envelope_log
+        result["review_depth"] = review_depth
+        result["why_depth_selected"] = triage["why_depth_selected"]
         log_to_history(cwd, mode, model, STATE_SKIPPED, reason,
                        min_confidence=min_confidence, scope=scope,
                        review_depth=review_depth,
-                       target=target,
-                       duration_ms=_elapsed_ms(started))
-        result = _attach_target_metadata(_skip(reason), target)
-        result["review_depth"] = review_depth
-        result["why_depth_selected"] = triage["why_depth_selected"]
+                       target=target, gate_state=result.get("gate_state"),
+                       envelope=envelope_log, duration_ms=_elapsed_ms(started))
         return result
 
     # Shallow: use lighter model + shallow prompt
@@ -342,20 +606,29 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     # 5. Build diff
     try:
         diff_token_limit = min(max_tokens, max_input_tokens)
-        diff_meta = build_diff(ranked, untracked, diff_token_limit, scope, base=base)
+        diff_scope = "working" if scope in {"staged", "head", "working"} else scope
+        diff_meta = build_diff(ranked, untracked, diff_token_limit, diff_scope, base=base)
     except GitCommandError as exc:
         review = _infra_review(str(exc))
-        outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language,
-                               override_note=override_note)
+        outcome = _infra_outcome(
+            review["summary"],
+            review_required=envelope.get("review_required", True),
+            mode=mode,
+            allow_once=allow_once,
+            infra_failure_policy=infra_failure_policy,
+            override_reason=override_reason,
+            override_note=override_note,
+        )
         log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason,
+                       failure_kind="git_error",
                        cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
                        override_note=outcome.get("override_note", ""),
-                       target=target,
+                       target=target, gate_state=outcome.get("gate_state"),
+                       envelope=envelope_log,
                        duration_ms=_elapsed_ms(started))
         return outcome
 
@@ -425,10 +698,11 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
 
     if not diff_text.strip() or file_count == 0:
         result = _apply_coverage_gate(
-            _skip("no diff content"), coverage, mode, allow_once,
+            _gate_skip("no diff content", GATE_SKIPPED_SAFE), coverage, mode, allow_once,
             override_reason=override_reason, override_note=override_note,
         )
         result = _attach_target_metadata(result, target)
+        result["envelope"] = envelope_log
         result = _attach_protection_brief(
             result, language=language, intent=intent_capsule,
             enabled=agent_brief_enabled,
@@ -444,6 +718,8 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
             override_note=result.get("override_note", ""),
             target=target,
             protection=protection_history_summary(result.get("protection")),
+            gate_state=result.get("gate_state"),
+            envelope=envelope_log,
             duration_ms=_elapsed_ms(started),
         )
         return result
@@ -461,9 +737,15 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     if invocation.exit_code != 0:
         failure_kind = failure_kind or "cli_error"
         review = _infra_review(f"claude exit {invocation.exit_code}")
-        outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language,
-                               override_note=override_note)
+        outcome = _infra_outcome(
+            review["summary"],
+            review_required=envelope.get("review_required", True),
+            mode=mode,
+            allow_once=allow_once,
+            infra_failure_policy=infra_failure_policy,
+            override_reason=override_reason,
+            override_note=override_note,
+        )
         log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason,
@@ -472,16 +754,23 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
                        override_note=outcome.get("override_note", ""),
-                       target=target,
+                       target=target, gate_state=outcome.get("gate_state"),
+                       envelope=envelope_log,
                        duration_ms=_elapsed_ms(started))
         return outcome
 
     if not invocation.stdout:
         failure_kind = "empty_output"
         review = _infra_review("empty output")
-        outcome = apply_policy(review, mode, threshold, allow_once, min_confidence,
-                               override_reason=override_reason, language=language,
-                               override_note=override_note)
+        outcome = _infra_outcome(
+            review["summary"],
+            review_required=envelope.get("review_required", True),
+            mode=mode,
+            allow_once=allow_once,
+            infra_failure_policy=infra_failure_policy,
+            override_reason=override_reason,
+            override_note=override_note,
+        )
         log_to_history(cwd, mode, effective_model, outcome["state"],
                        reason=review["summary"], min_confidence=min_confidence,
                        scope=scope, override_reason=override_reason,
@@ -490,12 +779,37 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        final_action=outcome.get("final_action"),
                        authority=outcome.get("authority"),
                        override_note=outcome.get("override_note", ""),
-                       target=target,
+                       target=target, gate_state=outcome.get("gate_state"),
+                       envelope=envelope_log,
                        duration_ms=_elapsed_ms(started))
         return outcome
 
     # 8. Parse review
     review = parse_review_output(invocation.stdout)
+    if review.get("review_status") == "failed":
+        failure_kind = "parse_failure"
+        outcome = _infra_outcome(
+            review.get("summary", "parse failure"),
+            review_required=envelope.get("review_required", True),
+            mode=mode,
+            allow_once=allow_once,
+            infra_failure_policy=infra_failure_policy,
+            override_reason=override_reason,
+            override_note=override_note,
+        )
+        log_to_history(cwd, mode, effective_model, outcome["state"],
+                       reason=review.get("summary", "parse failure"),
+                       min_confidence=min_confidence, scope=scope,
+                       override_reason=override_reason, failure_kind=failure_kind,
+                       stderr_excerpt=stderr_excerpt,
+                       cold_eyes_verdict=outcome.get("cold_eyes_verdict"),
+                       final_action=outcome.get("final_action"),
+                       authority=outcome.get("authority"),
+                       override_note=outcome.get("override_note", ""),
+                       target=target, gate_state=outcome.get("gate_state"),
+                       envelope=envelope_log,
+                       duration_ms=_elapsed_ms(started))
+        return outcome
 
     # 8.5 FP memory — extract patterns from override history
     fp_patterns = _extract_fp(history_path=history_path) if _extract_fp else None
@@ -526,7 +840,46 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         outcome, local_checks, mode, allow_once,
         override_reason=override_reason, override_note=override_note,
     )
+
+    if stale_review_policy == "block" and real_envelope:
+        try:
+            post_envelope = build_review_envelope(
+                repo_root=repo_root or cwd,
+                policy=policy,
+                scope=scope,
+                shadow_scope=shadow_scope,
+                include_untracked=include_untracked,
+                ignore_file=ignore_file,
+                model_profile="shallow" if effective_model == shallow_model else "deep",
+                max_shadow_delta_files=max_shadow_delta_files,
+                max_shadow_delta_bytes=max_shadow_delta_bytes,
+            )
+        except (GitCommandError, ConfigError):
+            post_envelope = None
+        if (
+            post_envelope
+            and post_envelope.get("envelope_hash") != envelope.get("envelope_hash")
+        ):
+            stale_reason = (
+                "The working tree changed while Cold Eyes was reviewing. "
+                "Do not summarize as completed. End the turn again to trigger "
+                "a fresh review."
+            )
+            outcome = _gate_block(
+                GATE_BLOCKED_STALE_REVIEW,
+                stale_reason,
+                mode,
+                allow_once,
+                final_action="stale_review_block",
+                authority="stale_review_guard",
+                override_reason=override_reason,
+                override_note=override_note,
+            )
+            envelope = post_envelope
+            envelope_log = envelope_summary(post_envelope)
+
     outcome = _attach_target_metadata(outcome, target)
+    outcome = _attach_gate_state(outcome, envelope_log)
     outcome = _attach_protection_brief(
         outcome, review=review, language=language, intent=intent_capsule,
         enabled=agent_brief_enabled,
@@ -568,10 +921,210 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         override_note=outcome.get("override_note", ""),
         target=target,
         protection=protection_history_summary(outcome.get("protection")),
+        gate_state=outcome.get("gate_state"),
+        envelope=envelope_log,
+        cache=_cache_history(cache_lookup),
         duration_ms=_elapsed_ms(started),
     )
 
     return outcome
+
+
+def _gate_skip(reason, gate_state):
+    result = _skip(reason)
+    result["gate_state"] = gate_state
+    result["cold_eyes_verdict"] = "pass"
+    result["final_action"] = "pass"
+    result["authority"] = "envelope_gate"
+    if gate_state == GATE_PROTECTED_CACHED:
+        result["display"] = "cold-review: protected (cached)"
+    elif gate_state == GATE_SKIPPED_NO_CHANGE:
+        result["display"] = "cold-review: skipped (no relevant changes)"
+    elif gate_state == GATE_SKIPPED_SAFE:
+        result["display"] = "cold-review: skipped (safe-only changes)"
+    elif gate_state == GATE_OFF_EXPLICIT:
+        result["display"] = "cold-review: off (explicit)"
+        result["cold_eyes_verdict"] = "off"
+        result["authority"] = "human_override"
+    return result
+
+
+def _gate_block(
+    gate_state,
+    reason,
+    mode,
+    allow_once,
+    *,
+    final_action,
+    authority,
+    override_reason="",
+    override_note="",
+):
+    if mode != "block":
+        return {
+            "action": "pass",
+            "state": STATE_REPORTED,
+            "gate_state": gate_state,
+            "reason": "",
+            "display": f"cold-review: report logged ({gate_state})",
+            "cold_eyes_verdict": "fail",
+            "final_action": "report",
+            "authority": authority,
+        }
+    if allow_once:
+        reason_suffix = f" [{override_reason}]" if override_reason else ""
+        outcome = {
+            "action": "pass",
+            "state": STATE_OVERRIDDEN,
+            "gate_state": gate_state,
+            "reason": override_reason,
+            "display": f"cold-review: override - {gate_state} skipped{reason_suffix}",
+            "cold_eyes_verdict": "fail",
+            "final_action": "override_pass",
+            "authority": "human_override",
+        }
+        if override_note:
+            outcome["override_note"] = override_note
+        return outcome
+    return {
+        "action": "block",
+        "state": STATE_BLOCKED,
+        "gate_state": gate_state,
+        "reason": reason,
+        "display": f"cold-review: blocking ({gate_state})",
+        "cold_eyes_verdict": "fail",
+        "final_action": final_action,
+        "authority": authority,
+    }
+
+
+def _infra_outcome(
+    reason,
+    *,
+    review_required,
+    mode,
+    allow_once,
+    infra_failure_policy,
+    override_reason="",
+    override_note="",
+):
+    if (
+        review_required
+        and infra_failure_policy == "block_when_review_required"
+        and mode == "block"
+    ):
+        return _gate_block(
+            GATE_BLOCKED_INFRA,
+            f"Cold Eyes could not verify a review-required change: {reason}",
+            mode,
+            allow_once,
+            final_action="infra_block",
+            authority="infrastructure",
+            override_reason=override_reason,
+            override_note=override_note,
+        )
+    return {
+        "action": "pass",
+        "state": STATE_INFRA_FAILED,
+        "gate_state": "",
+        "reason": reason,
+        "display": f"cold-review: infra failure (pass, not blocking) - {reason}",
+        "cold_eyes_verdict": "infra_failed",
+        "final_action": "pass",
+        "authority": "infrastructure",
+    }
+
+
+def _attach_gate_state(outcome, envelope):
+    outcome = dict(outcome)
+    if not outcome.get("gate_state"):
+        if outcome.get("action") == "block":
+            final_action = outcome.get("final_action", "")
+            if final_action == "coverage_block":
+                outcome["gate_state"] = GATE_BLOCKED_UNREVIEWED_DELTA
+            elif final_action == "check_block":
+                outcome["gate_state"] = GATE_BLOCKED_ISSUE
+            elif outcome.get("cold_eyes_verdict") == "infra_failed":
+                outcome["gate_state"] = GATE_BLOCKED_INFRA
+            else:
+                outcome["gate_state"] = GATE_BLOCKED_ISSUE
+        elif outcome.get("state") == STATE_OVERRIDDEN:
+            outcome["gate_state"] = GATE_BLOCKED_ISSUE
+        elif outcome.get("state") == STATE_INFRA_FAILED:
+            outcome["gate_state"] = GATE_BLOCKED_INFRA
+        else:
+            outcome["gate_state"] = GATE_PROTECTED
+    if envelope is not None:
+        outcome["envelope"] = envelope
+    if outcome.get("gate_state") == GATE_PROTECTED:
+        outcome.setdefault("final_action", "pass")
+        outcome.setdefault("authority", "cold_eyes")
+        outcome.setdefault("cold_eyes_verdict", "pass")
+    return outcome
+
+
+def _cache_history(cache):
+    if not isinstance(cache, dict):
+        return None
+    result = {
+        "hit": bool(cache.get("hit")),
+        "reason": cache.get("reason"),
+        "gate_state": cache.get("gate_state", ""),
+    }
+    entry = cache.get("entry") or {}
+    if entry:
+        result["timestamp"] = entry.get("timestamp", "")
+    return result
+
+
+def _legacy_envelope(files, untracked, scope):
+    files = sorted(dict.fromkeys(files or []))
+    untracked_files = sorted(set(untracked or set()) & set(files))
+    safe_only = bool(files) and all(
+        str(path).lower().endswith((".md", ".png", ".jpg", ".jpeg", ".gif"))
+        or str(path).replace("\\", "/").startswith("docs/")
+        for path in files
+    )
+    envelope = {
+        "schema_version": constants.GATE_SCHEMA_VERSION,
+        "tool_version": "",
+        "head_sha": "",
+        "policy_hash": "",
+        "ignore_hash": "",
+        "prompt_hash": "",
+        "primary_scope": scope,
+        "shadow_scope": "legacy",
+        "changed_files": {
+            "staged": files if scope == "staged" else [],
+            "unstaged": [],
+            "untracked": untracked_files,
+            "ignored": [],
+            "generated": [],
+            "binary": [],
+            "safe": files if safe_only else [],
+        },
+        "review_target": {
+            "files": files,
+            "untracked_files": untracked_files,
+            "delta_kind": "legacy",
+            "high_risk_files": [],
+            "source_config_files": [] if safe_only else files,
+        },
+        "unreviewed": {"files": [], "items": [], "high_risk_files": [], "reason": ""},
+        "review_required": bool(files) and not safe_only,
+        "blocking_unreviewed": [],
+        "safe_only": safe_only,
+        "no_relevant_changes": not bool(files),
+        "envelope_hash": "legacy:" + "|".join(files),
+    }
+    return envelope
+
+
+def _looks_like_git_repo(repo_root):
+    if not repo_root:
+        return False
+    git_marker = os.path.join(repo_root, ".git")
+    return os.path.isdir(git_marker) or os.path.isfile(git_marker)
 
 
 def _inspect_target(scope, ignore_file, review_files=None):

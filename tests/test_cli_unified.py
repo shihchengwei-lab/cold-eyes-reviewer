@@ -18,6 +18,6 @@ def test_v2_flag_is_compat_warning_and_uses_unified_run(monkeypatch, capsys):
     cli.main()
 
     captured = capsys.readouterr()
-    assert "--v2 is retired; using unified v1" in captured.err
+    assert "--v2 is retired; using unified v2" in captured.err
     assert "hook_input_path" in called
     assert json.loads(captured.out)["state"] == "passed"

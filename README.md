@@ -19,11 +19,11 @@ python ~/.claude/scripts/cold_eyes/cli.py doctor
 
 Then add the Stop hook shown in the Install section to `~/.claude/settings.json`.
 
-Cold Eyes reviews staged changes by default. Stage the diff you want reviewed, let Claude Code end the turn, and the Stop hook will run the gate.
+Cold Eyes treats staged changes as the primary review target by default. Pure chat and no-change turns skip quickly, while unstaged or untracked source/config changes are scanned as delta protection so they cannot silently pass.
 
 ## What it is
 
-Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the staged diff by default. It is diff-first: the git diff is the primary input. The default posture is quality-first gate mode: block medium-confidence critical findings, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, stage the changes that should be reviewed, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it pulls in **limited, structured supporting context** such as recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata. In the unified v1 path, Cold Eyes can also run selected local checks (tests, lint, type, build) once when the diff shape justifies it.
+Cold Eyes runs as a Stop hook after each Claude Code turn. It is diff-first: staged changes are the primary intent, and v2 adds a fast review envelope that decides whether to skip, reuse cache, review, or block before calling the model. The default posture is quality-first gate mode: block medium-confidence critical findings, prevent source/config deltas from silently passing, preserve high-risk coverage protection, and let low-frequency auto-tune reduce review time only after recent history is clean. When it blocks, it produces an agent-facing repair task, a plain-language message the agent can relay to a non-engineer user, and a rerun protocol: fix the current diff, run relevant checks, stage the changes that should be reviewed, then end the turn so the next Stop hook starts a fresh Cold Eyes review. It does not compare against previous block records. On the deep path it pulls in **limited, structured supporting context** such as recent commit messages, co-changed files from git history, detector hints, and an optional low-weight user-intent capsule from Claude Code hook metadata. In the unified v2 path, Cold Eyes can also run selected local checks (tests, lint, type, build) once when the diff shape justifies it.
 
 ## What it is not
 
@@ -50,13 +50,15 @@ Cold Eyes runs as a Stop hook after each Claude Code turn and reviews the staged
 
 - **Shallow** — test-only or low-risk diffs. Lighter model, critical-only prompt, diff as sole input. Fast and cheap.
 - **Deep** (default for source changes) — full model, diff + bounded supporting context + detector hints. This is what the project name refers to: a diff-centered review with a small amount of structured support.
-- **Automatic local checks** — when a risky Python or dependency change is present, the unified v1 path may run available checks once and fold the result into the same gate outcome.
+- **Automatic local checks** — when a risky Python or dependency change is present, the unified v2 path may run available checks once and fold the result into the same gate outcome.
 
 ### Why deeper paths exist
 
 The diff alone is sometimes not enough to distinguish a real bug from a valid change (a renamed function, a removed resource that was handled elsewhere). The deep path's context block and detector hints exist to reduce that class of false calls without turning the tool into a full-context reviewer. Local checks add mechanical evidence without creating a second review mode: they run once, do not retry, and do not validate against prior block history.
 
 ## How it works
+
+The v2 gate starts with a fast envelope scan. It skips pure chat/no-change turns, skips docs/generated-only changes when safe, reuses a trusted cache when the effective envelope is unchanged, and only calls the model when source/config changes need review. If source/config delta cannot fit in the review target, or the working tree changes during review, it blocks instead of silently passing.
 
 ```
 Claude Code session ends
@@ -65,13 +67,13 @@ Claude Code session ends
   cold-review.sh (shim — guards + fail-closed result parser)
        │
        ├─ off mode / recursion / no git repo → exit
-       ├─ atomic lock held by another review → exit
+       ├─ atomic lock held by another review → lightweight envelope decision
        │
        ▼
-  cold_eyes/cli.py → engine.py (unified v1)
+  cold_eyes/cli.py → engine.py (unified v2)
        │
-       ├─ 1. collect files → 2. filter (.cold-review-ignore) → 3. risk-rank
-       ├─ 4. triage: skip (docs/generated) / shallow (test-only) / deep (source/risk)
+       ├─ 1. envelope scan → 2. target/cache decision → 3. risk-rank
+       ├─ 4. triage: skipped_safe / shallow (test-only) / deep (source/risk)
        │      skip → exit immediately, no model call
        │      shallow → lighter model (sonnet) + critical-only prompt
        │      deep → full pipeline below
@@ -87,7 +89,7 @@ Claude Code session ends
        ├─ report mode: log review → pass
        ├─ 11. selected local checks run once when useful
        └─ all engine-level exits logged to ~/.claude/cold-review-history.jsonl
-          (shell guard skips — off, recursion, no git repo, lock — are not logged)
+          (no git repo and recursion guard exits are still shell-only)
 ```
 
 ## Output format
@@ -124,10 +126,13 @@ Every issue includes severity, confidence, category, file, line_hint, a three-pa
 - `suggested_validation` — how to verify the claim (run a test, check a file, etc.).
 - `abstain_condition` — hidden context the claim assumes. Issues with abstain conditions are downgraded by one confidence level.
 
-- `schema_version` — output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
+- `schema_version` — model review output schema version (currently `1`). Bumped on breaking changes to the review JSON structure (field removal, semantic change, required field addition). Adding optional fields (e.g., `override_reason`) does not bump the version.
+- envelope `schema_version` — gate-envelope schema version (currently `2`). This is separate from the LLM review issue schema.
+- `gate_state` — authoritative v2 gate state, such as `protected`, `protected_cached`, `skipped_no_change`, `skipped_safe`, `blocked_unreviewed_delta`, `blocked_stale_review`, or `blocked_infra`.
 - `line_hint` — approximate line reference from diff hunk headers (e.g., `"L42"`, `"L42-L50"`). Empty string when uncertain. Displayed with `~` prefix (e.g., `(~L42)`) to indicate it is an estimate, not a precise location. In block mode, verify the line number before acting on it.
 - `protection` — optional block wrapper with `user_message`, `agent_task`, `risk_summary`, `rerun_protocol`, and low-weight intent metadata. It is added after the review decision and does not change schema version.
 - `target` — optional review-target summary with staged/unstaged/untracked counts, partial-stage files, and target policy action. It is added outside the model review and does not change schema version.
+- `envelope` — optional v2 gate summary with changed files, review target, unreviewed delta, hashes, and cache identity.
 - `checks` — optional local-check summary with mode, results, warnings, and whether a hard check failed. Added after the model review and does not change schema version.
 
 **Severity levels:**
@@ -225,7 +230,7 @@ To reduce token usage manually: use `COLD_REVIEW_MODEL=haiku`, lower `COLD_REVIE
 
 ## Automatic local checks
 
-`COLD_REVIEW_CHECKS=auto` lets the unified v1 path run selected local checks once when the diff shape justifies it:
+`COLD_REVIEW_CHECKS=auto` lets the unified v2 path run selected local checks once when the diff shape justifies it:
 
 - Python source or high-risk Python changes can run `ruff check <changed files>` and `mypy <changed files>` as soft checks.
 - Test changes or high-risk Python changes in a repo with tests can run `pytest --tb=short -q` as a hard check. When an obvious matching test file exists, Cold Eyes targets that test file first instead of immediately sweeping the full suite.
@@ -235,11 +240,13 @@ Hard check failures can block in `COLD_REVIEW_MODE=block`. Soft check failures a
 
 ## What gets reviewed
 
-By default (`COLD_REVIEW_SCOPE=staged`), Cold Eyes reviews **only staged changes** (`git diff --cached`). This keeps normal reading, handoff review, and scratch work from triggering a model review on every Stop hook.
+By default (`COLD_REVIEW_SCOPE=staged`), Cold Eyes treats staged changes as the **primary review target** (`git diff --cached`). This keeps normal reading, handoff review, and scratch work from triggering a model review on every Stop hook.
 
 Stage the changes you want the gate to review before ending the turn. To restore the older "review everything in my working tree" behavior, set `COLD_REVIEW_SCOPE=working`.
 
-A pass means the configured review target passed, not necessarily the entire working tree. In staged scope, unstaged, untracked, or partially staged files are called out by the target sentinel so they do not become silent blind spots.
+In v2, Cold Eyes also scans a working-tree delta envelope before deciding. Unstaged or untracked source/config changes are either included in a small shadow review target or blocked as unreviewed delta when they are too large, unreadable, binary, over budget, or high risk. Docs/generated/image-only changes can skip as `skipped_safe` without calling the model.
+
+A pass means the configured effective review target passed, not necessarily the entire working tree. In staged scope, the target sentinel still records unstaged, untracked, and partially staged files for status visibility.
 
 Other scopes:
 - `COLD_REVIEW_SCOPE=working` — review all uncommitted changes: staged, unstaged, and untracked
@@ -268,6 +275,16 @@ fail_on_unreviewed_high_risk: true
 dirty_worktree_policy: warn
 untracked_policy: warn
 partial_stage_policy: block-high-risk
+shadow_scope: working_delta
+include_untracked: true
+enable_envelope_cache: true
+max_shadow_delta_files: 8
+max_shadow_delta_bytes: 60000
+infra_failure_policy: block_when_review_required
+lock_active_policy: block_when_review_required
+stale_review_policy: block
+docs_only_policy: skip_safe
+generated_only_policy: skip_safe
 checks: auto
 check_timeout_sec: 120
 ```
@@ -278,7 +295,7 @@ All keys are optional. Only include what you want to override.
 
 If `COLD_REVIEW_MODE=block` is set as an env var, it overrides the policy file's `mode: report`. Manual `.cold-review-policy.yml` values override auto-tuned values. If neither env var nor policy file sets a value, the hardcoded default applies.
 
-Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`, `dirty_worktree_policy`, `untracked_policy`, `partial_stage_policy`, `checks`, `check_timeout_sec`.
+Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`, `max_input_tokens`, `block_threshold` (or `threshold`), `confidence`, `language`, `scope`, `base`, `truncation_policy`, `minimum_coverage_pct`, `coverage_policy`, `fail_on_unreviewed_high_risk`, `dirty_worktree_policy`, `untracked_policy`, `partial_stage_policy`, `shadow_scope`, `include_untracked`, `enable_envelope_cache`, `max_shadow_delta_files`, `max_shadow_delta_bytes`, `infra_failure_policy`, `lock_active_policy`, `stale_review_policy`, `docs_only_policy`, `generated_only_policy`, `checks`, `check_timeout_sec`.
 
 `doctor` check 8 reports whether this file exists and what keys it sets.
 
@@ -303,6 +320,16 @@ Supported keys: `mode`, `model`, `shallow_model`, `max_tokens`, `context_tokens`
 | `COLD_REVIEW_DIRTY_WORKTREE_POLICY` | `warn` | `ignore`, `warn`, `block-high-risk`, `block` | How unstaged files outside the review target are handled |
 | `COLD_REVIEW_UNTRACKED_POLICY` | `warn` | `ignore`, `warn`, `block-high-risk`, `block` | How untracked files outside the review target are handled |
 | `COLD_REVIEW_PARTIAL_STAGE_POLICY` | `block-high-risk` | `ignore`, `warn`, `block-high-risk`, `block` | How partially staged files are handled |
+| `COLD_REVIEW_SHADOW_SCOPE` | `working_delta` | `working_delta`, `off`, `none` | Whether staged scope also scans unstaged/untracked source/config delta |
+| `COLD_REVIEW_INCLUDE_UNTRACKED` | `true` | `true`, `false` | Include untracked files in the review envelope and shadow delta |
+| `COLD_REVIEW_ENABLE_ENVELOPE_CACHE` | `true` | `true`, `false` | Reuse matching protected or blocked envelope history without another model call |
+| `COLD_REVIEW_MAX_SHADOW_DELTA_FILES` | `8` | any integer | Maximum unstaged/untracked source/config files added to shadow review |
+| `COLD_REVIEW_MAX_SHADOW_DELTA_BYTES` | `60000` | any integer | Maximum bytes per shadow delta file before blocking as unreviewed |
+| `COLD_REVIEW_INFRA_FAILURE_POLICY` | `block_when_review_required` | `block_when_review_required`, `pass-and-log` | Whether review-required infra failures block |
+| `COLD_REVIEW_LOCK_ACTIVE_POLICY` | `block_when_review_required` | `block_when_review_required`, `skip` | Whether lock contention blocks when changes need review |
+| `COLD_REVIEW_STALE_REVIEW_POLICY` | `block` | `block`, `warn` | Whether file changes during review block as stale |
+| `COLD_REVIEW_DOCS_ONLY_POLICY` | `skip_safe` | `skip_safe`, `shallow` | How docs-only envelopes are handled |
+| `COLD_REVIEW_GENERATED_ONLY_POLICY` | `skip_safe` | `skip_safe`, `shallow` | How generated/image-only envelopes are handled |
 | `COLD_REVIEW_CHECKS` | `auto` | `auto`, `off` | Run selected local checks once when useful |
 | `COLD_REVIEW_CHECK_TIMEOUT_SEC` | `120` | any integer | Timeout per selected local check |
 | `COLD_REVIEW_AUTO_TUNE` | `on` | `on`, `off` | Low-frequency automatic tuning after `run` |
@@ -445,13 +472,14 @@ Coverage blocks are not model findings. They are logged separately under `covera
 
 ### Ignore rules
 
-**Built-in patterns** (always active, no configuration needed):
+**Built-in low-signal patterns** (used by legacy filtering and review triage):
 
 ```
-*.lock  package-lock.json  pnpm-lock.yaml  yarn.lock
 dist/*  build/*  .next/*  coverage/*  vendor/*
 node_modules/*  *.min.js  *.min.css  *.map
 ```
+
+v2 does not silently drop lockfiles, package manifests, workflow files, hook scripts, or Cold Eyes engine files from the envelope. They are treated as config/high-risk unless you intentionally exclude them in `.cold-review-ignore`.
 
 **Per-repo patterns:** Create `.cold-review-ignore` in your project root to add project-specific exclusions. Uses fnmatch glob patterns, one per line. Lines starting with `#` are comments. This file lives in the repo, not in `~/.claude/scripts/`.
 
@@ -475,11 +503,11 @@ Cold Eyes logs its state to `~/.claude/cold-review-history.jsonl` at every exit 
 
 | State | Meaning |
 |---|---|
-| `skipped` | No changes, not a git repo, all files ignored, or another review in progress |
-| `infra_failed` | Infrastructure failure: Claude CLI error, timeout, empty output, parse failure, git error, or config error. History includes `failure_kind` and `stderr_excerpt` for diagnosis. Current engine behavior is pass-and-log, including block mode. |
+| `skipped` | No review ran. Check `gate_state` for `skipped_no_change`, `skipped_safe`, `protected_cached`, or `off_explicit`. |
+| `infra_failed` | Infrastructure failure on a path where review was not required. Review-required failures block as `gate_state: blocked_infra`. |
 | `passed` | Review completed, no issues at or above threshold (after confidence filter) |
 | `reported` | Review completed with issues remaining after confidence filter, mode is `report` (no block) |
-| `blocked` | A block was emitted: model finding, incomplete coverage, local hard check, or review-target mismatch |
+| `blocked` | A block was emitted: model finding, incomplete coverage, local hard check, unreviewed delta, stale review, lock contention, or review-required infra failure |
 | `overridden` | Would have blocked, but an override token was armed (or legacy `ALLOW_ONCE` was set). Override reason recorded in history. |
 
 If reviews aren't running, check:
@@ -502,8 +530,8 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 | File | Purpose |
 |---|---|
-| `cold_eyes/` | Python package for the unified v1 pipeline: engine, triage, target sentinel, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune, intent capsule, protection brief, and local checks. |
-| `cold-review.sh` | Stop hook entry point: guard checks (off/recursion/lock/git), fail-closed result parser |
+| `cold_eyes/` | Python package for the unified v2 pipeline: engine, review envelope, triage, target sentinel, context, detector, memory, policy, git, filter, review, schema, history, config, constants, prompt, doctor, CLI, model adapter, override token, auto-tune, intent capsule, protection brief, and local checks. |
+| `cold-review.sh` | Stop hook entry point: guard checks (recursion/git), lock preflight, fail-closed result parser |
 | `cold-review-prompt.txt` | Deep review system prompt: input type descriptions, check items, evidence principles, severity/confidence/category definitions, output schema |
 | `cold-review-prompt-shallow.txt` | Shallow review system prompt: critical-only checks, minimal schema |
 | `evals/` | Evaluation framework: 33 case fixtures (7 categories) + eval runner (deterministic/benchmark/sweep) + structured pipeline |
@@ -517,7 +545,7 @@ See `docs/support-policy.md` for the full tested platform matrix.
 
 Cold Eyes is a hook and a set of JSON files. Everything is designed to be readable and writable by other tools.
 
-- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, `schema_version`, `override_reason`, `failure_kind`, `stderr_excerpt`, optional `target`, optional `checks`, and optional `protection` summary). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
+- **`cold-review-history.jsonl`** — One JSON object per line (includes `state`, `gate_state`, `duration_ms`, `diff_stats`, `min_confidence`, `scope`, review `schema_version`, optional `envelope`, optional `cache`, `override_reason`, `failure_kind`, `stderr_excerpt`, optional `target`, optional `checks`, and optional `protection` summary). Build a dashboard, filter by state, chart trends over time. Use `stats`, `quality-report`, and `auto-tune` commands to query it.
 - **`cold-review-prompt.txt`** — Template with `{language}` placeholder. Swap in your own review criteria.
 - **`.cold-review-ignore`** — fnmatch patterns. Add project-specific exclusions.
 - **`.cold-review-policy.yml`** — Flat key-value config. Set per-repo defaults for mode, model, threshold, etc.
@@ -663,10 +691,10 @@ python ~/.claude/scripts/cold_eyes/cli.py history-archive --before 2026-01-01
 
 - **Review history is append-only.** Use `history-prune` and `history-archive` to manage growth (see Diagnostics).
 - **Large diffs get truncated.** Diffs over the token budget (default 12000) are cut. High-risk files are prioritized. Truncation metadata tracks partial files, budget-skipped files, binary files, and unreadable files separately. Block messages include a warning listing what was not reviewed.
-- **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. Check history for patterns.
+- **Infra failures are diagnosable but not self-healing.** History records `failure_kind` (`timeout`, `cli_not_found`, `cli_error`, `empty_output`) and a `stderr_excerpt`. In v2, review-required infra failures block as `blocked_infra`; no-change/safe paths do not manufacture blocks.
 - **Health notices still need a trigger.** The installer creates a weekly Windows scheduled task by default. If that schedule is disabled and the Stop hook is removed, Cold Eyes has no always-on process that can notify the Agent by itself.
 - **`line_hint` is approximate.** Line references are extracted by the LLM from diff hunk headers, displayed with `~` prefix. The prompt instructs it to leave `line_hint` empty when uncertain, but hallucinated line numbers are possible. In block mode, always verify the line number before making fixes.
-- **Windows (Git Bash) lock caveats.** The atomic `mkdir` lock and `kill -0` stale PID check work in Git Bash but are less reliable than on native Unix. Concurrent Claude Code sessions on Windows may occasionally bypass the lock.
+- **Windows (Git Bash) lock caveats.** The atomic `mkdir` lock and `kill -0` stale PID check work in Git Bash but are less reliable than on native Unix. When a real lock is active, v2 performs a lightweight envelope decision: no-change/cache paths can pass, while changed source/config can block as `blocked_lock_active`.
 - **Local checks are bounded.** Selected checks run once and respect `COLD_REVIEW_CHECK_TIMEOUT_SEC`. Timeouts and missing tools are warnings, not blockers.
 
 ## Uninstall

@@ -42,6 +42,16 @@ This is a personal tool. The roadmap is directional, not committed.
 - [x] Soft checks target changed Python files when possible to avoid unnecessary full-repo sweeps
 - [x] Removed retired session, contract, retry, noise, and runner source modules after v1 absorbed the useful local-check parser
 
+### No Silent Pass Delta Gate (v2.0.0)
+
+- [x] Fast review envelope decides skip, cache, review, or block before model calls
+- [x] Pure chat/no-change turns skip without LLM review
+- [x] Matching protected envelopes reuse cache without re-review
+- [x] Unstaged and untracked source/config deltas are reviewed or blocked instead of silently passing
+- [x] Review-required infra failures, lock contention, stale reviews, and high-risk unreviewed delta block with explicit `gate_state`
+- [x] Docs/generated/image-only changes keep a low-friction `skipped_safe` path
+- [x] Retired `--v2` session engine remains retired; v2 is the unified engine behavior
+
 ## Future
 
 - Release-by-release assurance notes

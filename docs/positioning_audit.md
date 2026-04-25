@@ -2,7 +2,7 @@
 
 Current target positioning:
 
-> Cold Eyes is a diff-centered, second-pass gate for Claude Code. It reviews the current change primarily through the diff, may use limited structured supporting context on deeper paths, and can run selected local checks in the same unified v1 flow. It is not a full code review system and does not claim full intent understanding.
+> Cold Eyes is a diff-centered, second-pass gate for Claude Code. It reviews the current change primarily through the staged diff, scans source/config working-tree delta so it cannot silently pass, may use limited structured supporting context on deeper paths, and can run selected local checks in the same unified v2 flow. It is not a full code review system and does not claim full intent understanding.
 
 ## Current Capabilities
 
@@ -14,7 +14,8 @@ Current target positioning:
 | Low-weight intent capsule | Active | `cold_eyes/intent.py` | Reads recent user goal from hook metadata when available; cannot block without diff evidence |
 | Fresh-review rerun protocol | Active | `cold_eyes/protection.py` | Tells the main agent to fix, run checks, and end the turn for a fresh next review |
 | Automatic local checks | Active | `cold_eyes/local_checks.py` | Runs selected local checks once; hard failures can block, soft failures feed Agent task |
-| Session/retry pipeline | Retired and removed from active source | `cold_eyes/cli.py`, `cold_eyes/gates/result.py` | `--v2` is hidden compatibility only and falls back to unified v1 |
+| Review envelope / delta gate | Active | `cold_eyes/envelope.py` | Skips no-change/safe-only turns, reuses protected cache, and blocks unreviewed source/config delta |
+| Session/retry pipeline | Retired and removed from active source | `cold_eyes/cli.py`, `cold_eyes/gates/result.py` | `--v2` is hidden compatibility only and falls back to the unified engine |
 
 ## Wording Direction
 
@@ -24,6 +25,7 @@ Current target positioning:
 | `diff-first` | `reads only the diff` |
 | `bounded supporting context` | `zero-context` |
 | `selected local checks` | `separate v2 pipeline` |
+| `source/config delta cannot silently pass` | `full working-tree semantic review` |
 | `fresh review only` | `previous block validation` |
 | `second-pass gate for Claude Code` | `full code review platform` |
 

@@ -1605,25 +1605,29 @@ class TestGitCommandError:
         assert git_cmd("diff", "--name-only") == "file.py"
 
     def test_engine_git_failure_is_infra_failed(self, monkeypatch, tmp_path):
-        """Engine maps GitCommandError from collect_files to infra_failed."""
+        """Engine blocks GitCommandError when review is required."""
         def raise_git(*args, **kwargs):
             raise GitCommandError(["diff"], 128, "fatal")
         monkeypatch.setattr(_engine_mod, "git_cmd", lambda *a: "")  # rev-parse ok
         monkeypatch.setattr(_engine_mod, "collect_files", raise_git)
         monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "h.jsonl"))
         result = _engine_mod.run(mode="block", adapter=MockAdapter())
-        assert result["state"] == STATE_INFRA_FAILED
-        assert result["action"] == "pass"
+        assert result["state"] == STATE_BLOCKED
+        assert result["action"] == "block"
+        assert result["gate_state"] == "blocked_infra"
+        assert result["final_action"] == "infra_block"
 
     def test_engine_config_error_is_infra_failed(self, monkeypatch, tmp_path):
-        """Engine maps ConfigError from collect_files to infra_failed."""
+        """Engine blocks ConfigError when review is required."""
         def raise_config(*args, **kwargs):
             raise ConfigError("pr-diff scope requires --base")
         monkeypatch.setattr(_engine_mod, "git_cmd", lambda *a: "")
         monkeypatch.setattr(_engine_mod, "collect_files", raise_config)
         monkeypatch.setattr(constants, "HISTORY_FILE", str(tmp_path / "h.jsonl"))
         result = _engine_mod.run(mode="block", adapter=MockAdapter())
-        assert result["state"] == STATE_INFRA_FAILED
+        assert result["state"] == STATE_BLOCKED
+        assert result["action"] == "block"
+        assert result["gate_state"] == "blocked_infra"
         assert "pr-diff" in result["reason"]
 
 

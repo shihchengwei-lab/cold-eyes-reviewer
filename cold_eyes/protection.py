@@ -124,6 +124,14 @@ def _block_type(outcome: dict, issues: list[dict]) -> str:
         return "coverage_block"
     if final_action == "check_block":
         return "check_block"
+    if final_action == "unreviewed_delta_block":
+        return "unreviewed_delta_block"
+    if final_action == "stale_review_block":
+        return "stale_review_block"
+    if final_action == "infra_block":
+        return "infra_block"
+    if final_action == "lock_block":
+        return "lock_block"
     if any(str(i.get("category", "")).lower() == "intent" for i in issues):
         return "intent_mismatch"
     if outcome.get("truncated") and outcome.get("skipped_count", 0):
@@ -147,6 +155,14 @@ def _risk_summary(outcome: dict, issues: list[dict], block_type: str) -> list[st
         return ["這次變更沒有被 Cold Eyes 完整審完"]
     if block_type == "check_block":
         return ["本機檢查發現明確失敗"]
+    if block_type == "unreviewed_delta_block":
+        return ["source/config delta was not reviewed"]
+    if block_type == "stale_review_block":
+        return ["files changed while Cold Eyes was reviewing"]
+    if block_type == "infra_block":
+        return ["review was required but reviewer infrastructure failed"]
+    if block_type == "lock_block":
+        return ["review was required but another review was already active"]
     if block_type == "intent_mismatch":
         return ["這次改動可能偏離使用者原本要做的事"]
     if block_type == "incomplete_review":
@@ -250,6 +266,23 @@ def _agent_task(
         )
         return "\n".join(lines)
 
+    if block_type in {"unreviewed_delta_block", "stale_review_block", "infra_block", "lock_block"}:
+        envelope = outcome.get("envelope") or {}
+        files = (envelope.get("unreviewed") or {}).get("files") or (
+            envelope.get("review_target") or {}
+        ).get("files") or []
+        if files:
+            lines.append(f"Relevant files: {', '.join(files[:10])}")
+        if block_type == "stale_review_block":
+            lines.append("Repair approach: keep the current changes and end the turn again for a fresh review.")
+        elif block_type == "infra_block":
+            lines.append("Repair approach: do not claim completion; fix the gate problem or rerun after the tool is available.")
+        elif block_type == "lock_block":
+            lines.append("Repair approach: wait for the active review to finish, then end the turn again.")
+        else:
+            lines.append("Repair approach: stage, intentionally ignore, or reduce the unreviewed delta before ending the turn.")
+        return "\n".join(lines)
+
     if issues:
         lines.extend(["", "Findings to fix:"])
         for idx, issue in enumerate(issues[:5], start=1):
@@ -321,6 +354,14 @@ def _repair_step(block_type: str) -> str:
             "Fix the hard local check failure visible in this run, then run the "
             "relevant local check again before ending the turn."
         )
+    if block_type == "unreviewed_delta_block":
+        return "Make the unreviewed source/config delta reviewable before ending the turn."
+    if block_type == "stale_review_block":
+        return "End the turn again without summarizing completion so Cold Eyes can review the current tree."
+    if block_type == "infra_block":
+        return "Do not summarize completion; fix or wait out the reviewer infrastructure problem."
+    if block_type == "lock_block":
+        return "Wait for the active review to finish, then end the turn again."
     if block_type == "intent_mismatch":
         return (
             "If the fix needs a product or intent decision, ask the user in plain "

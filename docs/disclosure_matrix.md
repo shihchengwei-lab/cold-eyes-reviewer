@@ -20,6 +20,7 @@ Where each fact about Cold Eyes belongs. Use this to decide what goes on the hom
 | Not full review / not strong intent system | yes | yes | yes | assurance matrix | only if changed |
 | Shallow / deep paths | hint | yes | how-it-works | architecture | when behavior changes |
 | Automatic local checks | hint | yes | configuration + limitations | architecture | when checks/defaults change |
+| No-silent-pass delta gate | hint | yes | scope + failure modes | architecture + trust model | when gate state/policy changes |
 | Bounded context | no | yes | how-it-works | trust model | when context changes |
 | Detector hints | no | no | how-it-works | architecture | when logic changes |
 | Override token | no | no | configuration | trust model | when TTL/scope changes |
@@ -31,5 +32,5 @@ Where each fact about Cold Eyes belongs. Use this to decide what goes on the hom
 1. Up-layer facts do not replace detailed docs.
 2. Down-layer internals should not creep into the first screen.
 3. Every first-screen claim should map to an implementation or doc anchor.
-4. Local checks are visible as a unified v1 protection layer, not a separate product mode.
+4. Local checks and the v2 envelope are visible as unified protection layers, not separate product modes.
 5. Release notes do not redefine what Cold Eyes is.

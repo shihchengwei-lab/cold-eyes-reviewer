@@ -8,6 +8,16 @@ from datetime import datetime, timezone, timedelta
 
 from cold_eyes import constants
 from cold_eyes.constants import (
+    GATE_BLOCKED_INFRA,
+    GATE_BLOCKED_ISSUE,
+    GATE_BLOCKED_LOCK_ACTIVE,
+    GATE_BLOCKED_STALE_REVIEW,
+    GATE_BLOCKED_UNREVIEWED_DELTA,
+    GATE_OFF_EXPLICIT,
+    GATE_PROTECTED,
+    GATE_PROTECTED_CACHED,
+    GATE_SKIPPED_NO_CHANGE,
+    GATE_SKIPPED_SAFE,
     STATE_OVERRIDDEN,
     STATE_BLOCKED,
     STATE_INFRA_FAILED,
@@ -23,7 +33,8 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
                    failure_kind=None, stderr_excerpt="", review_depth=None,
                    coverage=None, cold_eyes_verdict=None, final_action=None,
                    authority=None, override_note="", duration_ms=None,
-                   protection=None, checks=None, target=None):
+                   protection=None, checks=None, target=None, gate_state=None,
+                   envelope=None, cache=None, agent_action=None):
     """Append structured entry to history JSONL file."""
     entry = {
         "version": 2,
@@ -62,6 +73,14 @@ def log_to_history(cwd, mode, model, state, reason="", review=None,
         entry["checks"] = checks
     if target is not None:
         entry["target"] = target
+    if gate_state:
+        entry["gate_state"] = gate_state
+    if envelope is not None:
+        entry["envelope"] = envelope
+    if cache is not None:
+        entry["cache"] = cache
+    if agent_action is not None:
+        entry["agent_action"] = agent_action
 
     if review is not None:
         entry["diff_stats"] = {
@@ -265,9 +284,11 @@ def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
         and stale_after_hours is not None
         and age_hours > stale_after_hours
     )
+    gate_state = latest.get("gate_state", "")
     is_infra_failed = (
         state == STATE_INFRA_FAILED
         or latest.get("cold_eyes_verdict") == "infra_failed"
+        or gate_state == GATE_BLOCKED_INFRA
     )
     latest_target = latest.get("target") if isinstance(latest.get("target"), dict) else None
     current_target = runtime_context.get("target")
@@ -285,6 +306,24 @@ def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
         ok = False
         health = "unknown"
         message = "Cold Eyes has not run recently, so current status is unknown."
+    elif gate_state in {
+        GATE_PROTECTED,
+        GATE_PROTECTED_CACHED,
+        GATE_SKIPPED_NO_CHANGE,
+        GATE_SKIPPED_SAFE,
+        GATE_BLOCKED_ISSUE,
+        GATE_BLOCKED_UNREVIEWED_DELTA,
+        GATE_BLOCKED_STALE_REVIEW,
+        GATE_BLOCKED_LOCK_ACTIVE,
+        GATE_OFF_EXPLICIT,
+    }:
+        ok = True
+        health = "ok" if not str(gate_state).startswith("blocked_") else "attention"
+        message = (
+            "Cold Eyes is running normally."
+            if health == "ok"
+            else "Cold Eyes is running, but the current review needs attention."
+        )
     elif state in {
         STATE_PASSED,
         STATE_BLOCKED,
@@ -309,6 +348,7 @@ def runtime_status(history_path=None, cwd=None, stale_after_hours=0):
         "history_path": path,
         "last_seen": last_seen or None,
         "last_state": state,
+        "last_gate_state": gate_state,
         "last_final_action": latest.get("final_action", ""),
         "last_duration_ms": latest.get("duration_ms"),
         "age_hours": age_hours,

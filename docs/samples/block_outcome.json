@@ -1,6 +1,7 @@
 {
   "action": "block",
   "state": "blocked",
+  "gate_state": "blocked_issue",
   "reason": "Cold Eyes Review \u2014 Hardcoded AWS credentials\n  - [CRITICAL] config/aws.py (~4) \u6aa2\u67e5\uff1aHardcoded AWS credentials\n    \u5224\u6c7a\uff1aAWS access key and secret key in source code\n    \u6307\u793a\uff1aUse environment variables or credential provider\n\nTo override: python cli.py arm-override --reason '<reason>'",
   "display": "cold-review: blocking (issues at or above critical)",
   "truncated": false,

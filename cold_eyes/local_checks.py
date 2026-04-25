@@ -1,4 +1,4 @@
-"""Lightweight local check runner for the unified v1 pipeline."""
+"""Lightweight local check runner for the unified v2 pipeline."""
 
 from __future__ import annotations
 

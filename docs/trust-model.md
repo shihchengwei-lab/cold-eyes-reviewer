@@ -41,7 +41,9 @@ These are the six check items defined in the system prompt (`cold-review-prompt.
 
 **Non-deterministic model.** The LLM review itself is non-deterministic. Different runs on the same diff may produce different issues. The benchmark eval mode measures real model behavior; the deterministic mode tests only the decision boundary.
 
-**Fail-closed by default.** In block mode, infrastructure failures (CLI timeout, parse error, empty output) produce a block, not a silent pass. The `failure_kind` field in history records the cause. This is configurable via `truncation_policy`.
+**Fail-closed when review is required.** In block mode, infrastructure failures (CLI timeout, parse error, empty output) produce `blocked_infra` when source/config changes need review. No-change, safe-only, and cache-hit paths do not manufacture a block. The `failure_kind` field in history records the cause. This is configurable via `infra_failure_policy`.
+
+**No silent source/config delta pass.** The v2 envelope scans unstaged and untracked source/config changes even when `scope: staged` remains the primary review intent. Reviewable shadow delta is included; high-risk, too-large, unreadable, binary, or over-budget delta blocks as `blocked_unreviewed_delta`.
 
 **No network.** All external communication happens through local subprocess calls to `git` and `claude` CLI. No HTTP, no API keys, no outbound connections from Cold Eyes itself.
 

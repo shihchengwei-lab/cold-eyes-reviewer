@@ -3,8 +3,8 @@
 #
 # All review logic lives in cold_eyes/ Python package.
 # This shell script only handles:
-#   - Guard checks (off, recursion, engine exists, git repo)
-#   - Atomic lock (mkdir-based)
+#   - Guard checks (recursion, engine exists, git repo)
+#   - Atomic lock (mkdir-based) with engine-level lock-active decision
 #   - Hook input parsing (stop_hook_active)
 #   - Invoking the Python CLI
 #   - Translating CLI JSON to hook decision JSON
@@ -27,6 +27,11 @@
 #   COLD_REVIEW_DIRTY_WORKTREE_POLICY - ignore, warn (default), block-high-risk, block
 #   COLD_REVIEW_UNTRACKED_POLICY - ignore, warn (default), block-high-risk, block
 #   COLD_REVIEW_PARTIAL_STAGE_POLICY - ignore, warn, block-high-risk (default), block
+#   COLD_REVIEW_SHADOW_SCOPE     - working_delta (default), off
+#   COLD_REVIEW_INCLUDE_UNTRACKED - true (default) / false
+#   COLD_REVIEW_ENABLE_ENVELOPE_CACHE - true (default) / false
+#   COLD_REVIEW_INFRA_FAILURE_POLICY - block_when_review_required (default)
+#   COLD_REVIEW_LOCK_ACTIVE_POLICY - block_when_review_required (default), skip
 
 set -uo pipefail
 
@@ -39,15 +44,13 @@ LOCKDIR="$HOME/.claude/.cold-review-lock.d"
 NOTICE_FILE="$CLAUDE_DIR/cold-review-agent-notice.txt"
 
 MODE="${COLD_REVIEW_MODE:-block}"
+LOCK_ACTIVE=0
 
 write_agent_notice() {
   local message="$1"
   mkdir -p "$CLAUDE_DIR" 2>/dev/null || true
   printf '%s\n' "$message" > "$NOTICE_FILE" 2>/dev/null || true
 }
-
-# --- Guard: off mode ---
-[[ "$MODE" == "off" ]] && exit 0
 
 # --- Guard: prevent recursion ---
 [[ "${COLD_REVIEW_ACTIVE:-}" == "1" ]] && exit 0
@@ -106,9 +109,10 @@ release_lock() {
 
 if ! acquire_lock; then
   echo "cold-review: skipped (another review in progress)" >&2
-  exit 0
+  LOCK_ACTIVE=1
+else
+  trap 'release_lock' EXIT
 fi
-trap 'release_lock' EXIT
 
 # --- Surface scheduled health notices to the Agent, not the user ---
 if [[ -s "$NOTICE_FILE" ]]; then
@@ -118,8 +122,11 @@ fi
 
 # --- Read hook input, check stop_hook_active ---
 INPUT=$(head -c 1048576)  # 1 MB cap to prevent unbounded reads
-HOOK_INPUT_FILE="$LOCKDIR/hook-input.json"
-printf '%s' "$INPUT" > "$HOOK_INPUT_FILE" 2>/dev/null || HOOK_INPUT_FILE=""
+HOOK_INPUT_FILE=""
+if [[ "$LOCK_ACTIVE" != "1" ]]; then
+  HOOK_INPUT_FILE="$LOCKDIR/hook-input.json"
+  printf '%s' "$INPUT" > "$HOOK_INPUT_FILE" 2>/dev/null || HOOK_INPUT_FILE=""
+fi
 # If the hook input JSON has stop_hook_active=true, another stop hook is
 # already active (e.g. the agent itself).  Skip to avoid recursion.
 # Fallback to "false" on any parse error so we proceed with the review.
@@ -145,7 +152,14 @@ ENGINE_ARGS=(run)
 [[ -n "${COLD_REVIEW_OVERRIDE_REASON:-}" ]]  && ENGINE_ARGS+=(--override-reason "${COLD_REVIEW_OVERRIDE_REASON}")
 [[ -n "${COLD_REVIEW_MINIMUM_COVERAGE_PCT:-}" ]] && ENGINE_ARGS+=(--minimum-coverage-pct "${COLD_REVIEW_MINIMUM_COVERAGE_PCT}")
 [[ -n "${COLD_REVIEW_COVERAGE_POLICY:-}" ]]      && ENGINE_ARGS+=(--coverage-policy "${COLD_REVIEW_COVERAGE_POLICY}")
+[[ -n "${COLD_REVIEW_SHADOW_SCOPE:-}" ]]          && ENGINE_ARGS+=(--shadow-scope "${COLD_REVIEW_SHADOW_SCOPE}")
+[[ -n "${COLD_REVIEW_MAX_SHADOW_DELTA_FILES:-}" ]] && ENGINE_ARGS+=(--max-shadow-delta-files "${COLD_REVIEW_MAX_SHADOW_DELTA_FILES}")
+[[ -n "${COLD_REVIEW_MAX_SHADOW_DELTA_BYTES:-}" ]] && ENGINE_ARGS+=(--max-shadow-delta-bytes "${COLD_REVIEW_MAX_SHADOW_DELTA_BYTES}")
+[[ -n "${COLD_REVIEW_INFRA_FAILURE_POLICY:-}" ]]  && ENGINE_ARGS+=(--infra-failure-policy "${COLD_REVIEW_INFRA_FAILURE_POLICY}")
+[[ -n "${COLD_REVIEW_LOCK_ACTIVE_POLICY:-}" ]]    && ENGINE_ARGS+=(--lock-active-policy "${COLD_REVIEW_LOCK_ACTIVE_POLICY}")
+[[ -n "${COLD_REVIEW_STALE_REVIEW_POLICY:-}" ]]   && ENGINE_ARGS+=(--stale-review-policy "${COLD_REVIEW_STALE_REVIEW_POLICY}")
 [[ -n "$HOOK_INPUT_FILE" && -f "$HOOK_INPUT_FILE" ]] && ENGINE_ARGS+=(--hook-input-path "$HOOK_INPUT_FILE")
+[[ "$LOCK_ACTIVE" == "1" ]] && ENGINE_ARGS+=(--lock-active)
 case "${COLD_REVIEW_FAIL_ON_UNREVIEWED_HIGH_RISK:-}" in
   1|true|TRUE|yes|YES|on|ON)
     ENGINE_ARGS+=(--fail-on-unreviewed-high-risk)
@@ -156,8 +170,10 @@ esac
 RESULT=$("$PYTHON_CMD" "$ENGINE" "${ENGINE_ARGS[@]}" 2>/dev/null) || true
 
 # --- Release lock early ---
-release_lock
-trap - EXIT
+if [[ "$LOCK_ACTIVE" != "1" ]]; then
+  release_lock
+  trap - EXIT
+fi
 
 # --- Parse result and act (fail-closed) ---
 # Any failure to get valid engine output is an infrastructure failure.

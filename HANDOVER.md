@@ -4,18 +4,19 @@ Last updated: 2026-04-26
 
 ## Current State
 
-- Version: `v1.18.0`
+- Version in source: `v2.0.0`
 - Branch: `master`
 - Latest pushed release commit: `f2d289f Release v1.18.0 target sentinel`
 - Latest tag / release: `v1.18.0`
+- Release target for current local work: `v2.0.0 - No Silent Pass Delta Gate`
 - Repository: `https://github.com/shihchengwei-lab/cold-eyes-reviewer`
 - Default branch: `master`
-- Local deployed version: `1.18.0`
+- Local deployed version: `2.0.0`
 - Installed scripts path: `C:\Users\kk789\.claude\scripts`
 - Windows-side `doctor`: `all_ok: true`
 - Health notice schedule: configured as Windows scheduled task `Cold Eyes Reviewer Health Notice`
 - GitHub Actions for latest pushed `master`, `v1.18.0`, and Release: success
-- Working tree is clean after the v1.18.0 release and this handover alignment.
+- Current v2 implementation is local and installed, but not yet committed, pushed, tagged, or released.
 
 ## Product Shape
 
@@ -25,9 +26,12 @@ The current contract is:
 
 1. Claude Code finishes a turn.
 2. `cold-review.sh` runs as a Stop hook.
-3. Cold Eyes reviews the staged git diff by default.
-4. If it blocks, it produces an Agent-facing repair task, a plain-language user message, and a fresh-review rerun protocol.
-5. The main Agent fixes the current diff, runs relevant checks, stages the changes that should be reviewed, ends the turn, and the next Stop hook performs a brand-new review.
+3. Cold Eyes treats staged changes as the primary review target by default.
+4. Before calling the model, the v2 envelope decides skip, cache, review, or block.
+5. Pure chat/no-change turns and safe docs/generated turns do not call the LLM.
+6. Unstaged or untracked source/config delta is reviewed as shadow delta or blocked if it cannot be safely reviewed.
+7. If it blocks, it produces an Agent-facing repair task, a plain-language user message, and a fresh-review rerun protocol.
+8. The main Agent fixes the current diff, runs relevant checks, stages the changes that should be reviewed, ends the turn, and the next Stop hook performs a brand-new review.
 
 Important boundary:
 
@@ -36,9 +40,73 @@ Important boundary:
 - Cold Eyes does not decide product direction for the user.
 - Intent context is low weight only; it cannot block without concrete diff evidence.
 - History is for diagnostics, auto-tune, status, and override calibration, not repair memory.
-- Default scope is now `staged`, not `working`, to avoid slow reviews during normal reading or handoff-only turns.
+- Default primary scope is `staged`, not `working`, to avoid slow reviews during normal reading or handoff-only turns.
+- `gate_state` is now the authoritative v2 protection signal for status, history, and future automation.
 
 ## Recent Release Summary
+
+### v2.0.0 - No Silent Pass Delta Gate
+
+Status: implemented locally, installed locally, and validation green. Not yet committed, pushed, tagged, released, or CI-verified.
+
+Purpose: keep the low-friction staged default without allowing source/config changes outside the staged target to silently pass.
+
+Changes:
+
+- Added `cold_eyes/envelope.py` for v2 review envelope scanning, shadow delta target selection, cache matching, and no-silent-pass blocks.
+- Added `GATE_SCHEMA_VERSION = 2` and authoritative `gate_state` values:
+  - `protected`
+  - `protected_cached`
+  - `skipped_no_change`
+  - `skipped_safe`
+  - `blocked_issue`
+  - `blocked_unreviewed_delta`
+  - `blocked_stale_review`
+  - `blocked_infra`
+  - `blocked_lock_active`
+  - `off_explicit`
+- Added flat config/env keys:
+  - `shadow_scope`
+  - `include_untracked`
+  - `enable_envelope_cache`
+  - `max_shadow_delta_files`
+  - `max_shadow_delta_bytes`
+  - `infra_failure_policy`
+  - `lock_active_policy`
+  - `stale_review_policy`
+  - `docs_only_policy`
+  - `generated_only_policy`
+- History entries can now include `gate_state`, `envelope`, `cache`, and `agent_action`.
+- Stop hook lock contention now calls the engine with `--lock-active` instead of silently exiting.
+- `mode: off` now records `off_explicit` instead of disappearing from history.
+- README, failure modes, history schema, version policy, roadmap, gate-mode docs, scope strategy, trust model, troubleshooting, samples, and release assurance docs were updated for v2.
+
+Behavior changes:
+
+- Pure chat/no file changes records `skipped_no_change` and does not call the LLM.
+- Docs/generated/image-only changes can record `skipped_safe` and do not call the LLM by default.
+- Same trusted protected envelope records `protected_cached` and does not re-review.
+- Unstaged or untracked source/config/test/migration delta is reviewed as shadow delta when it fits the budget.
+- High-risk, binary, unreadable, unsupported, too-large, or over-budget source/config delta blocks as `blocked_unreviewed_delta`.
+- Review-required infra failures block as `blocked_infra`.
+- File changes during review block as `blocked_stale_review`.
+- Lock contention with review-required changes blocks as `blocked_lock_active`.
+
+Validation:
+
+- `python -m pytest tests -q`: `662 passed, 6 skipped`
+- `python -m ruff check .`: passed
+- `git diff --check`: passed
+- `python cold_eyes\cli.py eval --regression-check evals\baseline.json`: no regression, `33/33`
+- `python cold_eyes\cli.py --version`: `cold-eyes-reviewer 2.0.0`
+- `python C:\Users\kk789\.claude\scripts\cold_eyes\cli.py --version`: `cold-eyes-reviewer 2.0.0`
+- Windows installed `doctor`: `all_ok: true`, deploy files `32 files`
+
+Release next steps:
+
+- Commit the v2 implementation.
+- Push the branch and wait for CI.
+- If CI is green, tag `v2.0.0` and create GitHub Release title `v2.0.0 - No Silent Pass Delta Gate`.
 
 ### v1.18.0 - review-target sentinel
 
@@ -199,14 +267,14 @@ Changes:
 
 ## Validation
 
-Latest local validation for v1.18.0:
+Latest local validation for v2.0.0:
 
-- `python -m pytest tests -q`: `650 passed, 6 skipped`
+- `python -m pytest tests -q`: `662 passed, 6 skipped`
 - `python -m ruff check .`: passed
 - `git diff --check`: passed
 - `python cold_eyes\cli.py eval --regression-check evals\baseline.json`: no regression, `33/33`
-- `python cold_eyes\cli.py --version`: `cold-eyes-reviewer 1.18.0`
-- `python C:\Users\kk789\.claude\scripts\cold_eyes\cli.py --version`: `cold-eyes-reviewer 1.18.0`
+- `python cold_eyes\cli.py --version`: `cold-eyes-reviewer 2.0.0`
+- `python C:\Users\kk789\.claude\scripts\cold_eyes\cli.py --version`: `cold-eyes-reviewer 2.0.0`
 - Windows installed `doctor`: `all_ok: true`
 
 Windows installed `doctor` details from the latest check:
@@ -214,7 +282,7 @@ Windows installed `doctor` details from the latest check:
 - Python: ok
 - Git: ok
 - Claude CLI: ok, `2.1.119 (Claude Code)`
-- Deploy files: ok, 31 files in `C:\Users\kk789\.claude\scripts`
+- Deploy files: ok, 32 files in `C:\Users\kk789\.claude\scripts`
 - Stop hook: ok
 - Git repo: ok
 - Policy file: ok
@@ -241,7 +309,7 @@ Release:
 
 - `https://github.com/shihchengwei-lab/cold-eyes-reviewer/releases/tag/v1.18.0`
 
-## Repo Page Alignment
+## Last Released Repo Page Alignment
 
 Checked after v1.18.0:
 
@@ -265,13 +333,16 @@ Runtime path:
 cold-review.sh
   -> cold_eyes/cli.py
   -> cold_eyes/engine.py
-  -> git diff collection / target sentinel / filtering / ranking
-  -> skip, shallow, or deep review
+  -> v2 review envelope scan / target sentinel / cache decision
+  -> skip, cache, review, or block
+  -> build staged + shadow delta review target
+  -> shallow or deep review when needed
   -> Claude CLI review
   -> parse review JSON
   -> confidence / evidence / policy
   -> coverage gate
   -> selected local checks
+  -> stale-review envelope check
   -> protection brief
   -> history logging
 ```
@@ -279,6 +350,7 @@ cold-review.sh
 Important runtime modules:
 
 - `cold_eyes/engine.py`: unified orchestration and default setting resolution
+- `cold_eyes/envelope.py`: v2 review envelope, shadow delta, cache matching, and no-silent-pass delta blocks
 - `cold_eyes/git.py`: diff scope collection and diff construction
 - `cold_eyes/target.py`: target sentinel for staged, unstaged, untracked, partial-stage, and high-risk unreviewed file visibility
 - `cold_eyes/cli.py`: public CLI and hidden retired `--v2` compatibility
@@ -309,6 +381,16 @@ Key defaults:
 - `COLD_REVIEW_DIRTY_WORKTREE_POLICY=warn`
 - `COLD_REVIEW_UNTRACKED_POLICY=warn`
 - `COLD_REVIEW_PARTIAL_STAGE_POLICY=block-high-risk`
+- `COLD_REVIEW_SHADOW_SCOPE=working_delta`
+- `COLD_REVIEW_INCLUDE_UNTRACKED=true`
+- `COLD_REVIEW_ENABLE_ENVELOPE_CACHE=true`
+- `COLD_REVIEW_MAX_SHADOW_DELTA_FILES=8`
+- `COLD_REVIEW_MAX_SHADOW_DELTA_BYTES=60000`
+- `COLD_REVIEW_INFRA_FAILURE_POLICY=block_when_review_required`
+- `COLD_REVIEW_LOCK_ACTIVE_POLICY=block_when_review_required`
+- `COLD_REVIEW_STALE_REVIEW_POLICY=block`
+- `COLD_REVIEW_DOCS_ONLY_POLICY=skip_safe`
+- `COLD_REVIEW_GENERATED_ONLY_POLICY=skip_safe`
 - `COLD_REVIEW_CHECKS=auto`
 - `COLD_REVIEW_CHECK_TIMEOUT_SEC=120`
 - `COLD_REVIEW_AGENT_BRIEF=on`
@@ -317,11 +399,12 @@ Key defaults:
 
 Notes:
 
-- `COLD_REVIEW_SCOPE=staged` reviews only `git diff --cached`.
+- `COLD_REVIEW_SCOPE=staged` keeps `git diff --cached` as the primary target; v2 still scans source/config working-tree delta.
 - `COLD_REVIEW_SCOPE=working` restores the old full working-tree behavior.
 - `COLD_REVIEW_SCOPE=head` reviews staged and unstaged changes against `HEAD`, but not untracked files.
 - `COLD_REVIEW_SCOPE=pr-diff` reviews branch diff against `COLD_REVIEW_BASE`.
 - Target sentinel policy values are `ignore`, `warn`, `block-high-risk`, and `block`.
+- `gate_state` is the v2 protection signal. Common healthy states are `protected`, `protected_cached`, `skipped_no_change`, and `skipped_safe`; block states start with `blocked_`.
 - `COLD_REVIEW_CHECKS=off` disables automatic local checks.
 - `COLD_REVIEW_AGENT_BRIEF=off` disables the Agent repair brief and rerun protocol.
 - `COLD_REVIEW_INTENT_CONTEXT=off` disables intent capsule extraction.

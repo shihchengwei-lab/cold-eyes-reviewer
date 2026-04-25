@@ -163,6 +163,32 @@ def main():
     parser.add_argument("--partial-stage-policy", default=None,
                         choices=["ignore", "warn", "block-high-risk", "block"],
                         help="How partially staged files are handled")
+    parser.add_argument("--shadow-scope", default=None,
+                        choices=["off", "none", "working_delta"],
+                        help="Fast shadow scan for changes outside primary scope")
+    parser.add_argument("--include-untracked", action="store_true", default=None,
+                        help="Include untracked files in the shadow scan")
+    parser.add_argument("--disable-envelope-cache", action="store_true",
+                        help="Disable protected-envelope cache hits")
+    parser.add_argument("--max-shadow-delta-files", type=int, default=None,
+                        help="Maximum source/config shadow files to include")
+    parser.add_argument("--max-shadow-delta-bytes", type=int, default=None,
+                        help="Maximum bytes per source/config shadow delta")
+    parser.add_argument("--infra-failure-policy", default=None,
+                        choices=["pass-and-log", "block_when_review_required"],
+                        help="How reviewer infrastructure failures are handled")
+    parser.add_argument("--lock-active-policy", default=None,
+                        choices=["skip", "block_when_review_required"],
+                        help="How active review locks are handled")
+    parser.add_argument("--stale-review-policy", default=None,
+                        choices=["warn", "block"],
+                        help="How file changes during review are handled")
+    parser.add_argument("--docs-only-policy", default=None,
+                        choices=["skip_safe", "shallow"],
+                        help="How docs-only changes are handled")
+    parser.add_argument("--generated-only-policy", default=None,
+                        choices=["skip_safe", "shallow"],
+                        help="How generated-only changes are handled")
     parser.add_argument("--fail-on-unreviewed-high-risk",
                         action="store_true", default=None,
                         help="Block if a high-risk file was not fully reviewed")
@@ -171,6 +197,8 @@ def main():
     parser.add_argument("--check-timeout-sec", type=int, default=None,
                         help="Timeout per local check in seconds (default: 120)")
     parser.add_argument("--hook-input-path", default=None,
+                        help=argparse.SUPPRESS)
+    parser.add_argument("--lock-active", action="store_true",
                         help=argparse.SUPPRESS)
     parser.add_argument("--v2", action="store_true",
                         help=argparse.SUPPRESS)
@@ -191,7 +219,7 @@ def main():
     args = parser.parse_args()
 
     if getattr(args, "v2", False):
-        print("warning: --v2 is retired; using unified v1", file=sys.stderr)
+        print("warning: --v2 is retired; using unified v2", file=sys.stderr)
 
     if args.command == "init":
         result = run_init(profile=args.profile, force=args.force)
@@ -312,7 +340,18 @@ def main():
                      check_timeout_sec=args.check_timeout_sec,
                      dirty_worktree_policy=args.dirty_worktree_policy,
                      untracked_policy=args.untracked_policy,
-                     partial_stage_policy=args.partial_stage_policy)
+                     partial_stage_policy=args.partial_stage_policy,
+                     shadow_scope=args.shadow_scope,
+                     include_untracked=args.include_untracked,
+                     enable_envelope_cache=not args.disable_envelope_cache,
+                     max_shadow_delta_files=args.max_shadow_delta_files,
+                     max_shadow_delta_bytes=args.max_shadow_delta_bytes,
+                     infra_failure_policy=args.infra_failure_policy,
+                     lock_active_policy=args.lock_active_policy,
+                     stale_review_policy=args.stale_review_policy,
+                     docs_only_policy=args.docs_only_policy,
+                     generated_only_policy=args.generated_only_policy,
+                     lock_active=args.lock_active)
         result = _attach_auto_tune(result)
     print(json.dumps(result, ensure_ascii=False))
 

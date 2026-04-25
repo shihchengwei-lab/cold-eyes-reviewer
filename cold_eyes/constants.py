@@ -13,6 +13,7 @@ HISTORY_FILE = os.path.join(
 )
 
 SCHEMA_VERSION = 1
+GATE_SCHEMA_VERSION = 2
 SEVERITY_ORDER = {"critical": 3, "major": 2, "minor": 1}
 CONFIDENCE_ORDER = {"high": 3, "medium": 2, "low": 1}
 
@@ -23,6 +24,19 @@ STATE_OVERRIDDEN = "overridden"
 STATE_SKIPPED = "skipped"
 STATE_INFRA_FAILED = "infra_failed"
 STATE_REPORTED = "reported"
+
+# Gate states are the authoritative v2 protection states.  The legacy `state`
+# field remains for compatibility with existing stats and history readers.
+GATE_PROTECTED = "protected"
+GATE_PROTECTED_CACHED = "protected_cached"
+GATE_SKIPPED_NO_CHANGE = "skipped_no_change"
+GATE_SKIPPED_SAFE = "skipped_safe"
+GATE_BLOCKED_ISSUE = "blocked_issue"
+GATE_BLOCKED_UNREVIEWED_DELTA = "blocked_unreviewed_delta"
+GATE_BLOCKED_STALE_REVIEW = "blocked_stale_review"
+GATE_BLOCKED_INFRA = "blocked_infra"
+GATE_BLOCKED_LOCK_ACTIVE = "blocked_lock_active"
+GATE_OFF_EXPLICIT = "off_explicit"
 
 BUILTIN_IGNORE = [
     "*.lock", "package-lock.json", "pnpm-lock.yaml", "yarn.lock",
@@ -65,6 +79,7 @@ DEPLOY_FILES = [
     "cold_eyes/autotune.py",
     "cold_eyes/health.py",
     "cold_eyes/target.py",
+    "cold_eyes/envelope.py",
     "cold_eyes/intent.py", "cold_eyes/protection.py",
     "cold_eyes/local_checks.py",
     "cold_eyes/override.py", "cold_eyes/doctor.py",

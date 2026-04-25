@@ -6,7 +6,7 @@ Cold Eyes Reviewer follows [Semantic Versioning 2.0.0](https://semver.org/).
 
 | Bump | When |
 |------|------|
-| **MAJOR** (X.0.0) | Breaking changes to: CLI interface, hook JSON output format, history schema (`schema_version`), or environment variable semantics |
+| **MAJOR** (X.0.0) | Breaking changes to: CLI interface, hook JSON output format, history schema / gate schema semantics, gate decision behavior, or environment variable semantics |
 | **MINOR** (0.X.0) | New features: CLI commands, environment variables, policy keys, history fields, eval modes |
 | **PATCH** (0.0.X) | Bug fixes, documentation improvements, test additions, CI changes |
 
@@ -23,4 +23,6 @@ The release workflow (`.github/workflows/release.yml`) enforces tag-to-`__versio
 
 ## History schema versioning
 
-The `schema_version` field in review output is versioned independently from the package version. It only increments on breaking changes to the review JSON structure. Current schema version: 1.
+The model review `schema_version` field is versioned independently from the package version. It only increments on breaking changes to the LLM review JSON structure. Current model review schema version: 1.
+
+The v2 gate envelope has its own `GATE_SCHEMA_VERSION` because gate state, cache identity, and no-silent-pass decisions are outside the LLM review issue schema. Current gate envelope schema version: 2.

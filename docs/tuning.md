@@ -85,7 +85,8 @@ Look at the `top_noisy_paths` section. Add patterns for:
 - Generated files (`*.generated.*`, `*.min.js`)
 - Vendor code (`vendor/`, `node_modules/`)
 - Binary assets (`*.png`, `*.jpg`)
-- Lock files (`package-lock.json`, `poetry.lock`)
+
+Avoid ignoring lockfiles, package manifests, workflow files, hook scripts, or gate-engine files unless that is an intentional repo policy. v2 treats them as config/high-risk delta because they can change runtime behavior.
 
 ## Auto-tune
 

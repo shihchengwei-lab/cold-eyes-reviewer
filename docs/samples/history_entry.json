@@ -5,9 +5,19 @@
   "mode": "block",
   "model": "opus",
   "state": "blocked",
+  "gate_state": "blocked_issue",
   "min_confidence": "medium",
   "scope": "staged",
   "schema_version": 1,
+  "envelope": {
+    "schema_version": 2,
+    "tool_version": "2.0.0",
+    "primary_scope": "staged",
+    "shadow_scope": "working_delta",
+    "review_required": true,
+    "safe_only": false,
+    "envelope_hash": "sha256:example"
+  },
   "diff_stats": {
     "files": 1,
     "lines": 8,

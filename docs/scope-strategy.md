@@ -7,7 +7,7 @@ Cold Eyes supports four diff scopes. Each has different trade-offs for coverage,
 | Scope | What it sees | Includes untracked | Best for |
 |-------|-------------|-------------------|----------|
 | `working` | Staged + unstaged + untracked | Yes | Solo development, observation |
-| `staged` | Only `git add`-ed changes | No | Pre-commit gate |
+| `staged` | Staged primary target plus v2 shadow scan for source/config delta | Shadow scan only | Pre-commit gate |
 | `head` | Staged + unstaged (vs HEAD) | No | Quick review of all edits |
 | `pr-diff` | Diff against a base branch | No | CI / merge review |
 
@@ -15,7 +15,7 @@ Cold Eyes supports four diff scopes. Each has different trade-offs for coverage,
 
 ### Default gate posture
 
-Use `staged` (the default). It only reviews what you explicitly staged with `git add`, so a dirty working tree or handoff-only session does not trigger a model review.
+Use `staged` (the default). Staged files are the primary review target, so a dirty working tree or handoff-only session does not automatically trigger a full model review. v2 still scans unstaged and untracked source/config delta and either adds it to a small shadow review target or blocks if it cannot be safely reviewed.
 
 ```yaml
 # .cold-review-policy.yml
@@ -56,7 +56,7 @@ Larger scopes produce larger diffs, which increase truncation risk:
 
 | Scope | Truncation risk | Why |
 |-------|----------------|-----|
-| `staged` | Low | User controls what's staged |
+| `staged` | Low | User controls the primary target; shadow delta budget stays small |
 | `head` | Medium | All uncommitted changes |
 | `working` | Medium-High | Includes untracked files |
 | `pr-diff` | High | Entire branch diff may be large |
@@ -81,9 +81,11 @@ truncation_policy: fail-closed
 
 ### Dirty working tree + `staged` scope
 
-If you have unstaged changes AND use `staged` scope, Cold Eyes only sees the staged portion. This is intentional — it matches the "review what I'm about to commit" mental model.
+If you have unstaged changes AND use `staged` scope, Cold Eyes treats the staged portion as the primary target. This is intentional: it matches the "review what I'm about to commit" mental model.
 
-The target sentinel records files outside the configured review target. By default it warns for unstaged or untracked files and blocks high-risk partial-stage files, so a staged pass is not silently treated as a whole-working-tree pass.
+The v2 envelope then scans the rest of the working-tree delta. Unstaged or untracked source/config files are reviewed as shadow delta when they fit the file/byte budget, or blocked as `blocked_unreviewed_delta` when they do not. Docs/generated/image-only changes can skip safely without an LLM call.
+
+The target sentinel still records files outside the configured review target for status visibility, and high-risk partial-stage files remain a block risk.
 
 ### `working` scope + noise
 
@@ -98,4 +100,4 @@ node_modules/
 
 ### `pr-diff` scope + missing base
 
-If `base` is not set when using `pr-diff`, Cold Eyes raises a ConfigError and the engine records `infra_failed`. Engine-level `infra_failed` is pass-and-log; shell-level failures that prevent valid engine JSON still fail closed in `cold-review.sh`.
+If `base` is not set when using `pr-diff`, Cold Eyes raises a ConfigError. When review is required, v2 blocks as `blocked_infra`; shell-level failures that prevent valid engine JSON still fail closed in `cold-review.sh`.

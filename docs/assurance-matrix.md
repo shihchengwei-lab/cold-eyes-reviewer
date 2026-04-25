@@ -35,12 +35,15 @@ How Cold Eyes handles non-review situations.
 
 | Situation | Behavior | State | Configurable |
 |---|---|---|---|
-| Empty diff (no changes) | Skip review, log | `skipped` | No |
+| Empty diff (no changes) | Skip review, log | `skipped` + `skipped_no_change` | No |
+| Docs/generated/image-only diff | Skip safe by default | `skipped` + `skipped_safe` | `docs_only_policy`, `generated_only_policy` |
+| Matching protected envelope | Reuse cache without model call | `skipped` + `protected_cached` | `enable_envelope_cache` |
+| Source/config shadow delta too large or unreviewed | Block before model call | `blocked` + `blocked_unreviewed_delta` | shadow delta budget keys |
 | Diff exceeds token budget | Truncate by file priority, review partial | `blocked` or `passed` with truncation warning | `truncation_policy`: warn / soft-pass / fail-closed |
-| Binary-only diff | Skip review, log | `skipped` | No |
-| Claude CLI not found | Engine logs and passes; shell-level invalid output still fails closed | `infra_failed` | No |
-| CLI timeout / error | Engine logs and passes; shell-level invalid output still fails closed | `infra_failed` | No |
-| Malformed model output | Engine logs and passes; shell-level invalid output still fails closed | `infra_failed` | No |
+| Binary-only diff | Skip review, log when safe | `skipped` + `skipped_safe` | No |
+| Claude CLI not found | Blocks when review is required; safe/no-change paths do not manufacture a block | `blocked` + `blocked_infra` or `infra_failed` | `infra_failure_policy` |
+| CLI timeout / error | Blocks when review is required; safe/no-change paths do not manufacture a block | `blocked` + `blocked_infra` or `infra_failed` | `infra_failure_policy` |
+| Malformed model output | Blocks when review is required | `blocked` + `blocked_infra` | `infra_failure_policy` |
 | Python interpreter missing | Block (fail-closed) | Shell exits non-zero | No |
 | Policy file too large | Warn + truncate at limit | Normal | 50-line content limit |
 

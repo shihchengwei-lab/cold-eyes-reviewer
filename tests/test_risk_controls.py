@@ -358,7 +358,9 @@ class TestZeroFileCountSkip:
         orig_build = eng_mod.build_diff
         orig_filter = eng_mod.filter_file_list
         orig_rank = eng_mod.rank_file_list
+        orig_looks_like_git_repo = eng_mod._looks_like_git_repo
 
+        eng_mod._looks_like_git_repo = lambda repo_root: False
         eng_mod.collect_files = lambda scope, base=None: (["phantom.py"], set())
         eng_mod.filter_file_list = lambda files, ignore_file="": files
         eng_mod.rank_file_list = lambda files, untracked: files
@@ -381,6 +383,7 @@ class TestZeroFileCountSkip:
             eng_mod.build_diff = orig_build
             eng_mod.filter_file_list = orig_filter
             eng_mod.rank_file_list = orig_rank
+            eng_mod._looks_like_git_repo = orig_looks_like_git_repo
 
 
 # ---------------------------------------------------------------------------

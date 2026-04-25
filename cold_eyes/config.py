@@ -18,14 +18,25 @@ AUTO_POLICY_DIR = os.path.join(
 _INT_KEYS = {
     "max_tokens", "context_tokens", "max_input_tokens",
     "minimum_coverage_pct", "check_timeout_sec",
+    "max_shadow_delta_files", "max_shadow_delta_bytes",
 }
-_BOOL_KEYS = {"fail_on_unreviewed_high_risk"}
+_BOOL_KEYS = {
+    "fail_on_unreviewed_high_risk",
+    "include_untracked",
+    "enable_envelope_cache",
+}
 _VALUE_SETS = {
     "coverage_policy": {"warn", "block", "fail-closed"},
     "checks": {"auto", "off"},
     "dirty_worktree_policy": {"ignore", "warn", "block-high-risk", "block"},
     "untracked_policy": {"ignore", "warn", "block-high-risk", "block"},
     "partial_stage_policy": {"ignore", "warn", "block-high-risk", "block"},
+    "shadow_scope": {"off", "none", "working_delta"},
+    "infra_failure_policy": {"pass-and-log", "block_when_review_required"},
+    "lock_active_policy": {"skip", "block_when_review_required"},
+    "stale_review_policy": {"warn", "block"},
+    "docs_only_policy": {"skip_safe", "shallow"},
+    "generated_only_policy": {"skip_safe", "shallow"},
 }
 _VALID_KEYS = {
     "mode", "model", "shallow_model", "max_tokens", "context_tokens",
@@ -34,6 +45,10 @@ _VALID_KEYS = {
     "base", "truncation_policy", "minimum_coverage_pct", "coverage_policy",
     "fail_on_unreviewed_high_risk", "checks", "check_timeout_sec",
     "dirty_worktree_policy", "untracked_policy", "partial_stage_policy",
+    "shadow_scope", "include_untracked", "enable_envelope_cache",
+    "max_shadow_delta_files", "max_shadow_delta_bytes",
+    "infra_failure_policy", "lock_active_policy", "stale_review_policy",
+    "docs_only_policy", "generated_only_policy",
 }
 
 

@@ -4,15 +4,15 @@
 
 1. Check history: `tail -5 ~/.claude/cold-review-history.jsonl | python -m json.tool`
 2. Run diagnostics: `python ~/.claude/scripts/cold_eyes/cli.py doctor`
-3. Look for `skipped` entries — common causes: `COLD_REVIEW_MODE=off`, not in a git repo, no changes, lock held
-4. Look for `infra_failed` entries — check `failure_kind` and `stderr_excerpt`
+3. Look for `skipped` entries and check `gate_state`: `skipped_no_change`, `skipped_safe`, `protected_cached`, or `off_explicit`
+4. Look for `infra_failed` or `blocked_infra` entries — check `failure_kind` and `stderr_excerpt`
 
 ## Every commit is blocked
 
 Distinguish between **infrastructure blocks** and **review blocks**:
 
-- `infra_failed` → the reviewer itself is broken, not your code. Check `failure_kind` in history. Common: Claude CLI auth expired (`claude -d`), timeout, encoding error.
-- `blocked` → real issues found. Read the block reason. If it's a false positive, use `arm-override --reason "..."` for one-time bypass.
+- `blocked_infra` → the reviewer itself could not verify a review-required change. Check `failure_kind` in history. Common: Claude CLI auth expired (`claude -d`), timeout, encoding error.
+- `blocked_issue` / `blocked_unreviewed_delta` / `blocked_stale_review` → Cold Eyes blocked the current changeset. Read the block reason. If it's a false positive, use `arm-override --reason "..."` for one-time bypass.
 - `truncation_policy: fail-closed` blocks all truncated diffs. Switch to `warn` (default) or increase `max_tokens`.
 
 ## False positive blocks
@@ -64,7 +64,7 @@ python ~/.claude/scripts/cold_eyes/cli.py remove-health-schedule
 
 - **Use Git Bash**, not PowerShell or CMD. The shell shim is Bash.
 - **Encoding errors** were fixed in v1.2.0 (forced UTF-8 in subprocess). If you see `UnicodeDecodeError`, update to latest version.
-- **Lock reliability** — `kill -0` stale PID detection is less reliable in Git Bash. If reviews stall, delete `~/.claude/.cold-review-lock.d/` manually.
+- **Lock reliability** — `kill -0` stale PID detection is less reliable in Git Bash. If reviews stall, delete `~/.claude/.cold-review-lock.d/` manually. v2 records changed-source lock contention as `blocked_lock_active`.
 
 ## History file is too large
 
@@ -91,6 +91,6 @@ python ~/.claude/scripts/cold_eyes/cli.py history-archive --before 2026-01-01
 When diffs exceed the token budget, some files are skipped. Options:
 
 1. **Increase budget:** set `COLD_REVIEW_MAX_TOKENS=20000` (or in policy file: `max_tokens: 20000`)
-2. **Exclude noise:** add patterns to `.cold-review-ignore` (e.g., `*.lock`, `dist/*`)
-3. **Use smaller scope:** `COLD_REVIEW_SCOPE=staged` reviews only staged changes
-4. **Relax policy:** set `truncation_policy: soft-pass` (truncated diffs with no issues pass silently)
+2. **Exclude noise:** add patterns to `.cold-review-ignore` (e.g., `dist/*`, generated fixtures). Avoid ignoring package locks, workflow files, hook scripts, or gate-engine files unless that is intentional policy.
+3. **Use smaller primary scope:** `COLD_REVIEW_SCOPE=staged` keeps staged changes as the main target while v2 still scans source/config shadow delta
+4. **Adjust delta budget:** raise `COLD_REVIEW_MAX_SHADOW_DELTA_FILES` or `COLD_REVIEW_MAX_SHADOW_DELTA_BYTES` if shadow delta is intentionally larger
