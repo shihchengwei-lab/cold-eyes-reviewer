@@ -51,7 +51,7 @@ Layer 3 - Modules
 | `target.py` | Review-target sentinel for staged/unstaged/untracked/partial-stage visibility and target policy decisions |
 | `local_checks.py` | Risk-based local check selection, changed-file targeting for soft checks, execution, result summaries, and hard-check block reason |
 | `gates/result.py` | Normalizes local check output into structured findings |
-| `protection.py` | Agent repair task, user-facing message, fresh-review rerun protocol, compact history summary |
+| `protection.py` | Agent repair task, user-facing talking points, fresh-review rerun protocol, compact history summary |
 | `history.py` | History logging, stats, quality report, prune, archive |
 | `config.py` | Flat policy file loader and supported key validation |
 | `doctor.py` | Environment checks, install verification, repo init |

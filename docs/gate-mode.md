@@ -7,10 +7,11 @@ Gate mode turns Cold Eyes into a Claude Code Stop-hook blocking gate. It is stil
 Gate mode reviews the effective v2 review envelope. The default primary scope is `staged`, so normal reading, handoff review, and scratch edits do not trigger a full model review on every Stop hook. Stage the changes you want reviewed before ending the turn. v2 still scans unstaged and untracked source/config delta and either reviews it as a small shadow target or blocks if it cannot be safely reviewed. Use `working` manually when you want Cold Eyes to review every uncommitted working-tree change as the primary target. Cold Eyes does not know the full product intent, all untouched code paths, or every external contract. Its job is to stop obvious high-cost risk before Claude Code continues.
 
 When gate mode blocks, the hook reason is agent-first: it tells the agent what
-to fix, includes a plain-language message to relay to the user, and gives the
-main agent a fresh-review rerun protocol. The user does not need to remember a
-manual command: the agent fixes the current diff, runs relevant checks, then
-ends the turn so the next Stop hook runs Cold Eyes again.
+to fix, includes user-facing talking points the agent must summarize in its own
+words, and gives the main agent a fresh-review rerun protocol. Those talking
+points are not verbatim user output. The user does not need to remember a manual
+command: the agent fixes the current diff, runs relevant checks, then ends the
+turn so the next Stop hook runs Cold Eyes again.
 
 Cold Eyes does not use previous block records as repair memory. If the next
 hook blocks again, that result is a new cold review of the current diff.

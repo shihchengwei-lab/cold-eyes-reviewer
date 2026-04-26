@@ -231,7 +231,7 @@ Present when Cold Eyes attached a non-engineer protection brief or recorded inte
 | Field | Type | Description |
 |-------|------|-------------|
 | `agent_task` | bool | Whether the block produced an agent-facing repair task |
-| `user_message` | bool | Whether the block produced a plain-language message for the agent to relay |
+| `user_message` | bool | Whether the block produced user-facing talking points for the agent to summarize in context |
 | `block_type` | string | `finding_block`, `coverage_block`, `check_block`, `unreviewed_delta_block`, `stale_review_block`, `infra_block`, `lock_block`, `intent_mismatch`, or `incomplete_review` |
 | `risk_summary` | array | Short non-engineer risk labels |
 | `intent.status` | string | Intent capsule status, such as `found`, `missing_transcript`, `disabled`, or `skipped_budget` |

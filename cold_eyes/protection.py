@@ -1,7 +1,8 @@
 """Agent-facing protection brief for non-engineer users.
 
 This module does not decide pass/block. It only repackages an existing block
-outcome into instructions that an agent can act on and explain plainly.
+outcome into instructions that an agent can act on and explain plainly. The
+user-facing text is source material for the agent, not copy-paste output.
 """
 
 from __future__ import annotations
@@ -49,7 +50,7 @@ def build_protection(
     issues = _issues(outcome, review)
     block_type = _block_type(outcome, issues)
     risk_summary = _risk_summary(outcome, issues, block_type)
-    user_message = _user_message(risk_summary, block_type, language)
+    user_message = _user_talking_points(risk_summary, block_type, language)
     agent_task = _agent_task(outcome, issues, risk_summary, user_message, block_type)
     rerun_protocol = _rerun_protocol(block_type)
     return {
@@ -68,10 +69,10 @@ def format_agent_reason(protection: dict, original_reason: str = "") -> str:
         (
             "Cold Eyes blocked this change. Agent: fix the current diff, run "
             "relevant checks, then end the turn so the next Stop hook starts a "
-            "fresh Cold Eyes review."
+            "fresh Cold Eyes review. Do not quote this brief verbatim to the user."
         ),
         "",
-        "Message to relay to the user:",
+        "User-facing talking points (summarize in your own words; do not quote verbatim):",
         protection.get("user_message", ""),
         "",
         "Automatic rerun protocol:",
@@ -186,32 +187,53 @@ def _category_label(category: str) -> str:
     return labels.get(category, "Cold Eyes 發現高風險問題")
 
 
-def _user_message(risk_summary: list[str], block_type: str, language: str | None) -> str:
+def _user_talking_points(risk_summary: list[str], block_type: str, language: str | None) -> str:
     risks = "、".join(risk_summary) if risk_summary else "有高風險"
     if _is_english(language):
+        if block_type == "lock_block":
+            return (
+                "Cold Eyes could not complete verification because another review is already "
+                "active. The agent should wait for that review to finish, then end the turn "
+                "again for a fresh review. No user action is required."
+            )
         return (
             "Cold Eyes paused this change because it found a risk the agent should fix first. "
-            "I will repair it and let the next Stop hook run a fresh review. "
-            "You do not need to run a command manually."
+            "The agent should handle the fix, run relevant checks, and let the next Stop hook "
+            "run a fresh review. No manual command is required from the user."
         )
     if block_type == "coverage_block":
         return (
-            f"Cold Eyes 先擋下來了，因為{risks}。我會先讓 Agent 補齊或縮小改動，"
-            "再讓下一次 Stop hook 自動做全新的冷審；你不用手動跑指令。"
+            f"Cold Eyes 先擋下來了，因為{risks}。Agent 應補齊或縮小改動，"
+            "再讓下一次 Stop hook 自動做全新的冷審；使用者不需要手動跑指令。"
         )
     if block_type == "target_block":
         return (
             f"Cold Eyes 先擋下來了，因為{risks}。它這次只審設定中的 review 目標，"
-            "我會先補齊要審的變更或確認哪些檔案要刻意排除，然後再讓下一次 Stop hook 重新冷審。"
+            "Agent 應補齊要審的變更或確認哪些檔案要刻意排除，然後再讓下一次 Stop hook 重新冷審。"
         )
     if block_type == "check_block":
         return (
-            f"Cold Eyes 先擋下來了，因為{risks}。我會讓 Agent 依照本機檢查結果修正，"
-            "修完後下一次 Stop hook 會自動重新冷審；你不用自己看程式碼，也不用手動跑指令。"
+            f"Cold Eyes 先擋下來了，因為{risks}。Agent 應依照本機檢查結果修正，"
+            "修完後下一次 Stop hook 會自動重新冷審；使用者不需要手動跑指令。"
+        )
+    if block_type == "lock_block":
+        return (
+            "Cold Eyes 這次沒有完成驗證，因為另一個 review 還在進行。"
+            "Agent 應等該 review 結束後，再 end turn 觸發新的冷審；使用者不需要操作。"
+        )
+    if block_type == "infra_block":
+        return (
+            f"Cold Eyes 這次沒有完成驗證，因為{risks}。Agent 應先處理工具問題或稍後重跑，"
+            "再觸發新的冷審；使用者不需要手動跑指令。"
+        )
+    if block_type == "stale_review_block":
+        return (
+            f"Cold Eyes 先擋下來了，因為{risks}。Agent 應保持目前改動並重新觸發冷審，"
+            "不要把舊 review 當成已通過；使用者不需要操作。"
         )
     return (
-        f"Cold Eyes 先擋下來了，因為{risks}。你不用自己看程式碼，也不用手動跑指令；"
-        "我會先讓 Agent 修正後，再讓下一次 Stop hook 自動做全新的冷審。"
+        f"Cold Eyes 先擋下來了，因為{risks}。Agent 應先修正目前 diff、跑必要檢查，"
+        "再讓下一次 Stop hook 自動做全新的冷審；使用者不需要手動跑指令。"
     )
 
 
@@ -223,14 +245,15 @@ def _agent_task(
     block_type: str,
 ) -> str:
     lines = [
-        "1. Relay the user message in plain language before editing.",
-        "2. Fix the blocked risk in the current diff. Do not ask the user to review code.",
+        "1. If you update the user, summarize the talking points in your own words. Do not quote this brief verbatim.",
+        "2. Follow the repair approach for this block type. Do not ask the user to review code "
+        "unless a product decision is required.",
         "3. Keep the fix narrow and preserve unrelated user changes.",
         "4. Run the relevant local checks if available.",
         "5. End the turn so the next Stop hook runs a fresh Cold Eyes review.",
         "6. If Cold Eyes blocks again, follow the latest block as a new cold review.",
         "",
-        f"User message: {user_message}",
+        f"User-facing talking points: {user_message}",
         f"Risk summary: {', '.join(risk_summary)}",
     ]
     if block_type == "coverage_block":
@@ -322,7 +345,7 @@ def _intent_summary(intent: dict | None) -> dict:
 
 def _rerun_protocol(block_type: str) -> dict:
     steps = [
-        "Relay the plain-language user message before editing.",
+        "If the user needs an update, translate the talking points into a short context-specific message; do not quote verbatim.",
         _repair_step(block_type),
         "Run relevant local checks when available.",
         "End the turn so Claude Code's next Stop hook runs Cold Eyes again.",

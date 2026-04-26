@@ -40,7 +40,9 @@ def test_block_finding_gets_agent_task_and_user_message():
     assert protected["protection"]["rerun_protocol"]["memory_policy"] == "fresh_review_only"
     assert protected["protection"]["rerun_protocol"]["user_action_required"] is False
     assert protected["protection"]["block_type"] == "finding_block"
-    assert "Message to relay to the user" in protected["reason"]
+    assert "User-facing talking points" in protected["reason"]
+    assert "do not quote verbatim" in protected["reason"]
+    assert "Message to relay to the user" not in protected["reason"]
     assert "Automatic rerun protocol" in protected["reason"]
     assert "fresh Cold Eyes review" in protected["reason"]
     assert "Agent repair task" in protected["reason"]
@@ -76,7 +78,35 @@ def test_user_message_says_user_does_not_need_manual_command():
 
     protected = attach_protection(outcome, review=review)
 
-    assert "不用手動跑指令" in protected["protection"]["user_message"]
+    assert "不需要手動跑指令" in protected["protection"]["user_message"]
+    assert "我會先讓 Agent" not in protected["protection"]["user_message"]
+    assert "你不用自己看程式碼" not in protected["protection"]["user_message"]
+
+
+def test_lock_block_uses_context_specific_talking_points():
+    outcome = {
+        "action": "block",
+        "state": "blocked",
+        "final_action": "lock_block",
+        "reason": "Cold Eyes could not verify this turn because another review is already active.",
+        "envelope": {
+            "review_target": {"files": ["src/app.py"]},
+            "unreviewed": {"files": []},
+        },
+    }
+
+    protected = attach_protection(outcome)
+
+    message = protected["protection"]["user_message"]
+    assert protected["protection"]["block_type"] == "lock_block"
+    assert "另一個 review 還在進行" in message
+    assert "使用者不需要操作" in message
+    assert "修正目前 diff" not in message
+    assert "我會先讓 Agent" not in message
+    assert "你不用自己看程式碼" not in message
+    assert "User-facing talking points" in protected["reason"]
+    assert "Message to relay to the user" not in protected["reason"]
+    assert "do not quote this brief verbatim" in protected["protection"]["agent_task"].lower()
 
 
 def test_agent_brief_off_does_not_add_rerun_protocol():
@@ -139,7 +169,7 @@ def test_check_block_gets_local_check_repair_task():
 
     assert protected["protection"]["block_type"] == "check_block"
     assert "本機檢查發現明確失敗" in protected["protection"]["risk_summary"][0]
-    assert "不用手動跑指令" in protected["protection"]["user_message"]
+    assert "不需要手動跑指令" in protected["protection"]["user_message"]
     assert "Local checks to fix" in protected["protection"]["agent_task"]
     assert "tests/test_app.py::test_guard" in protected["protection"]["agent_task"]
 

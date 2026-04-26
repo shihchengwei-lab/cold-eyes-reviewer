@@ -51,7 +51,7 @@ These are the six check items defined in the system prompt (`cold-review-prompt.
 
 **No code execution.** Cold Eyes never generates, modifies, or executes code. It reads diffs and produces JSON verdicts.
 
-**Agent-first block output.** When Cold Eyes blocks, it can package the result as an agent repair task, a plain-language message for the agent to relay to the user, and a rerun protocol. The rerun protocol belongs to the main agent: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. This packaging does not change the underlying pass/block decision.
+**Agent-first block output.** When Cold Eyes blocks, it can package the result as an agent repair task, user-facing talking points for the agent to summarize in context, and a rerun protocol. The talking points are source material, not text to paste verbatim. The rerun protocol belongs to the main agent: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. This packaging does not change the underlying pass/block decision.
 
 ## Blocking direction
 

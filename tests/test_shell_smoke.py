@@ -354,7 +354,7 @@ class TestShellParserFailClosed:
 
     def test_block_action_preserves_agent_brief_reason(self):
         reason = (
-            "Message to relay to the user:\nplain text\n\n"
+            "User-facing talking points (summarize in your own words; do not quote verbatim):\nplain text\n\n"
             "Automatic rerun protocol:\nOwner: main_agent\nTrigger: next_stop_hook\n\n"
             "Agent repair task:\nfix it\n\n"
             "Local checks to fix:\n- [hard] test_runner: status=fail"
