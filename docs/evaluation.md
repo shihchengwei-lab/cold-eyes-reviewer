@@ -90,11 +90,15 @@ All 33 cases are indexed in `evals/manifest.json` with per-category counts. `val
 
 ### Why the defaults are `threshold=critical, confidence=medium`
 
-1. **critical threshold** — Only blocks on critical-severity issues (security vulnerabilities, data loss, crash bugs). Major issues get reported but don't block. This minimizes friction while catching the most dangerous problems.
+1. **critical threshold** — Only blocks on critical-severity issues. This includes security vulnerabilities, data loss, crash bugs, and evidence-backed correctness bugs that make production runtime fail directly (for example dangling imports/references, removed required error handling, resource leaks, or partial state updates). Major issues get reported but don't block. This minimizes friction while catching the most dangerous problems.
 
 2. **medium confidence** — Includes issues the model is moderately sure about. Setting `high` drops recall from 1.00 to 0.88 because some legitimate issues (e.g., dangling imports with indirect evidence) get confidence=medium. Setting `low` adds no benefit in this eval set but in real usage may increase false positives.
 
-3. The `critical/medium` combination achieves F1=1.00 on the current eval set with zero false positives.
+3. The deterministic `critical/medium` sweep achieves F1=1.00 on the recorded eval set with zero false positives. Real-model benchmark runs can differ because they measure the reviewer model's severity calibration, not only the post-filter policy.
+
+### Real-model benchmark calibration
+
+Benchmark mode sends the eval diffs to the configured model and is the best signal for prompt calibration. A v2.0.0 Opus benchmark run over the 33-case eval set passed 28/33 cases. The misses were mostly correctness issues that the model detected but labeled `major`, so the critical-only gate reported them without blocking. The prompt now explicitly tells the reviewer to classify evidence-backed dangling imports/references, removed required error handling, resource leaks, and partial state updates as `critical` when they can directly break production runtime.
 
 ### When to change defaults
 

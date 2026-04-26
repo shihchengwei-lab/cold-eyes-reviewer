@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Calibrated the deep and shallow review prompts so evidence-backed production-breaking correctness issues — dangling imports/references, removed required error handling, resource leaks, and partial state updates — are classified as `critical` instead of being treated as ordinary `major` issues.
+- Clarified README and evaluation docs that `critical` includes production-breaking correctness bugs, while real-model benchmark results still depend on model severity calibration.
+
 ## v2.0.0 - feat: No Silent Pass Delta Gate
 
 ### What changed

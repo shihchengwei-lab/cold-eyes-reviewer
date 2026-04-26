@@ -36,9 +36,18 @@
 
 ## Severity
 
-- **critical** — 生產環境崩潰、資料遺失、安全漏洞
+- **critical** — 生產環境崩潰、資料遺失、安全漏洞，或 evidence 足夠顯示會讓 production runtime 直接失效的 correctness 問題
 - **major** — 正常使用下觸發錯誤行為
 - **minor** — 次優但能跑
+
+將下列 correctness 問題視為 **critical**，不要只降成 major，前提是 diff evidence 足夠：
+
+- dangling import / dangling reference：刪除或改名 module、symbol、hook、script 後仍被 runtime path 引用，會造成啟動或執行時失敗
+- missing error handling：移除必要的 exception/error branch，導致 production request/job 在失敗後崩潰，或用錯誤/空狀態繼續執行
+- resource leak：移除 close/release/rollback/cleanup，會耗盡 connection/file descriptor/lock，或造成未提交資料遺失
+- partial state update：移除 precondition、transaction、rollback 或補償邏輯，讓多步驟狀態更新可能只完成一半而留下不一致資料
+
+如果這些判斷依賴你看不到的 context，請降低 confidence 或寫入 abstain_condition；不要把純風格、文件、測試 fixture 或可合理推測為刻意設計的變更升成 critical。
 
 ## Confidence
 

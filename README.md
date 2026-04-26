@@ -136,7 +136,7 @@ Every issue includes severity, confidence, category, file, line_hint, a three-pa
 - `checks` — optional local-check summary with mode, results, warnings, and whether a hard check failed. Added after the model review and does not change schema version.
 
 **Severity levels:**
-- `critical` — production crash, data loss, or security breach
+- `critical` — production crash, data loss, security breach, or evidence-backed correctness bugs that make production runtime fail directly, such as dangling imports/references, removed required error handling, resource leaks, or partial state updates
 - `major` — incorrect behavior under normal use
 - `minor` — suboptimal but functional
 

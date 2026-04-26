@@ -15,7 +15,7 @@ Issues that a human reviewer would catch by reading the diff alone, without need
 | Category | Examples |
 |---|---|
 | Security | SQL injection via string concatenation, hardcoded credentials, XSS from unescaped output, path traversal, eval() on user input |
-| Correctness | Removed error handling, unclosed resources, dangling imports after deletion |
+| Correctness | Removed error handling, unclosed resources, dangling imports after deletion, partial state updates |
 | Consistency | Text contradicting nearby text within the same diff |
 | Reference | Deleted function still referenced in the same diff |
 | Complexity | Copy-paste patterns visible in the diff |
@@ -53,11 +53,11 @@ These are the six check items defined in the system prompt (`cold-review-prompt.
 
 **Agent-first block output.** When Cold Eyes blocks, it can package the result as an agent repair task, a plain-language message for the agent to relay to the user, and a rerun protocol. The rerun protocol belongs to the main agent: fix the current diff, run relevant checks, then end the turn so the next Stop hook starts a fresh Cold Eyes review. This packaging does not change the underlying pass/block decision.
 
-## False positive direction
+## Blocking direction
 
-Cold Eyes is tuned to minimize false negatives (missed real issues) at the cost of occasional false positives (flagging acceptable code). The user's knobs:
+Cold Eyes is tuned as a low-friction gate: critical issues block, major issues are reported but pass by default. Real-model benchmark runs may surface issues without blocking them when the reviewer labels them below the configured threshold. The user's knobs:
 
-- **Threshold** (`critical` / `major`) — higher threshold means fewer blocks, more FN risk
+- **Threshold** (`critical` / `major`) — higher threshold means fewer blocks, more risk that detected major issues are reported but allowed through
 - **Confidence** (`high` / `medium` / `low`) — higher confidence means fewer blocks from uncertain findings
 - **Override** (`arm-override`) — escape hatch for known-good code that triggers a false positive
 

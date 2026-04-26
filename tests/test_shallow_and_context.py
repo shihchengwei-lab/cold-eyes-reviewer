@@ -49,6 +49,20 @@ class TestShallowPrompt:
         text = build_prompt_text(language="日本語", depth="deep")
         assert "日本語" in text
 
+    def test_deep_prompt_names_critical_correctness_examples(self):
+        text = build_prompt_text(language="English", depth="deep").lower()
+        assert "dangling import" in text
+        assert "missing error handling" in text
+        assert "resource leak" in text
+        assert "partial state update" in text
+
+    def test_shallow_prompt_names_critical_correctness_examples(self):
+        text = build_prompt_text(language="English", depth="shallow").lower()
+        assert "dangling import" in text
+        assert "missing error handling" in text
+        assert "resource leak" in text
+        assert "partial state update" in text
+
     def test_default_depth_is_deep(self):
         deep_text = build_prompt_text(language="English")
         explicit_deep = build_prompt_text(language="English", depth="deep")
