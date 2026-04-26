@@ -1,5 +1,19 @@
 # Changelog
 
+## v2.1.0 - refactor: engine stages and quality visibility
+
+### Changed
+
+- Refactored `engine.run()` into three explicit pipeline stages: preflight/target decision, review execution, and final policy/history handling. The gate behavior is intended to remain unchanged; this is structure for safer future iteration.
+- Added `baseline_lock` metadata to `evals/manifest.json` so the committed deterministic baseline clearly documents its mode, threshold, confidence, case count, and update policy.
+- Added a README Quality dashboard section pointing users to `quality-report` and recording the latest real-model benchmark result: 28/33 cases, 84.8%.
+- Updated the deep review prompt's "do not check" list to avoid speculative findings about external tool availability unless the diff itself creates the dependency risk.
+- Added an integration test proving `arm-override --reason false_positive` keeps the original issues in history so FP memory can learn from them.
+
+### Test count
+
+- 668 passed, 6 skipped.
+
 ## v2.0.1 - fix: prompt and protection brief calibration
 
 ### Changed

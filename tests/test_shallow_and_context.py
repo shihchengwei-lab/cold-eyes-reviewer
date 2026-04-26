@@ -56,6 +56,11 @@ class TestShallowPrompt:
         assert "resource leak" in text
         assert "partial state update" in text
 
+    def test_deep_prompt_does_not_review_external_tool_availability(self):
+        text = build_prompt_text(language="English", depth="deep").lower()
+        assert "external tool availability" in text
+        assert "不要因為 diff 提到某個 cli" in text.lower()
+
     def test_shallow_prompt_names_critical_correctness_examples(self):
         text = build_prompt_text(language="English", depth="shallow").lower()
         assert "dangling import" in text

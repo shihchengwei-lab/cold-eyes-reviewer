@@ -229,6 +229,19 @@ class TestManifest:
         cases = load_cases(CASES_DIR)
         assert manifest["total_cases"] == len(cases)
 
+    def test_manifest_documents_baseline_lock(self):
+        manifest_path = os.path.join(PROJECT_ROOT, "evals", "manifest.json")
+        with open(manifest_path, "r", encoding="utf-8") as f:
+            manifest = json.load(f)
+
+        lock = manifest["baseline_lock"]
+        assert lock["baseline_path"] == "evals/baseline.json"
+        assert lock["mode"] == "deterministic"
+        assert lock["threshold"] == "critical"
+        assert lock["confidence"] == "medium"
+        assert lock["case_count"] == manifest["total_cases"]
+        assert "CI regression reference" in lock["description"]
+
     def test_manifest_category_matches_case_file(self):
         manifest_path = os.path.join(PROJECT_ROOT, "evals", "manifest.json")
         with open(manifest_path, "r", encoding="utf-8") as f:

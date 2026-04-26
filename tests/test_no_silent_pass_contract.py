@@ -2,8 +2,10 @@ import json
 import subprocess
 
 import cold_eyes.constants as constants
+import cold_eyes.override as override_mod
 from cold_eyes.engine import run
 from cold_eyes.history import runtime_status
+from cold_eyes.memory import extract_fp_patterns
 
 
 def _git(cwd, *args):
@@ -49,6 +51,38 @@ class _CleanAdapter:
                         "pass": True,
                         "issues": [],
                         "summary": "clean",
+                    }),
+                }),
+                "stderr": "",
+                "exit_code": 0,
+                "failure_kind": None,
+            },
+        )()
+
+
+class _BlockingAdapter:
+    def review(self, *_args, **_kwargs):
+        issue = {
+            "severity": "critical",
+            "confidence": "high",
+            "category": "correctness",
+            "file": "app.py",
+            "line_hint": "L1",
+            "check": "Dangerous state update",
+            "verdict": "The change can corrupt production state.",
+            "fix": "Restore the guard.",
+            "evidence": ["+value = 2"],
+        }
+        return type(
+            "Invocation",
+            (),
+            {
+                "stdout": json.dumps({
+                    "type": "result",
+                    "result": json.dumps({
+                        "pass": False,
+                        "issues": [issue],
+                        "summary": "blocked",
                     }),
                 }),
                 "stderr": "",
@@ -108,6 +142,29 @@ def test_same_protected_envelope_uses_cache_without_model(tmp_path, monkeypatch)
     assert first["gate_state"] == "protected"
     assert first_adapter.call_count == 1
     assert second["gate_state"] == "protected_cached"
+
+
+def test_false_positive_override_history_keeps_original_issues(tmp_path, monkeypatch):
+    _init_repo(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    history_path = tmp_path / "history.jsonl"
+    monkeypatch.setattr(constants, "HISTORY_FILE", str(history_path))
+    monkeypatch.setattr(override_mod, "TOKEN_DIR", str(tmp_path / "overrides"))
+    (tmp_path / "app.py").write_text("value = 2\n", encoding="utf-8")
+    _git(tmp_path, "add", "app.py")
+    override_mod.arm_override(str(tmp_path), "false_positive")
+
+    result = run(adapter=_BlockingAdapter(), checks="off")
+
+    assert result["state"] == "overridden"
+    entry = json.loads(history_path.read_text(encoding="utf-8").splitlines()[-1])
+    assert entry["state"] == "overridden"
+    assert entry["override_reason"] == "false_positive"
+    assert entry["review"]["issues"][0]["check"] == "Dangerous state update"
+
+    fp_patterns = extract_fp_patterns(str(history_path), min_count=1)
+    assert fp_patterns["total_issues"] == 1
+    assert fp_patterns["category_patterns"]["correctness"] == 1
 
 
 def test_unstaged_source_delta_is_reviewed_not_silent_pass(tmp_path, monkeypatch):

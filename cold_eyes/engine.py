@@ -109,6 +109,13 @@ def _resolve(cli_val, env_name, policy, policy_key, default, cast=None):
     return default
 
 
+class _RunContext:
+    """Mutable per-run state shared by the three pipeline stages."""
+
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+
+
 def run(mode=None, model=None, max_tokens=None, threshold=None,
         confidence=None, language=None, scope=None, override_reason=None,
         adapter=None, base=None, truncation_policy=None, shallow_model=None,
@@ -133,6 +140,80 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
     max_input_tokens: total token cap for all content sent to model
                       (diff + context + hints). Default: max_tokens + context_tokens + 1000.
     """
+    ctx = _RunContext(
+        started=time.monotonic(), cwd=os.getcwd(), mode=mode, model=model,
+        max_tokens=max_tokens, threshold=threshold, confidence=confidence,
+        language=language, scope=scope, override_reason=override_reason,
+        adapter=adapter, base=base, truncation_policy=truncation_policy,
+        shallow_model=shallow_model, context_tokens=context_tokens,
+        max_input_tokens=max_input_tokens, history_path=history_path,
+        minimum_coverage_pct=minimum_coverage_pct, coverage_policy=coverage_policy,
+        fail_on_unreviewed_high_risk=fail_on_unreviewed_high_risk,
+        override_note=override_note, hook_input_path=hook_input_path,
+        checks=checks, check_timeout_sec=check_timeout_sec,
+        dirty_worktree_policy=dirty_worktree_policy,
+        untracked_policy=untracked_policy,
+        partial_stage_policy=partial_stage_policy,
+        shadow_scope=shadow_scope, include_untracked=include_untracked,
+        enable_envelope_cache=enable_envelope_cache,
+        max_shadow_delta_files=max_shadow_delta_files,
+        max_shadow_delta_bytes=max_shadow_delta_bytes,
+        infra_failure_policy=infra_failure_policy,
+        lock_active_policy=lock_active_policy,
+        stale_review_policy=stale_review_policy,
+        docs_only_policy=docs_only_policy,
+        generated_only_policy=generated_only_policy,
+        lock_active=lock_active,
+    )
+
+    early_outcome = _run_preflight_stage(ctx)
+    if early_outcome is not None:
+        return early_outcome
+
+    early_outcome = _run_review_stage(ctx)
+    if early_outcome is not None:
+        return early_outcome
+
+    return _run_finalize_stage(ctx)
+
+
+def _run_preflight_stage(ctx):
+    """Stage 1: resolve settings, inspect target, and handle fast paths."""
+    mode = ctx.mode
+    model = ctx.model
+    max_tokens = ctx.max_tokens
+    threshold = ctx.threshold
+    confidence = ctx.confidence
+    language = ctx.language
+    scope = ctx.scope
+    override_reason = ctx.override_reason
+    base = ctx.base
+    truncation_policy = ctx.truncation_policy
+    shallow_model = ctx.shallow_model
+    context_tokens = ctx.context_tokens
+    max_input_tokens = ctx.max_input_tokens
+    minimum_coverage_pct = ctx.minimum_coverage_pct
+    coverage_policy = ctx.coverage_policy
+    fail_on_unreviewed_high_risk = ctx.fail_on_unreviewed_high_risk
+    override_note = ctx.override_note
+    hook_input_path = ctx.hook_input_path
+    checks = ctx.checks
+    check_timeout_sec = ctx.check_timeout_sec
+    dirty_worktree_policy = ctx.dirty_worktree_policy
+    untracked_policy = ctx.untracked_policy
+    partial_stage_policy = ctx.partial_stage_policy
+    shadow_scope = ctx.shadow_scope
+    include_untracked = ctx.include_untracked
+    enable_envelope_cache = ctx.enable_envelope_cache
+    max_shadow_delta_files = ctx.max_shadow_delta_files
+    max_shadow_delta_bytes = ctx.max_shadow_delta_bytes
+    infra_failure_policy = ctx.infra_failure_policy
+    lock_active_policy = ctx.lock_active_policy
+    stale_review_policy = ctx.stale_review_policy
+    docs_only_policy = ctx.docs_only_policy
+    generated_only_policy = ctx.generated_only_policy
+    lock_active = ctx.lock_active
+
     started = time.monotonic()
     cwd = os.getcwd()
     try:
@@ -556,6 +637,65 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
         )
         return result
 
+
+    ctx.__dict__.update({
+        "started": started, "cwd": cwd, "repo_root": repo_root, "policy": policy,
+        "mode": mode, "model": model, "max_tokens": max_tokens,
+        "threshold": threshold, "min_confidence": min_confidence,
+        "scope": scope, "base": base, "language": language,
+        "truncation_policy": truncation_policy, "shallow_model": shallow_model,
+        "context_tokens": context_tokens, "max_input_tokens": max_input_tokens,
+        "minimum_coverage_pct": minimum_coverage_pct,
+        "coverage_policy": coverage_policy,
+        "fail_on_unreviewed_high_risk": fail_on_unreviewed_high_risk,
+        "check_mode": check_mode, "check_timeout_sec": check_timeout_sec,
+        "shadow_scope": shadow_scope, "include_untracked": include_untracked,
+        "enable_envelope_cache": enable_envelope_cache,
+        "max_shadow_delta_files": max_shadow_delta_files,
+        "max_shadow_delta_bytes": max_shadow_delta_bytes,
+        "infra_failure_policy": infra_failure_policy,
+        "lock_active_policy": lock_active_policy,
+        "stale_review_policy": stale_review_policy,
+        "docs_only_policy": docs_only_policy,
+        "generated_only_policy": generated_only_policy,
+        "agent_brief_enabled": agent_brief_enabled,
+        "intent_capsule": intent_capsule, "allow_once": allow_once,
+        "override_reason": override_reason, "override_note": override_note,
+        "ignore_file": ignore_file, "envelope": envelope,
+        "envelope_log": envelope_log, "cache_lookup": cache_lookup,
+        "real_envelope": real_envelope, "target": target, "decision": decision,
+    })
+    return None
+
+
+def _run_review_stage(ctx):
+    """Stage 2: build review input, invoke the adapter, and parse output."""
+    cwd = ctx.cwd
+    started = ctx.started
+    adapter = ctx.adapter
+    envelope = ctx.envelope
+    envelope_log = ctx.envelope_log
+    target = ctx.target
+    mode = ctx.mode
+    model = ctx.model
+    scope = ctx.scope
+    base = ctx.base
+    shallow_model = ctx.shallow_model
+    min_confidence = ctx.min_confidence
+    max_tokens = ctx.max_tokens
+    max_input_tokens = ctx.max_input_tokens
+    context_tokens = ctx.context_tokens
+    minimum_coverage_pct = ctx.minimum_coverage_pct
+    coverage_policy = ctx.coverage_policy
+    fail_on_unreviewed_high_risk = ctx.fail_on_unreviewed_high_risk
+    allow_once = ctx.allow_once
+    override_reason = ctx.override_reason
+    override_note = ctx.override_note
+    infra_failure_policy = ctx.infra_failure_policy
+    agent_brief_enabled = ctx.agent_brief_enabled
+    language = ctx.language
+    intent_capsule = ctx.intent_capsule
+
     if adapter is None:
         adapter = ClaudeCliAdapter()
 
@@ -810,6 +950,68 @@ def run(mode=None, model=None, max_tokens=None, threshold=None,
                        envelope=envelope_log,
                        duration_ms=_elapsed_ms(started))
         return outcome
+
+
+    ctx.__dict__.update({
+        "adapter": adapter, "ranked": ranked, "triage": triage,
+        "review_depth": review_depth, "effective_model": effective_model,
+        "prompt_depth": prompt_depth, "diff_meta": diff_meta,
+        "file_count": file_count, "token_count": token_count,
+        "truncated": truncated, "skipped_files": skipped_files,
+        "diff_line_count": diff_line_count, "coverage": coverage,
+        "context_meta": context_meta, "detector_meta": detector_meta,
+        "hints_dropped": hints_dropped, "intent_capsule": intent_capsule,
+        "review": review,
+    })
+    return None
+
+
+def _run_finalize_stage(ctx):
+    """Stage 3: apply policy gates, attach metadata, and write history."""
+    history_path = ctx.history_path
+    review = ctx.review
+    mode = ctx.mode
+    threshold = ctx.threshold
+    allow_once = ctx.allow_once
+    min_confidence = ctx.min_confidence
+    truncated = ctx.truncated
+    skipped_files = ctx.skipped_files
+    override_reason = ctx.override_reason
+    language = ctx.language
+    truncation_policy = ctx.truncation_policy
+    override_note = ctx.override_note
+    coverage = ctx.coverage
+    ranked = ctx.ranked
+    check_mode = ctx.check_mode
+    check_timeout_sec = ctx.check_timeout_sec
+    repo_root = ctx.repo_root
+    cwd = ctx.cwd
+    stale_review_policy = ctx.stale_review_policy
+    real_envelope = ctx.real_envelope
+    policy = ctx.policy
+    scope = ctx.scope
+    shadow_scope = ctx.shadow_scope
+    include_untracked = ctx.include_untracked
+    ignore_file = ctx.ignore_file
+    effective_model = ctx.effective_model
+    shallow_model = ctx.shallow_model
+    max_shadow_delta_files = ctx.max_shadow_delta_files
+    max_shadow_delta_bytes = ctx.max_shadow_delta_bytes
+    envelope = ctx.envelope
+    envelope_log = ctx.envelope_log
+    target = ctx.target
+    intent_capsule = ctx.intent_capsule
+    agent_brief_enabled = ctx.agent_brief_enabled
+    review_depth = ctx.review_depth
+    triage = ctx.triage
+    context_meta = ctx.context_meta
+    detector_meta = ctx.detector_meta
+    hints_dropped = ctx.hints_dropped
+    file_count = ctx.file_count
+    diff_line_count = ctx.diff_line_count
+    token_count = ctx.token_count
+    cache_lookup = ctx.cache_lookup
+    started = ctx.started
 
     # 8.5 FP memory — extract patterns from override history
     fp_patterns = _extract_fp(history_path=history_path) if _extract_fp else None

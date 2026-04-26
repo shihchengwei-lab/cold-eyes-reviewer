@@ -23,6 +23,7 @@
 - 風格偏好（tab vs space、命名慣例）
 - 缺少的功能（你不知道需求）
 - 不確定的 domain-specific 邏輯（不確定就不報）
+- 外部 tool 可用性（external tool availability）：不要因為 diff 提到某個 CLI、daemon、service 或第三方工具，就推測它在使用者環境不可用。除非 diff 本身移除了必要檢查、錯用命令路徑，或讓 production runtime 必然依賴不存在的工具，否則不要把 tool availability 當成問題。
 
 ## Evidence 原則
 

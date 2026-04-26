@@ -660,6 +660,16 @@ python ~/.claude/scripts/cold_eyes/cli.py quality-report --last 7d
 
 Extended analysis: block rate, override rate, infra failure rate, top noisy paths, top issue categories, and `gate_quality` metrics including normal pass count, override rate, false-positive overrides, accepted-risk overrides, coverage block count/rate, and infra failure rate. `override_pass` is not counted as a normal pass.
 
+### Quality dashboard
+
+Use `quality-report` as the local quality dashboard entry point:
+
+```bash
+python ~/.claude/scripts/cold_eyes/cli.py quality-report
+```
+
+The latest recorded real-model benchmark in this repo is `evals/results/benchmark_20260425T235933.json`: Opus deep review passed **28/33 cases = 84.8%**. The miss pattern was mostly severity calibration: the reviewer saw production-breaking correctness issues but labeled them `major`, so the default critical-only gate reported them without blocking. The prompt now calls out dangling imports/references, removed required error handling, resource leaks, and partial state updates as critical correctness issues when the diff evidence is sufficient.
+
 ### Auto-tune
 
 ```bash
