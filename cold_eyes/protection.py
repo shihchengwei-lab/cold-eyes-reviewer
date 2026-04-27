@@ -64,22 +64,31 @@ def build_protection(
 
 
 def format_agent_reason(protection: dict, original_reason: str = "") -> str:
-    """Build the hook block reason shown to the agent."""
+    """Build the hook block reason shown to the agent.
+
+    Section order is deliberate:
+    1. Agent must first fix the current diff (do not relay terminology to the user yet).
+    2. Agent repair task (the actual work).
+    3. Fresh-review rerun protocol (steps the agent should follow next).
+    4. User-facing talking points, only if a user update is necessary.
+    5. Original Cold Eyes detail (raw source material, last).
+    """
     lines = [
         (
-            "Cold Eyes blocked this change. Agent: fix the current diff, run "
-            "relevant checks, then end the turn so the next Stop hook starts a "
-            "fresh Cold Eyes review. Do not quote this brief verbatim to the user."
+            "Cold Eyes blocked this change. Agent: fix the current diff first, run "
+            "relevant local checks, then end the turn so the next Stop hook starts "
+            "a fresh Cold Eyes review. Do not relay this brief, its terminology, "
+            "or the raw block reason to the user before fixing."
         ),
-        "",
-        "User-facing talking points (summarize in your own words; do not quote verbatim):",
-        protection.get("user_message", ""),
-        "",
-        "Automatic rerun protocol:",
-        _format_rerun_protocol(protection.get("rerun_protocol") or {}),
         "",
         "Agent repair task:",
         protection.get("agent_task", ""),
+        "",
+        "Fresh-review rerun protocol:",
+        _format_rerun_protocol(protection.get("rerun_protocol") or {}),
+        "",
+        "User-facing talking points (only if a user update is necessary; summarize in your own words; do not quote verbatim):",
+        protection.get("user_message", ""),
     ]
     if original_reason:
         lines.extend(["", "Original Cold Eyes detail:", original_reason])
@@ -157,13 +166,13 @@ def _risk_summary(outcome: dict, issues: list[dict], block_type: str) -> list[st
     if block_type == "check_block":
         return ["本機檢查發現明確失敗"]
     if block_type == "unreviewed_delta_block":
-        return ["source/config delta was not reviewed"]
+        return ["有 source/設定的變更還沒被 Cold Eyes 審到"]
     if block_type == "stale_review_block":
-        return ["files changed while Cold Eyes was reviewing"]
+        return ["Cold Eyes 在審的時候檔案又被改了，這次審的結果不能算數"]
     if block_type == "infra_block":
-        return ["review was required but reviewer infrastructure failed"]
+        return ["這次需要 Cold Eyes 審，但審查工具自己出了問題"]
     if block_type == "lock_block":
-        return ["review was required but another review was already active"]
+        return ["這次需要 Cold Eyes 審，但已經有另一個 review 還沒結束"]
     if block_type == "intent_mismatch":
         return ["這次改動可能偏離使用者原本要做的事"]
     if block_type == "incomplete_review":
@@ -245,15 +254,16 @@ def _agent_task(
     block_type: str,
 ) -> str:
     lines = [
-        "1. If you update the user, summarize the talking points in your own words. Do not quote this brief verbatim.",
-        "2. Follow the repair approach for this block type. Do not ask the user to review code "
-        "unless a product decision is required.",
+        "1. Fix the current diff yourself before considering whether to update "
+        "the user. Do not relay this brief or its terminology to the user "
+        "before fixing.",
+        "2. Follow the repair approach for this block type. Do not ask the "
+        "user to review code unless a product decision is required.",
         "3. Keep the fix narrow and preserve unrelated user changes.",
         "4. Run the relevant local checks if available.",
         "5. End the turn so the next Stop hook runs a fresh Cold Eyes review.",
         "6. If Cold Eyes blocks again, follow the latest block as a new cold review.",
         "",
-        f"User-facing talking points: {user_message}",
         f"Risk summary: {', '.join(risk_summary)}",
     ]
     if block_type == "coverage_block":
@@ -305,6 +315,15 @@ def _agent_task(
         else:
             lines.append("Repair approach: stage, intentionally ignore, or reduce the unreviewed delta before ending the turn.")
         return "\n".join(lines)
+
+    if block_type == "intent_mismatch":
+        lines.append(
+            "Decision boundary: technically fixable diff risks (typos, wrong "
+            "identifiers, restored guards, mis-wired calls) are the agent's "
+            "job to fix without asking. Only escalate to the user when the "
+            "product direction or the user's intent is genuinely unclear and "
+            "no code-level fix can resolve it."
+        )
 
     if issues:
         lines.extend(["", "Findings to fix:"])
@@ -387,24 +406,27 @@ def _repair_step(block_type: str) -> str:
         return "Wait for the active review to finish, then end the turn again."
     if block_type == "intent_mismatch":
         return (
-            "If the fix needs a product or intent decision, ask the user in plain "
-            "language; otherwise fix only the visible diff risk."
+            "Decision boundary: if the diff risk is technically fixable (typo, "
+            "wrong identifier, restored guard, missing branch, mis-wired call) "
+            "the agent fixes it directly without asking the user. Only escalate "
+            "to the user when the product direction or the user's intent is "
+            "genuinely unclear and a code-level fix cannot resolve it."
         )
     return "Fix only the risk visible in the current diff while preserving unrelated user changes."
 
 
 def _format_rerun_protocol(protocol: dict) -> str:
+    """Render the rerun protocol for the agent-facing reason.
+
+    Structured fields (owner, required, trigger, memory_policy,
+    user_action_required) stay in the protection JSON and history so tooling
+    can read them, but they are intentionally omitted from the hook reason
+    text: the agent should see actionable steps, not machine-shaped metadata.
+    """
     steps = protocol.get("steps") if isinstance(protocol.get("steps"), list) else []
-    lines = [
-        f"Owner: {protocol.get('owner', 'main_agent')}",
-        f"Required: {str(bool(protocol.get('required', True))).lower()}",
-        f"Trigger: {protocol.get('trigger', 'next_stop_hook')}",
-        f"Memory policy: {protocol.get('memory_policy', 'fresh_review_only')}",
-        "User action required: false",
-        "Steps:",
-    ]
-    lines.extend(f"- {step}" for step in steps)
-    return "\n".join(lines)
+    if not steps:
+        return ""
+    return "\n".join(f"- {step}" for step in steps)
 
 
 def _is_english(language: str | None) -> bool:

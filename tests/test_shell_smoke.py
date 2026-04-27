@@ -354,9 +354,9 @@ class TestShellParserFailClosed:
 
     def test_block_action_preserves_agent_brief_reason(self):
         reason = (
-            "User-facing talking points (summarize in your own words; do not quote verbatim):\nplain text\n\n"
-            "Automatic rerun protocol:\nOwner: main_agent\nTrigger: next_stop_hook\n\n"
             "Agent repair task:\nfix it\n\n"
+            "Fresh-review rerun protocol:\n- end the turn so Cold Eyes runs again\n\n"
+            "User-facing talking points (only if a user update is necessary; summarize in your own words; do not quote verbatim):\nplain text\n\n"
             "Local checks to fix:\n- [hard] test_runner: status=fail"
         )
         data = json.dumps({"action": "block", "display": "blocking", "reason": reason})
@@ -365,9 +365,9 @@ class TestShellParserFailClosed:
         assert set(out) == {"decision", "reason"}
         assert out["decision"] == "block"
         assert "Agent repair task" in out["reason"]
-        assert "Automatic rerun protocol" in out["reason"]
+        assert "Fresh-review rerun protocol" in out["reason"]
         assert "Local checks to fix" in out["reason"]
-        assert "next_stop_hook" in out["reason"]
+        assert "end the turn" in out["reason"]
 
     def test_coverage_block_action_emits_json_decision_only(self):
         data = json.dumps({
