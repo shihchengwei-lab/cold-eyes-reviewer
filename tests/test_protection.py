@@ -43,7 +43,7 @@ def test_block_finding_gets_agent_task_and_user_message():
     assert "User-facing talking points" in protected["reason"]
     assert "do not quote verbatim" in protected["reason"]
     assert "Message to relay to the user" not in protected["reason"]
-    assert "Automatic rerun protocol" in protected["reason"]
+    assert "Fresh-review rerun protocol" in protected["reason"]
     assert "fresh Cold Eyes review" in protected["reason"]
     assert "Agent repair task" in protected["reason"]
     assert "src/app.py" in protected["reason"]
@@ -106,7 +106,7 @@ def test_lock_block_uses_context_specific_talking_points():
     assert "你不用自己看程式碼" not in message
     assert "User-facing talking points" in protected["reason"]
     assert "Message to relay to the user" not in protected["reason"]
-    assert "do not quote this brief verbatim" in protected["protection"]["agent_task"].lower()
+    assert "do not relay this brief" in protected["protection"]["agent_task"].lower()
 
 
 def test_agent_brief_off_does_not_add_rerun_protocol():
