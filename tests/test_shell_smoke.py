@@ -356,7 +356,9 @@ class TestShellParserFailClosed:
         reason = (
             "Agent repair task:\nfix it\n\n"
             "Fresh-review rerun protocol:\n- end the turn so Cold Eyes runs again\n\n"
-            "User-facing talking points (only if a user update is necessary; summarize in your own words; do not quote verbatim):\nplain text\n\n"
+            "User-facing talking points (only if a user update is necessary; "
+            "summarize in your own words; do not quote verbatim):\n"
+            "plain text\n\n"
             "Local checks to fix:\n- [hard] test_runner: status=fail"
         )
         data = json.dumps({"action": "block", "display": "blocking", "reason": reason})
