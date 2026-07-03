@@ -5,6 +5,18 @@
 ![Review](https://img.shields.io/badge/Review-diff--centered-green)
 ![Scope](https://img.shields.io/badge/Scope-not%20full%20review-lightgrey)
 
+> **Status: archived (2026-07-04).** Development ended after a real-world evaluation.
+> In 9 days of gating live Claude Code sessions (735 turns, 2026-05-01 to 2026-05-09),
+> 84% of turns ended without a model call (envelope skip or cache, ~0.25s median),
+> 105 turns ran an LLM review (median 87s, p90 ~3min of added latency), and 2 blocks
+> caught genuine critical cross-file inconsistencies — while 6 blocks were caused by
+> infrastructure failures of the tool itself.
+> The verdict: the envelope triage and the evidence-bound output format proved out;
+> charging a median 87-second toll per reviewed turn for that catch rate did not.
+> Those proven ideas moved into a zero-cost checklist Stop hook in the author's
+> workflow. The code remains available as a reference implementation; no further
+> releases are planned.
+
 A diff-centered, second-pass review gate for [Claude Code](https://docs.anthropic.com/en/docs/claude-code). Runs automatically after every session turn via Stop hook, defaults to gate mode, auto-tunes the quality/time balance from local review history, and turns blocks into agent repair tasks with a fresh-review rerun protocol.
 
 This tool was built after observing [Cinder](https://not-a-mascot.vercel.app/index-en.html), a Claude Code buddy companion that provided independent commentary during coding sessions. Cinder was silently shut down on April 11, 2026. Cold Eyes carries forward the idea that a second pair of eyes — even artificial ones — catches things the first pair misses. Cinder was a companion. Cold Eyes is a gate.

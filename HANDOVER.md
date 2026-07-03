@@ -1,22 +1,38 @@
 # Cold Eyes Reviewer Handover
 
-Last updated: 2026-04-26
+Last updated: 2026-07-04
 
-## Current State
+## Archival Decision (2026-07-04)
 
-- Version in source: `v2.0.0`
+The project is archived. The decision was driven by its own real-world usage data
+(May 2026, 735 gated turns, primarily one active project):
+
+- 84% of turns ended without a model call (envelope skip or trusted cache, ~0.25s median).
+- 105 LLM reviews ran (90 deep / 15 shallow), adding a median 87s (p90 ~3min) of latency per reviewed turn.
+- 2 blocks caught genuine critical cross-file inconsistencies; 6 blocks were infrastructure failures of the tool itself.
+- Active use stopped after 2026-05-09; the Stop hook slot was later taken over by a zero-cost checklist script (`~/.claude/scripts/review.py`).
+
+Verdict: envelope triage and evidence-bound review output proved out; a median
+87-second toll per reviewed turn for that catch rate did not. The proven ideas were
+extracted into the checklist hook (evidence-backed claims, cross-file consistency
+check); this repo stays as a reference implementation.
+
+Final housekeeping before archival:
+
+- Fixed a wall-clock-dependent test (`test_memory.py::TestExtractFpPatterns::test_last_days_filter`) that hardcoded April 2026 dates as "recent" and started failing once they aged past the 30-day window.
+- Isolated shell smoke tests from the real `~/.claude`: they used to append an `off_explicit` entry to the user's real review history on every test run.
+- Removed the local install (`uninstall.sh`: scripts and the `Cold Eyes Reviewer Health Notice` scheduled task) and cleaned local state files; the May usage history is kept as data.
+
+## Current State (at archival)
+
+- Version in source: `v2.1.0`
 - Branch: `master`
-- Latest pushed release commit: `7105fc9 Release v2.0.0 no silent pass delta gate`
-- Latest tag / release: `v2.0.0`
-- Latest GitHub Release title: `v2.0.0 - No Silent Pass Delta Gate`
-- Repository: `https://github.com/shihchengwei-lab/cold-eyes-reviewer`
+- Latest tag / release: `v2.1.0` (engine stage refactor)
+- Repository: `https://github.com/shihchengwei-lab/cold-eyes-reviewer` (to be archived on GitHub by the owner)
 - Default branch: `master`
-- Local deployed version: `2.0.0`
-- Installed scripts path: `C:\Users\kk789\.claude\scripts`
-- Windows-side `doctor`: `all_ok: true`
-- Health notice schedule: configured as Windows scheduled task `Cold Eyes Reviewer Health Notice`
-- GitHub Actions for latest pushed `master`, `v2.0.0`, and Release: success
-- Working tree is clean after the v2.0.0 release and this handover update.
+- Local install: removed 2026-07-04
+- Stop hook: not registered; replaced by the `review.py` checklist hook
+- Test suite at archival: 674 passed, ruff clean
 
 ## Product Shape
 

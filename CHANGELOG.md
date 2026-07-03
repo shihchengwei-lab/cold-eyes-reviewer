@@ -1,5 +1,19 @@
 # Changelog
 
+## Archived - 2026-07-04
+
+Post-v2.1.0 housekeeping before archival. No functional changes, no release.
+
+### Changed
+
+- `tests/test_memory.py` last-days filter test now derives its "recent" timestamps from the current clock instead of hardcoded April 2026 dates that fell outside the 30-day window over time.
+- Shell smoke tests run `cold-review.sh` with `HOME`/`USERPROFILE` pointed at a throwaway directory, so test runs no longer append `off_explicit` entries to the real `~/.claude/cold-review-history.jsonl`.
+- README and HANDOVER document the archival decision and the May 2026 real-usage data behind it.
+
+### Test count
+
+- 674 passed.
+
 ## v2.1.0 - refactor: engine stages and quality visibility
 
 ### Changed
