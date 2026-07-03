@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -148,11 +149,14 @@ class TestExtractFpPatterns:
 
     def test_last_days_filter(self, tmp_path):
         path = str(tmp_path / "hist.jsonl")
+        now = datetime.now(timezone.utc)
+        recent_1 = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        recent_2 = (now - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
         entries = [
             _override_entry([_issue(category="old")], ts="2020-01-01T00:00:00Z"),
             _override_entry([_issue(category="old")], ts="2020-01-02T00:00:00Z"),
-            _override_entry([_issue(category="recent")], ts="2026-04-11T00:00:00Z"),
-            _override_entry([_issue(category="recent")], ts="2026-04-12T00:00:00Z"),
+            _override_entry([_issue(category="recent")], ts=recent_1),
+            _override_entry([_issue(category="recent")], ts=recent_2),
         ]
         _write_history(entries, path)
         result = extract_fp_patterns(history_path=path, min_count=2, last_days=30)

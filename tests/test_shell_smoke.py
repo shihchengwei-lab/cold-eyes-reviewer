@@ -39,21 +39,29 @@ PROMPT_TEMPLATE = os.path.join(SCRIPTS_DIR, "cold-review-prompt.txt")
 
 
 def run_shell(env_override=None, stdin_data="", cwd=None):
-    """Run cold-review.sh with given environment and return result."""
+    """Run cold-review.sh with given environment and return result.
+
+    HOME/USERPROFILE point at a throwaway directory so the engine's
+    history, lock, and notice files never touch the real ~/.claude.
+    """
     env = {**os.environ}
     env["PYTHONIOENCODING"] = "utf-8"
-    if env_override:
-        env.update(env_override)
-    result = subprocess.run(
-        ["bash", SHELL_SCRIPT],
-        input=stdin_data,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        env=env,
-        cwd=cwd,
-        timeout=30,
-    )
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as fake_home:
+        os.makedirs(os.path.join(fake_home, ".claude"), exist_ok=True)
+        env["HOME"] = fake_home
+        env["USERPROFILE"] = fake_home
+        if env_override:
+            env.update(env_override)
+        result = subprocess.run(
+            ["bash", SHELL_SCRIPT],
+            input=stdin_data,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            env=env,
+            cwd=cwd,
+            timeout=30,
+        )
     return result
 
 
